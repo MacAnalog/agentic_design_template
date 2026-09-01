@@ -1,0 +1,26 @@
+# The one file that describes this design to the harness (spicexplorer-harness).
+# Keys not listed here keep their defaults; unknown keys fail `make lint`.
+name: <design>
+exp_env: EXP            # env var stamping every ledger row with the experiment id
+jobs_env: JOBS          # width of spicexplorer_harness.batch
+
+# The acceptance box. ops: < <= > >= in abs<=. Every bound must also appear in doc/target-spec.md.
+spec:
+  - {key: gain_db, label: gain, op: ">=", bound: 60, unit: dB}
+  - {key: pm_deg, label: PM, op: ">=", bound: 60, unit: deg}
+  - {key: power_uw, label: power, op: "<=", bound: 100, unit: uW}
+
+# Certified artefacts, sha-locked with SHA256SUMS (`make freeze` after certification).
+frozen: []                       # e.g. [decks/reference]
+reference_scorecard: ""          # e.g. decks/reference/scorecard.json ({"scorecard": {...}})
+
+gitignore_must: ["runs/", "*.raw", "__pycache__/", "experiments/*/out/"]
+
+# Provenance scrub: [{pattern, why}] regexes that may not appear anywhere in the tree.
+denylist: []
+
+# Columns of `make runs` ({key, w: width, p: decimals}); also the episode keys of the pack.
+ledger_columns:
+  - {key: gain_db, w: 8, p: 1}
+  - {key: pm_deg, w: 7, p: 1}
+  - {key: power_uw, w: 9, p: 2}
