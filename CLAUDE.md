@@ -24,14 +24,16 @@ it is measured against.> The spec of record is `doc/target-spec.md`; its machine
 
 ## Harness commands
 
-`spicexplorer-harness` (platform package) does the generic work; `Makefile` wraps it.
+`spicexplorer-harness` (platform package, an editable path dependency — `uv sync` once per
+checkout) does the generic work, driven by `harness.yaml`; `Makefile` wraps it.
 
+- `make doctor` — is the simulation lane alive? (`lab/sim.py`)
 - `make pack K="noise irn"` — assemble **working memory** for a task. Run at task start;
   re-run with `S="fc drifted after cap swap"` on any new failure signature before diagnosing.
 - `make lint` — repo invariants (`harness.yaml` drives them). Failure messages carry their fix.
 - `make check` — lint + the reference reproduces its certified scorecard.
-- `make runs ARGS="--fails"` — query the run ledger (`runs/ledger.ndjson`; every
-  `lab.metrics.evaluate()` appends a row automatically).
+- `make runs ARGS="--fails | --best <metric> | --exp NNN | --kind thd | --where topology=b"` —
+  query the run ledger (`runs/ledger.ndjson`; every `lab.metrics.evaluate()` appends a row).
 - `make freeze` — write `SHA256SUMS` into the frozen dirs after certifying a reference.
 
 ## Rules (mechanically enforced where possible; the rest is contract)
@@ -42,7 +44,7 @@ it is measured against.> The spec of record is `doc/target-spec.md`; its machine
 3. Every experiment: **falsifiable hypothesis first**; a control whenever a knob moves.
 4. Findings are **tables or plots**; prose is interpretation. Keeper numbers graduate from the
    ledger into the experiment README — the repo is the memory.
-5. **Parallelize batches** (`spicexplorer_harness.batch`, `JOBS`).
+5. **Parallelize batches** (`spicexplorer_harness.batch`; the width env var is `jobs_env` in `harness.yaml`).
 6. **Clean provenance.** Reference the PDK by name, pin its version in `doc/environment.md`,
    never vendor model bytes. `denylist:` in `harness.yaml` is a build failure, not a style note.
 7. **Designer ≠ verifier.** Delivery claims are re-measured from raw artefacts.
@@ -52,10 +54,20 @@ it is measured against.> The spec of record is `doc/target-spec.md`; its machine
     supersede-don't-delete; procedural writes (`lab/`, `scripts/`, agent defs, this file) are
     human-reviewed — agents propose diffs, never self-apply them.
 
-## Agents
+## Agents and methods
 
-Not yet defined for the template (workspace plan `plan_agentic_design_template.md` T7). They
-will read `harness.yaml` first and follow rules 7–10.
+In `.claude/agents/` (each starts from `make pack`, reads `harness.yaml`, obeys rules 7–10):
+
+- `paper-analyst` — one paper → a falsifiable technique brief + its `pdf/INDEX.md` row. Never simulates.
+- `variant-runner` — parallel netlist-lane batches; scorecard tables only; reference first row, control when a knob moves.
+- `signoff-verifier` — independent re-measurement of delivery claims from raw artefacts (rule 7). Reports; never fixes.
+- `schematic-builder` — the reviewable `.sch`/`.sym` of record, proven equal to netlist and simulation.
+- `gardener` — report-only consistency sweep. Has no write tools, by design.
+
+Visual evidence is not optional: the methods in `.claude/skills/` — `schematic-of-record`,
+`testbench-schematic` (components, not text), `findings-as-plots` (spec boxes drawn on every
+figure), `layout-evidence` (generator → GDS → DRC/LVS/PEX → review overlay) — say how each
+artefact is produced and gated. Layout work uses the workspace's `layout-*` agents.
 
 ## Parallel sessions & blast radius
 
