@@ -4,22 +4,32 @@ name: <design>
 exp_env: EXP            # env var stamping every ledger row with the experiment id
 jobs_env: JOBS          # width of spicexplorer_harness.batch
 
+# The headline of the challenge, as the context pack states it at the top of every task.
+goal: "<the metric to beat, its bound, and what may not be given back>"
+
 # The acceptance box. ops: < <= > >= in abs<=. Every bound must also appear in doc/target-spec.md.
 spec:
   - {key: gain_db, label: gain, op: ">=", bound: 60, unit: dB}
   - {key: pm_deg, label: PM, op: ">=", bound: 60, unit: deg}
   - {key: power_uw, label: power, op: "<=", bound: 100, unit: uW}
+# Extra spec-frame lines for the pack: report-only columns, expensive sign-off definitions, gates.
+spec_notes: []
 
 # Certified artefacts, sha-locked with SHA256SUMS (`make freeze` after certification).
 frozen: []                       # e.g. [decks/reference]
 reference_scorecard: ""          # e.g. decks/reference/scorecard.json ({"scorecard": {...}})
 
+# Memory surfaces: entries stay under size_cap (20 KB); the one-line-per-entry index may grow past it.
+memory: {index_size_cap: 32000}
+
 gitignore_must: ["runs/", "*.raw", "__pycache__/", "experiments/*/out/"]
 
-# Provenance scrub: [{pattern, why}] regexes that may not appear anywhere in the tree.
+# Provenance scrub: [{pattern, why, flags}] regexes that may not appear anywhere in the tree
+# (flags: "" = case-sensitive; default is case-insensitive).
 denylist: []
 
-# Columns of `make runs` ({key, w: width, p: decimals}); also the episode keys of the pack.
+# `make runs` columns ({key, w: width, p: decimals}; strings left-justified). One list, or a
+# {kind: [...]} map when other row kinds (thd, corner, mc) carry different fields.
 ledger_columns:
   - {key: gain_db, w: 8, p: 1}
   - {key: pm_deg, w: 7, p: 1}

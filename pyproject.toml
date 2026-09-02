@@ -1,0 +1,22 @@
+[project]
+name = "agentic-design"          # rename to the design
+version = "0.1.0"
+description = "<the block, the PDK, the headline number to beat>"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=1.26",
+    "matplotlib>=3.8",
+    "spicexplorer-harness",
+]
+
+[tool.uv]
+package = false
+
+[tool.uv.sources]
+# The generic harness (ledger, lints, context pack, spec) comes from the platform checkout that
+# sits beside this repo in spicexplorer-workspace; edit the path if the repo lives elsewhere.
+spicexplorer-harness = { path = "../../spicexplorer-platform/packages/spicexplorer-harness", editable = true }
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
