@@ -72,7 +72,10 @@ artefact is produced and gated. Layout work uses the workspace's `layout-*` agen
 ## Parallel sessions & blast radius
 
 One experiment = one session = one git worktree on `feat/NNN-<technique>`; `EXP=NNN` stamps the
-ledger. The ledger and work dirs are per checkout. Shared docs (`doc/journal.md`,
+ledger. **Put the worktree at the same directory depth as this repo** (e.g.
+`git worktree add ../<repo>-<name>`, not `../wt/<name>`): the harness is a *relative* path
+dependency (`../../spicexplorer-platform/...` in `pyproject.toml`), so a deeper worktree cannot
+`uv sync` without a symlink hack. The ledger and work dirs are per checkout. Shared docs (`doc/journal.md`,
 `doc/experiment-log.md`, `pdf/INDEX.md`) are written at close-out only; during the work, write
 into your own `experiments/NNN-*/README.md`.
 
