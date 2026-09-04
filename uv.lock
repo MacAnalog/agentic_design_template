@@ -722,4 +722,8 @@ dependencies = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "pyyaml", specifier = ">=6.0" }]
+requires-dist = [
+    { name = "neo4j", marker = "extra == 'neo4j'", specifier = ">=5.20" },
+    { name = "pyyaml", specifier = ">=6.0" },
+]
+provides-extras = ["neo4j"]
