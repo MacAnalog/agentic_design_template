@@ -3,6 +3,8 @@
 name: <design>
 exp_env: EXP            # env var stamping every ledger row with the experiment id
 jobs_env: JOBS          # width of spicexplorer_harness.batch
+# sim_env: SIM_NGSPICE  # the native ngspice binary lab/sim.py runs (default: exp_env's prefix + _NGSPICE)
+# work_env: SIM_WORK    # the work root (default: prefix + _WORK; else $SX_SCRATCH/<design>-<checkout>)
 
 # The headline of the challenge, as the context pack states it at the top of every task.
 goal: "<the metric to beat, its bound, and what may not be given back>"

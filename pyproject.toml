@@ -5,11 +5,10 @@ description = "<the block, the PDK, the headline number to beat>"
 requires-python = ">=3.11"
 dependencies = [
     "numpy>=1.26",
-    "scipy>=1.11",              # lab.eye: the Bessel-Thomson reference receiver
-    "matplotlib>=3.8",
+    "matplotlib>=3.8",          # lab.plot
     "spicexplorer-harness",     # ledger, lints, context pack, spec-as-data (harness.yaml)
-    "spicexplorer-core",        # spicelib RawRead pin (lab.sim.raw)
-    "spicexplorer-waveview",    # log classification + WaveDataset/registry measurements (lab.sim)
+    "spicexplorer-core",        # spice_engine.run_deck (lab.sim), spicelib RawRead (lab.sim.raw)
+    "spicexplorer-waveview",    # stimulus + eye (lab.stimulus, lab.eye), WaveDataset/registry (lab.sim.dataset)
     # From outside the platform's uv workspace every transitive spicexplorer-* member must be
     # named here AND in [tool.uv.sources]; uncomment as a design pulls them in:
     # "spicexplorer", "spicexplorer-analog-db", "spicexplorer-circuitgraph", "spicexplorer-netlist2xschem",

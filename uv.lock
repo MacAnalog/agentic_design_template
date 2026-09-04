@@ -14,8 +14,6 @@ dependencies = [
     { name = "matplotlib" },
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "numpy", version = "2.5.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
-    { name = "scipy", version = "1.17.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
-    { name = "scipy", version = "1.18.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
     { name = "spicexplorer-core" },
     { name = "spicexplorer-harness" },
     { name = "spicexplorer-waveview" },
@@ -30,7 +28,6 @@ dev = [
 requires-dist = [
     { name = "matplotlib", specifier = ">=3.8" },
     { name = "numpy", specifier = ">=1.26" },
-    { name = "scipy", specifier = ">=1.11" },
     { name = "spicexplorer-core", editable = "../../spicexplorer-platform/packages/spicexplorer-core" },
     { name = "spicexplorer-harness", editable = "../../spicexplorer-platform/packages/spicexplorer-harness" },
     { name = "spicexplorer-waveview", editable = "../../spicexplorer-platform/packages/spicexplorer-waveview" },
@@ -1238,6 +1235,8 @@ dependencies = [
     { name = "plotly" },
     { name = "psf-utils" },
     { name = "pydantic" },
+    { name = "scipy", version = "1.17.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
+    { name = "scipy", version = "1.18.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
     { name = "spicelib" },
     { name = "spicexplorer-core" },
 ]
@@ -1249,6 +1248,7 @@ requires-dist = [
     { name = "plotly", specifier = ">=7.0.0" },
     { name = "psf-utils", specifier = ">=1.9" },
     { name = "pydantic", specifier = ">=2" },
+    { name = "scipy", specifier = ">=1.11" },
     { name = "spicelib", specifier = ">=1.5,<1.6" },
     { name = "spicexplorer-core", editable = "../../spicexplorer-platform/packages/spicexplorer-core" },
 ]

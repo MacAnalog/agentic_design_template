@@ -1,41 +1,37 @@
 """The simulator lane: deck text in, run directory out; `make doctor` proves it with one resistor.
 
-Native ngspice through a thin subprocess path: the platform's `NGSpice_Wrapper` is file-centric
-(wipes its output folder, no per-run cwd/`.spiceinit`), which is the platform gap this module
-fills until a deck-string `run(deck, label, workdir, spiceinit)` lands beside it. Every run gets
-`work()/runs/<label>-<deck hash>/` with its own `.spiceinit` (the PDK's
-`$SPICE_USERINIT_DIR/.spiceinit` plus `SPICEINIT_EXTRA`), `deck.sp`, `ngspice.out`, `wall.txt`
-and rawfile(s). ngspice exits 0 after a failed operating point, an ignored device line or a
-failed `.meas`, so the log is scanned before anything is trusted: fatal lines raise `SimError`,
-a failed `.meas` lands in `Run.failed`, and `print`/`meas` scalars come back parsed from the log.
+A thin wrapper over the platform's `spicexplorer_core.spice_engine.run_deck` (the deck-string
+ngspice lane: per-run directory `<label>-<deck hash>`, per-run `.spiceinit` in the cwd, `.busy`
+marker with dead-owner reclaim, rc check, `print`/`meas` scalars and failed `.meas` names parsed
+from the log, fatal lines raised). What stays here is this repo's policy: WHERE runs go
+(`work()`: `$<work_env>`, else `$SX_SCRATCH/<design>-<checkout>/runs`), WHICH binary
+(`ngspice()`: `$<sim_env>`, else PATH), WHAT the per-run init file says (`spiceinit()`: the PDK's
+`$SPICE_USERINIT_DIR/.spiceinit` plus `SPICEINIT_EXTRA`), the `PDK`/`PDK_ROOT` defaults the init
+file expands, the "no rawfile and no scalar is a failure" rule, and the doctor probe. The env-var
+names come from `harness.yaml` (`sim_env`, `work_env`; defaulted from `exp_env` by the prefix rule).
 """
 
 from __future__ import annotations
 
-import dataclasses
 import hashlib
 import json
 import os
-import re
 import shutil
-import subprocess
 import sys
-import time
 from pathlib import Path
 
+from spicexplorer_core.spice_engine import DeckRunError, RunResult, run_deck
+from spicexplorer_core.spice_engine.deck_run import slug as _slug
+from spicexplorer_core.spice_engine.sim_log import fatal_lines, parse_measures
 from spicexplorer_harness import load
-from spicexplorer_harness.ledger import deck_hash
-from spicexplorer_waveview.logs import classify_line
 
 H = load(Path(__file__).resolve().parents[1])
 REPO = H.root
 CHECKOUT = hashlib.sha256(str(REPO).encode()).hexdigest()[:8]
 
-# `exp_env: FOO_EXP` in harness.yaml names FOO_NGSPICE and FOO_WORK; no prefix => SIM_*.
-_PREFIX = H.exp_env[:-4] if H.exp_env.endswith("_EXP") and len(H.exp_env) > 4 else "SIM"
-LANE_ENV = f"{_PREFIX}_NGSPICE"   # the native binary; else `ngspice` on PATH
-WORK_ENV = f"{_PREFIX}_WORK"      # the work root; else $SX_SCRATCH/<design>-<checkout>
-SPICEINIT_EXTRA = ""              # lines every run appends to the PDK init (a compatibility `set`, an `osdi` load)
+LANE_ENV = H.sim_env      # the native binary; else `ngspice` on PATH
+WORK_ENV = H.work_env     # the work root; else $SX_SCRATCH/<design>-<checkout>
+SPICEINIT_EXTRA = ""      # lines every run appends to the PDK init (a compatibility `set`, an `osdi` load)
 
 PROBE = """* lane preflight: one resistor
 v1 a 0 1
@@ -50,47 +46,18 @@ quit
 .end
 """
 
-
-class SimError(RuntimeError):
-    """ngspice exited non-zero, logged a fatal line, or produced neither a rawfile nor a scalar."""
-
-
-@dataclasses.dataclass
-class Run:
-    """One finished run; `os.fspath(run)` / `str(run)` is its directory, so `Path(run) / "x"` works."""
-
-    label: str
-    dir: Path
-    deck: Path
-    log: Path
-    raws: list[Path]
-    wall: float
-    rc: int
-    measures: dict[str, float]
-    failed: list[str]           # `.meas` names ngspice reported as failed
-
-    @property
-    def raw(self) -> Path | None:
-        return self.raws[0] if self.raws else None
-
-    def __fspath__(self) -> str:
-        return str(self.dir)
-
-    def __str__(self) -> str:
-        return str(self.dir)
-
-    def text(self) -> str:
-        return self.log.read_text(errors="replace")
+# Platform names, kept under the names this repo's tests, docs and ledger rows use.
+SimError = DeckRunError
+Run = RunResult
+__all__ = ["H", "REPO", "CHECKOUT", "LANE_ENV", "WORK_ENV", "SPICEINIT_EXTRA", "PROBE", "SimError",
+           "Run", "work", "ngspice", "userinit_dir", "spiceinit", "fatal_lines", "parse_measures",
+           "run", "raw", "dataset", "wall_time", "preflight"]
 
 
 # ------------------------------------------------------------------ where and what ----
 
-def _slug(s: str) -> str:
-    return re.sub(r"[^A-Za-z0-9_.-]+", "_", s)
-
-
 def work() -> Path:
-    """`$<PREFIX>_WORK`, else `$SX_SCRATCH/<design>-<checkout>` (else `~/sx-scratch/...`); never the repo, never /tmp."""
+    """`$<work_env>`, else `$SX_SCRATCH/<design>-<checkout>` (else `~/sx-scratch/...`); never the repo, never /tmp."""
     if os.environ.get(WORK_ENV):
         w = Path(os.environ[WORK_ENV])
     else:
@@ -134,50 +101,6 @@ def _env() -> dict[str, str]:
     return env
 
 
-# ------------------------------------------------------------------ the log -----------
-
-# Bare lines ngspice prints for failures it does not exit non-zero on (no `Error:` prefix).
-_FATAL = ("doAnalyses: iteration limit reached", "Transient solution failed", "timestep too small",
-          "Unknown model type", "could not find a valid modelname", "Error on line",
-          "simulation interrupted")
-# `Warning:` lines that hide a silently wrong deck (a device line dropped => zeros in the rawfile).
-_FATAL_WARNINGS = ("ignored!", "is not a valid")
-# `Error:` lines that are NOT fatal: a failed `.meas` (reported by name in `Run.failed`).
-_ERROR_OK = re.compile(r"Error:\s+measure\b", re.IGNORECASE)
-_MEASURE = re.compile(r"^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*([-+]?[0-9.]+(?:[eE][-+]?[0-9]+)?)"
-                      r"(?:\s+(?:at|from|to)\s*=.*)?\s*$")
-_FAILED = re.compile(r"^\s*\.?meas\s+\w+\s+([A-Za-z_][A-Za-z0-9_]*)\b.*\bfailed!?\s*$", re.IGNORECASE)
-
-
-def fatal_lines(log: str) -> list[str]:
-    """Lines that make a run a failure whatever the rawfile says: waveview's `error` level (except a failed `.meas`), the `_FATAL` strings, and warnings that dropped a device line; other warnings are recoverable."""
-    out = []
-    for ln in log.splitlines():
-        level = classify_line(ln)
-        if level == "warning":
-            if any(w in ln for w in _FATAL_WARNINGS):
-                out.append(ln)
-        elif level == "error":
-            if not _ERROR_OK.search(ln):
-                out.append(ln)
-        elif any(f.lower() in ln.lower() for f in _FATAL):
-            out.append(ln)
-    return out
-
-
-def parse_measures(log: str) -> tuple[dict[str, float], list[str]]:
-    """(scalars, failed `.meas` names) from a batch log; the scalar regex is the analog-db tier's (platform gap: belongs in `spicexplorer_waveview.logs`)."""
-    measures: dict[str, float] = {}
-    failed: list[str] = []
-    for line in log.splitlines():
-        m = _MEASURE.match(line)
-        if m:
-            measures[m.group(1).lower()] = float(m.group(2))
-        elif (f := _FAILED.match(line)):
-            failed.append(f.group(1).lower())
-    return measures, failed
-
-
 def _tail(s: str, n: int = 30) -> str:
     return "\n".join([ln for ln in s.splitlines() if ln.strip()][-n:])
 
@@ -187,65 +110,14 @@ def _tail(s: str, n: int = 30) -> str:
 def run(deck: str, label: str, *, timeout: int = 3600, extra_files: dict[str, str] | None = None,
         spiceinit_extra: str | None = None) -> Run:
     """Simulate `deck` (its own `.control`: `write <x>.raw` and/or `print`/`meas`) in `work()/runs/<label>-<hash>/`."""
-    label = _slug(label.strip())
-    if not label:
+    if not _slug(label.strip()):
         raise ValueError("run label must not be empty")
-    root = work()
-    rd = root / "runs" / f"{label}-{deck_hash(deck)[:8]}"
-    rel = rd.relative_to(root)
-    rd.mkdir(parents=True, exist_ok=True)
-    busy = rd / ".busy"          # holds the owner's PID; a dead owner's marker is reclaimed
-    _claim(busy, label, rel)
-    try:
-        for stale in rd.glob("*.raw"):
-            stale.unlink()
-        extra = SPICEINIT_EXTRA if spiceinit_extra is None else spiceinit_extra
-        (rd / ".spiceinit").write_text(spiceinit(extra))
-        (rd / "deck.sp").write_text(deck)
-        for name, text in (extra_files or {}).items():
-            (rd / name).write_text(text)
-        cmd = [ngspice(), "-b", "deck.sp"]
-        t0 = time.perf_counter()
-        try:
-            proc = subprocess.run(cmd, cwd=rd, env=_env(), capture_output=True, text=True,
-                                  timeout=timeout, check=False)
-        except subprocess.TimeoutExpired:
-            raise SimError(f"{label}: ngspice timed out after {timeout} s ({rel})") from None
-        wall = time.perf_counter() - t0
-        log = proc.stdout + "\n---- stderr ----\n" + proc.stderr
-        (rd / "ngspice.out").write_text(log)
-        (rd / "wall.txt").write_text(f"{wall:.3f}\n")
-    finally:
-        busy.unlink(missing_ok=True)
-    measures, failed = parse_measures(proc.stdout)
-    r = Run(label, rd, rd / "deck.sp", rd / "ngspice.out", sorted(rd.glob("*.raw")), wall,
-            proc.returncode, measures, failed)
-    bad = fatal_lines(log)
-    if bad:
-        raise SimError(f"{label}: simulator error ({rel})\n  " + "\n  ".join(bad[:8]))
-    if proc.returncode != 0:
-        raise SimError(f"{label}: ngspice exited rc={proc.returncode} ({rel})\n{_tail(log)}")
-    if not r.raws and not measures and not failed:
-        raise SimError(f"{label}: no rawfile and no scalar ({rel})\n{_tail(log)}")
+    extra = SPICEINIT_EXTRA if spiceinit_extra is None else spiceinit_extra
+    r = run_deck(deck, label=label, workdir=work() / "runs", spiceinit=spiceinit(extra),
+                 ngspice=ngspice(), timeout=timeout, extra_files=extra_files, env=_env())
+    if not r.raws and not r.measures and not r.failed:
+        raise SimError(f"{r.dir.name}: no rawfile and no scalar\n{_tail(r.text())}", r)
     return r
-
-
-def _claim(busy: Path, label: str, rel: Path) -> None:
-    for attempt in (0, 1):
-        try:
-            fd = os.open(busy, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-            os.write(fd, str(os.getpid()).encode())
-            os.close(fd)
-            return
-        except FileExistsError:
-            try:
-                os.kill(int(busy.read_text().strip() or 0), 0)
-                alive = True
-            except (ProcessLookupError, ValueError, OSError):
-                alive = False
-            if alive or attempt:
-                raise SimError(f"{label}: {rel} is busy (another run of the same deck is in progress)") from None
-            busy.unlink(missing_ok=True)
 
 
 def _raw_path(run: Run | Path, name: str) -> Path:
