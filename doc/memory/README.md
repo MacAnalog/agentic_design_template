@@ -16,9 +16,9 @@ dirs below all exist to satisfy that rule. A memory you cannot load is not a mem
 | tier | home | written by | read by |
 |---|---|---|---|
 | **working** | assembled fresh: `make pack K="…"` | retrieval over the tiers below | the agent, at task start and again on every new symptom (`S="…"`) |
-| **episodic** | `runs/ledger.ndjson` — one row per simulation, gitignored, per checkout | **automatic**: `lab.metrics.evaluate()` via `spicexplorer_harness.log_run` | `make runs`, the pack's Episodes section |
+| **episodic** | `runs/ledger.ndjson` — one row per simulation, gitignored, per checkout | **automatic**: `design.metrics.evaluate()` via `spicexplorer_harness.log_run` | `make runs`, the pack's Episodes section |
 | **semantic** | `doc/journal/` (one file per lesson) + `doc/journal.md` (index); overflow in `doc/memory/semantic/`; curated docs `doc/design-reference.md`, `doc/pdk-notes.md`, `pdf/INDEX.md`, experiment READMEs | distillation at experiment close-out, or the moment a failure surprises you; **provenance required** | the pack's Lessons/Constraints/Papers sections |
-| **procedural** | `lab/`, `scripts/`, `Makefile`, `harness.yaml`, agent definitions, `CLAUDE.md`; recipes in `doc/memory/procedural/` | **human-reviewed only** (trap → gate promotion) | `CLAUDE.md` harness commands |
+| **procedural** | `design/`, `scripts/`, `Makefile`, `harness.yaml`, agent definitions, `CLAUDE.md`; recipes in `doc/memory/procedural/` | **human-reviewed only** (trap → gate promotion) | `CLAUDE.md` harness commands |
 
 ## 2. Learning actions
 
@@ -27,7 +27,7 @@ dirs below all exist to satisfy that rule. A memory you cannot load is not a mem
 2. **distillation → semantic.** Read the episodes, write the entry with provenance: ledger
    tags, experiment dir, deck hash, paper equation. A claim with no pointer back is an opinion.
 3. **new code → procedural.** A trap that recurs becomes a lint (`scripts/lint.py` EXTRA), a
-   `lab/` helper, or a deck-builder invariant. Agents propose the diff; an owner applies it.
+   `design/` helper, or a deck-builder invariant. Agents propose the diff; an owner applies it.
 
 ## 3. Write-risk ordering
 

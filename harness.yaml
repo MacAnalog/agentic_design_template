@@ -1,9 +1,12 @@
 # The one file that describes this design to the harness (spicexplorer-harness).
 # Keys not listed here keep their defaults; unknown keys fail `make lint`.
 name: <design>
+# package: design    # NOT YET A KEY — the loader rejects unknown keys. The design package is
+#                    # named for the design (`design/` here; instances use `ldo/`, `mzm_tx/`);
+#                    # until the platform grows a `package:` field it is `PACKAGE` in scripts/lint.py.
 exp_env: EXP            # env var stamping every ledger row with the experiment id
 jobs_env: JOBS          # width of spicexplorer_harness.batch
-# sim_env: SIM_NGSPICE  # the native ngspice binary lab/sim.py runs (default: exp_env's prefix + _NGSPICE)
+# sim_env: SIM_NGSPICE  # the native ngspice binary design/sim.py runs (default: exp_env's prefix + _NGSPICE)
 # work_env: SIM_WORK    # the work root (default: prefix + _WORK; else $SX_SCRATCH/<design>-<checkout>)
 
 # The headline of the challenge, as the context pack states it at the top of every task.
@@ -12,7 +15,7 @@ goal: "<the metric to beat, its bound, and what may not be given back>"
 # The acceptance box. ops: < <= > >= in abs<=. Every bound must also appear in doc/target-spec.md.
 # Keys are UNIT-SCALED: `make lint` matches each bound as the literal `f"{bound:g}"` in the prose,
 # so a bound in base SI (1e-4 A) would have to read `0.0001` there — carry `_ua`/`_mv`/`_khz` keys
-# and scale in `lab.metrics.KEYMAP` instead. Optional v2 fields (`id`, `tolerance`,
+# and scale in `design.metrics.KEYMAP` instead. Optional v2 fields (`id`, `tolerance`,
 # `verification_method`, `allocated_from`, `source`, `certify`) are shown on S1.
 spec:
   - {key: gain_db, label: gain, op: ">=", bound: 60, unit: dB,
@@ -51,7 +54,7 @@ denylist:
   - {pattern: "\\bmaestro\\b", why: commercial ADE tool name}
 
 # `make runs` columns ({key, w: width, p: decimals}; strings left-justified). One list, or a
-# {kind: [...]} map when other row kinds carry different fields — `lab.metrics` logs `evaluate`
+# {kind: [...]} map when other row kinds carry different fields — `design.metrics` logs `evaluate`
 # rows plus one `bench` row per deck, so a repo with multiple benches wants the map:
 #   ledger_columns:
 #     evaluate: [{key: gain_db, w: 8, p: 1}, ...]

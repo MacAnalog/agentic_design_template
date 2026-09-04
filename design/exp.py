@@ -1,7 +1,7 @@
 """Experiment helpers: a labelled batch through one scorer, markdown tables, `out/` files.
 
 An experiment's `run.py` builds `{label: Design}`, calls `run_batch(designs, metrics.evaluate)`,
-saves `out/rows.json`, draws its figures with `lab.plot` and prints the markdown that graduates
+saves `out/rows.json`, draws its figures with `design.plot` and prints the markdown that graduates
 into its README.
 """
 

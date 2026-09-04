@@ -120,7 +120,7 @@ def write_lvs_reference(params: LayoutParams = LayoutParams(), sizing: dict | No
                         out: str | Path = f"{CELL}_lvs.spice") -> Path:
     """The netlist LVS compares the GDS against.
 
-    Emit it from the CERTIFIED binding (the same source `lab.dut.Design` builds decks from), not
+    Emit it from the CERTIFIED binding (the same source `design.dut.Design` builds decks from), not
     from this generator's own device table — a golden netlist written by the thing under test
     proves nothing (LDO review-002).
     """

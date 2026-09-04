@@ -24,7 +24,7 @@ The four lessons baked into the stage functions:
    hides the crash until the first real violation.
 2. `lvs()` keeps the raw evidence beside the wrapper's verdict, and surfaces the log when the
    reason is empty.
-3. `benches()` re-scores through the SAME path as the pre-layout row (`lab.metrics.run_decks`).
+3. `benches()` re-scores through the SAME path as the pre-layout row (`design.metrics.run_decks`).
    A tolerant post-layout runner that skips a bench the pre-layout row measured makes the two
    columns incomparable (LDO review-002 M4/M5).
 4. `current_density()` is a stage, not an afterthought. DRC checks geometry, LVS checks nets and
@@ -41,9 +41,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from lab import metrics as M  # noqa: E402
-from lab.dut import REFERENCE  # noqa: E402
-from lab.sim import H, work  # noqa: E402
+from design import metrics as M  # noqa: E402
+from design.dut import REFERENCE  # noqa: E402
+from design.sim import H, work  # noqa: E402
 
 CELL = "<cell>"
 GEN = Path(__file__).resolve().parent / "gen_cell.py"
@@ -165,7 +165,7 @@ def pex(gds: Path, netlist: Path, out: Path, *, mode: str = "CC") -> dict:
 def benches(pex_netlist: Path, out: Path, tag: str = "postlayout") -> dict:
     """The post-layout scorecard: the cell's OWN benches with the extracted subckt spliced in.
 
-    Nothing new is measured here — same benches, same `lab.metrics` promotion, so the pre and
+    Nothing new is measured here — same benches, same `design.metrics` promotion, so the pre and
     post columns are comparable by construction.
     """
     from spicexplorer_signoff.postlayout import prep_pex_subckt, splice_subckt

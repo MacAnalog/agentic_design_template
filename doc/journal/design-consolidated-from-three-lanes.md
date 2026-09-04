@@ -1,22 +1,27 @@
-# 2026-09-04 — lab consolidated from the LDO, transmitter and LPF lanes
+# 2026-09-04 — the design package consolidated from the LDO, transmitter and LPF lanes
 
 KIND: journal entry | type: procedural | status: live
 
+[2026-09-04 — this repo's package was called `lab/` when this entry was written and is
+now `design/` (see `template-revised-from-the-ldo-instance.md`). The module column below
+reads with the new name; the `lab/…` paths in the per-repo switch-over diffs are those
+repos' own files and are left exactly as they are.]
+
 Three design repos had each rewritten the same simulation lane. The generic parts were first
-consolidated into `lab/`, then (same day) moved into the platform; `lab/` now imports them and a
+consolidated into this repo's package, then (same day) moved into the platform; it now imports them and a
 new repo copies the thin wrappers. The rest stays where the design is.
 
 | module | from | what it is |
 |---|---|---|
-| `lab/sim.py` | LDO `lab/sim.py` (per-run dirs, fatal scan, `parse_measures`, doctor ok only on a parsed scalar); transmitter `lab/sim.py` (per-run `.spiceinit`, `raw()`, warnings recoverable); LPF `lab/ngspice.py` (the original: work dir per checkout, `extra_files`, `wall.txt`) | deck text → run dir; scalars parsed from the log; failed `.meas` → `Run.failed`; `spicelib.RawRead` (via the platform core) and waveview `WaveDataset` views of the rawfile. Now: this repo's where/which/what policy over the platform's `run_deck` (table below) |
-| `lab/stimulus.py` | transmitter, verbatim | PRBS, NRZ/PAM4 symbols, UI-delayed PWL taps. Now a re-export of `spicexplorer_waveview.stimulus` |
-| `lab/eye.py` | transmitter `lab/rx.py` | symbol-aware eye metrics + BT4 reference receiver; FFT latency search; OMA/VECP from unclamped level differences (any polarity), ER only for a unipolar input. Now a re-export of `spicexplorer_waveview.eye`, which also registers the `eye` measurement kind |
-| `lab/exp.py` | transmitter | labelled batch (`run_batch(designs, score, prefix=, workers=)` takes the scorer instead of importing `metrics`), markdown tables, `out/` files |
-| `lab/plot.py` | transmitter (`eye`, `frontier`); LPF (`bode`/`passband` spec boxes as the pattern) | `spec_band`, `spec_text`, `eye(t, x, data, out)`, `series`/`frontier(rows, out, ys=, by=)` |
+| `design/sim.py` | LDO `lab/sim.py` (per-run dirs, fatal scan, `parse_measures`, doctor ok only on a parsed scalar); transmitter `lab/sim.py` (per-run `.spiceinit`, `raw()`, warnings recoverable); LPF `lab/ngspice.py` (the original: work dir per checkout, `extra_files`, `wall.txt`) | deck text → run dir; scalars parsed from the log; failed `.meas` → `Run.failed`; `spicelib.RawRead` (via the platform core) and waveview `WaveDataset` views of the rawfile. Now: this repo's where/which/what policy over the platform's `run_deck` (table below) |
+| `design/stimulus.py` | transmitter, verbatim | PRBS, NRZ/PAM4 symbols, UI-delayed PWL taps. Now a re-export of `spicexplorer_waveview.stimulus` |
+| `design/eye.py` | transmitter `lab/rx.py` | symbol-aware eye metrics + BT4 reference receiver; FFT latency search; OMA/VECP from unclamped level differences (any polarity), ER only for a unipolar input. Now a re-export of `spicexplorer_waveview.eye`, which also registers the `eye` measurement kind |
+| `design/exp.py` | transmitter | labelled batch (`run_batch(designs, score, prefix=, workers=)` takes the scorer instead of importing `metrics`), markdown tables, `out/` files |
+| `design/plot.py` | transmitter (`eye`, `frontier`); LPF (`bode`/`passband` spec boxes as the pattern) | `spec_band`, `spec_text`, `eye(t, x, data, out)`, `series`/`frontier(rows, out, ys=, by=)` |
 
 Stays repo-specific: the PDK-device preflight deck (LV NMOS / HBT + diode / HV NMOS — passed to
-`preflight(deck, expect)`), `lab/config.py` (PDK paths, lib names, corners), `lab/dut.py` +
-`lab/deck.py` (the DUT and its benches), `lab/metrics.py` (measure → spec keys, the
+`preflight(deck, expect)`), `config.py` (PDK paths, lib names, corners), `dut.py` +
+`deck.py` (the DUT and its benches), `metrics.py` (measure → spec keys, the
 `--certify`/`--check` drift tolerances), the LPF docker lane and its own rawfile reader, the
 transmitter's `eo_s21`/`dc_transfer` figures and the `parallel.py` job cap.
 

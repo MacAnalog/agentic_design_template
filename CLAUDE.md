@@ -1,7 +1,9 @@
 # CLAUDE.md — <design name> (agentic-design template)
 
 **Map, not manual.** This file routes; the docs hold the substance. When instantiating the
-template, replace every `<…>`, fill `harness.yaml`, and delete this sentence.
+template, replace every `<…>`, fill `harness.yaml`, rename the design package `design/` to this
+design's name (`git mv design <name>`, update `PACKAGE` in `scripts/lint.py` and the imports —
+instances use `ldo/`, `mzm_tx/`), and delete this sentence.
 
 ## Mission
 
@@ -17,7 +19,7 @@ it is measured against.> The spec of record is `doc/target-spec.md`; its machine
 | measure something | `doc/benches.md` — reference-first: fast metrics iterate, frozen definitions certify |
 | touch the DUT / model it | `doc/design-reference.md` — device map, validated model, the constraints every candidate must respect |
 | pick a paper / technique | `pdf/INDEX.md` |
-| run simulations | `lab/` module docstrings + `doc/environment.md` (lanes, simulator gotchas) |
+| run simulations | `design/` module docstrings + `doc/environment.md` (lanes, simulator gotchas) |
 | start an experiment | copy `experiments/_template/`; add one row to `doc/experiment-log.md` |
 | learn from / add a lesson | `doc/journal.md` (index); one file per entry in `doc/journal/`; supersede, never delete |
 | know what to read/write when | `doc/memory/README.md` — the four memory tiers and the write-risk ordering |
@@ -27,10 +29,10 @@ it is measured against.> The spec of record is `doc/target-spec.md`; its machine
 `spicexplorer-harness` (platform package, an editable path dependency — `uv sync` once per
 checkout) does the generic work, driven by `harness.yaml`; `Makefile` wraps it.
 
-- `make doctor` — is the simulation lane alive? `lab/sim.py` (this repo's policy over the platform's
+- `make doctor` — is the simulation lane alive? `design/sim.py` (this repo's policy over the platform's
   `spicexplorer_core.spice_engine.run_deck`) simulates a one-resistor deck and passes only on a
   parsed scalar + rawfile + the per-run `.spiceinit` marker (`doc/environment.md`).
-- `make test` — the generic `lab/` modules (`sim`, `stimulus`, `eye`, `exp`, `plot`; `stimulus`/`eye`
+- `make test` — the generic `design/` modules (`sim`, `stimulus`, `eye`, `exp`, `plot`; `stimulus`/`eye`
   are re-exports of `spicexplorer_waveview`), pytest; the live-lane test skips without ngspice.
 - `make pack K="noise irn"` — assemble **working memory** for a task. Run at task start;
   re-run with `S="fc drifted after cap swap"` on any new failure signature before diagnosing.
@@ -38,26 +40,26 @@ checkout) does the generic work, driven by `harness.yaml`; `Makefile` wraps it.
 - `make check` — lint + the reference reproduces its certified scorecard (SKIP, exit 0, until
   `reference_scorecard:` names one).
 - `make runs ARGS="--fails | --best <metric> | --exp NNN | --kind thd | --where topology=b"` —
-  query the run ledger (`runs/ledger.ndjson`; every `lab.metrics.evaluate()` appends a row).
+  query the run ledger (`runs/ledger.ndjson`; every `design.metrics.evaluate()` appends a row).
 - `make freeze` — write `SHA256SUMS` into the frozen dirs after certifying a reference.
 
 ## Rules (mechanically enforced where possible; the rest is contract)
 
 1. **Reference first.** A number that has not passed the frozen definitions is a claim.
-2. **Decks are built, never text-edited.** A sizing point is a `lab.dut.Design`; every deck is
+2. **Decks are built, never text-edited.** A sizing point is a `design.dut.Design`; every deck is
    generated from it. Frozen dirs are sha-locked.
 3. Every experiment: **falsifiable hypothesis first**; a control whenever a knob moves.
 4. Findings are **tables or plots**; prose is interpretation. Keeper numbers graduate from the
    ledger into the experiment README — the repo is the memory.
 5. **Parallelize batches** (`spicexplorer_harness.batch(items, fn, env=H.jobs_env)`, or
-   `lab.exp.run_batch(designs, score)`; the width env var is `jobs_env` in `harness.yaml`).
+   `design.exp.run_batch(designs, score)`; the width env var is `jobs_env` in `harness.yaml`).
 6. **Clean provenance.** Reference the PDK by name, pin its version in `doc/environment.md`,
    never vendor model bytes. `denylist:` in `harness.yaml` is a build failure, not a style note.
 7. **Designer ≠ verifier.** Delivery claims are re-measured from raw artefacts.
 8. **Gap-as-signal.** If you struggle, fix the harness (lint, helper, doc line) and journal it.
 9. **Sim economy.** Expensive runs only after the cheap scorecard passes the box.
 10. **Write-risk ordering.** Episodic writes are automatic; semantic writes need provenance and
-    supersede-don't-delete; procedural writes (`lab/`, `scripts/`, agent defs, this file) are
+    supersede-don't-delete; procedural writes (`design/`, `scripts/`, agent defs, this file) are
     human-reviewed — agents propose diffs, never self-apply them.
 
 ## Agents and methods

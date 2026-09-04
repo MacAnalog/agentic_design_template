@@ -1,4 +1,4 @@
-"""The generic lab modules: stimulus determinism, eye metrics on ideal and closed eyes, the lane."""
+"""The generic design modules: stimulus determinism, eye metrics on ideal and closed eyes, the lane."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from lab import exp, eye, sim, stimulus
+from design import exp, eye, sim, stimulus
 
 
 def _have_ngspice() -> bool:
@@ -189,7 +189,7 @@ def test_run_batch_keeps_order_and_errors():
 
 
 def test_plot_smoke(scratch):
-    from lab import plot
+    from design import plot
 
     t, x, d = _synthetic("pam4")
     m = eye.eye_metrics(t, x, d)
@@ -287,7 +287,7 @@ class _D:
 
 
 def test_promote_scales_mapped_keys_and_namespaces_the_rest(monkeypatch):
-    from lab import metrics
+    from design import metrics
 
     monkeypatch.setitem(metrics.KEYMAP, ("ac", "gain"), ("gain_db", 1.0))
     monkeypatch.setitem(metrics.KEYMAP, ("ac", "p"), ("power_uw", 1e6))
@@ -296,7 +296,7 @@ def test_promote_scales_mapped_keys_and_namespaces_the_rest(monkeypatch):
 
 
 def test_table_reports_pass_and_fail():
-    from lab import metrics
+    from design import metrics
 
     md = metrics.table({"ok": {"gain_db": 61, "pm_deg": 70, "power_uw": 9},
                         "bad": {"gain_db": 10, "pm_deg": 70, "power_uw": 9}})
@@ -304,7 +304,7 @@ def test_table_reports_pass_and_fail():
 
 
 def test_drift_limit_prefers_the_spec_tolerance_band():
-    from lab import metrics
+    from design import metrics
 
     # harness.yaml gives gain_db `tolerance: {kind: abs, delta: 0.5}`; pm_deg declares none
     assert metrics.drift_limit("gain_db", 60.0) == pytest.approx(0.5)
@@ -312,7 +312,7 @@ def test_drift_limit_prefers_the_spec_tolerance_band():
 
 
 def test_drift_flags_moved_and_missing_columns(monkeypatch):
-    from lab import metrics
+    from design import metrics
 
     monkeypatch.setattr(metrics, "certified", lambda: {"scorecard": {"gain_db": 60.0, "pm_deg": 70.0}})
     got = dict(sorted((k, why) for k, _g, _w, why in
@@ -324,7 +324,7 @@ def test_drift_flags_moved_and_missing_columns(monkeypatch):
 
 @pytest.fixture
 def _certify_env(monkeypatch):
-    from lab import metrics
+    from design import metrics
 
     rows: list[dict] = []
     monkeypatch.setattr(metrics, "run_decks",
@@ -413,11 +413,11 @@ def test_a_signed_certification_greens_scorecard_recompute(monkeypatch, tmp_path
     from spicexplorer_harness import load
     from spicexplorer_harness.lint import Lint, scorecard_recompute
 
-    from lab import metrics
+    from design import metrics
 
     repo = Path(__file__).resolve().parents[1]
-    (tmp_path / "lab").mkdir()
-    shutil.copy(repo / "lab" / "metrics.py", tmp_path / "lab" / "metrics.py")
+    (tmp_path / "design").mkdir()
+    shutil.copy(repo / "design" / "metrics.py", tmp_path / "design" / "metrics.py")
     (tmp_path / "harness.yaml").write_text(
         "name: t\nfrozen: [decks/reference]\n"
         "reference_scorecard: decks/reference/scorecard.json\n"

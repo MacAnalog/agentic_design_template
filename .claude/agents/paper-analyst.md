@@ -19,7 +19,7 @@ Deliverable — a brief (markdown, ≤ 1 page):
 - **Mechanism** in the paper's own topology, then re-derived on this design's model; check it
   against every constraint in `doc/design-reference.md` and say which one it touches.
 - **Predicted effect** on each spec metric, with rough numbers **stated so they can fail**.
-- **The A/B test**: which devices/values in `lab.dut.Design` change, which builder it needs,
+- **The A/B test**: which devices/values in `design.dut.Design` change, which builder it needs,
   and **what the control is** — if a resource is re-allocated, the control is the same
   re-allocation without the technique.
 - **Combination candidates**: which other handles it composes with and why.
@@ -31,5 +31,5 @@ result: "nothing, because …" is a valid INDEX row provided the "because" is fa
 
 Do NOT run simulations — hand the brief to `variant-runner`. **Write-risk:** you fill
 `pdf/INDEX.md` rows (with equation/figure provenance) and may propose journal entries; you never
-edit `lab/`, `scripts/`, agent definitions or `CLAUDE.md`. Respect the `denylist:` in
+edit `design/`, `scripts/`, agent definitions or `CLAUDE.md`. Respect the `denylist:` in
 `harness.yaml`.

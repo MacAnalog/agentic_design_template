@@ -5,10 +5,10 @@ description = "<the block, the PDK, the headline number to beat>"
 requires-python = ">=3.11"
 dependencies = [
     "numpy>=1.26",
-    "matplotlib>=3.8",          # lab.plot
+    "matplotlib>=3.8",          # design.plot
     "spicexplorer-harness",     # ledger, lints, context pack, spec-as-data (harness.yaml)
-    "spicexplorer-core",        # spice_engine.run_deck (lab.sim), spicelib RawRead (lab.sim.raw)
-    "spicexplorer-waveview",    # stimulus + eye (lab.stimulus, lab.eye), WaveDataset/registry (lab.sim.dataset)
+    "spicexplorer-core",        # spice_engine.run_deck (design.sim), spicelib RawRead (design.sim.raw)
+    "spicexplorer-waveview",    # stimulus + eye (design.stimulus, design.eye), WaveDataset/registry (design.sim.dataset)
     # From outside the platform's uv workspace every transitive spicexplorer-* member must be
     # named here AND in [tool.uv.sources] — uv applies a path source only to a package the root
     # project names DIRECTLY, so a member pulled in transitively (analog-db -> circuitgraph)

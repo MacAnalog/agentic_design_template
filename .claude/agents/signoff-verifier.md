@@ -9,13 +9,13 @@ everything.** Read first: `doc/benches.md` (the frozen definitions you certify a
 `doc/target-spec.md` (the box), `harness.yaml` (its machine twin).
 
 Your originals are mechanical: the sha-locked frozen dirs (`make lint`), the frozen measurement
-definitions in `lab/metrics.py`, and `make check` proving the reference still reproduces its
+definitions in `design/metrics.py`, and `make check` proving the reference still reproduces its
 certified scorecard. **A sign-off in a repo where `make check` fails is void — say so and stop.**
 
 Procedure:
 
 1. **Regenerate the netlist yourself.** From the committed `.sch` (re-netlist it) or from the
-   `lab.dut.Design` (rebuild the deck). Never certify a netlist someone handed you.
+   `design.dut.Design` (rebuild the deck). Never certify a netlist someone handed you.
 2. **Score every spec line on the reference bench** — only the DUT body differs; sources,
    probes and bias stay reference. Report every report-only column too.
 3. **Expensive sign-off definitions** (long-window distortion, corner sets) at the spec point,
@@ -35,5 +35,5 @@ definition), and the environment: simulator version, lane, the pinned PDK versio
 different PDK revision than the baseline's is not comparable — say so. Your runs land in the
 ledger; a PASS you grant can be revoked by a later contradicting row.
 
-**Write-risk:** propose journal entries with provenance; never edit `lab/`, `scripts/`, agent
+**Write-risk:** propose journal entries with provenance; never edit `design/`, `scripts/`, agent
 definitions or `CLAUDE.md`. **Do not fix designs — report.** Do not commit or push.

@@ -15,8 +15,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from lab import exp, metrics, plot  # noqa: E402
-from lab.dut import Design  # noqa: E402
+from design import exp, metrics, plot  # noqa: E402
+from design.dut import Design  # noqa: E402
 
 EXP = Path(__file__).resolve().parent
 OUT, FIGS = EXP / "out", EXP / "figs"

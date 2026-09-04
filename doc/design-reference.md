@@ -4,7 +4,7 @@ KIND: REFERENCE (curated semantic facts; the pack carries the constraints sectio
 
 ## Device map
 
-<role → device, W/L, bias; the netlist of record and how `lab.dut.Design` maps onto it>
+<role → device, W/L, bias; the netlist of record and how `design.dut.Design` maps onto it>
 
 ## Validated model
 

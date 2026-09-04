@@ -29,7 +29,7 @@ hand and nothing is drawn from a number typed into a doc.
    time-domain for tran, log-log density for noise, spectrum for pss) with honest defaults
    (branch currents and zero traces excluded).
 
-References: the LPF repo's `lab/plot.py` (`bode`, `passband`, `noise` with the S-boxes),
+References: the LPF repo's `design/plot.py` (`bode`, `passband`, `noise` with the S-boxes),
 `scripts/plot_signoff.py` (per-cell + `all_*` overlays + `tradeoff.png`), the PAM-4 driver's
 `report/build_report.py` (every tier through the same benches, figures + `data/*.csv` from one
 command).

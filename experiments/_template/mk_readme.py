@@ -13,7 +13,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from lab import exp  # noqa: E402
+from design import exp  # noqa: E402
 
 EXP = Path(__file__).resolve().parent
 KEYS = ["label"]        # + the scorecard columns this experiment reports

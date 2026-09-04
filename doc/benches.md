@@ -2,7 +2,7 @@
 
 KIND: REFERENCE (what certifies what)
 
-**Reference-first policy.** Fast metrics (`lab.metrics.evaluate`) iterate; the frozen
+**Reference-first policy.** Fast metrics (`design.metrics.evaluate`) iterate; the frozen
 definitions certify. A number that has not passed through them is a claim.
 
 | bench | fast (iterate) | frozen (certify) | metric keys |

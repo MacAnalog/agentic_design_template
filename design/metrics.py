@@ -30,7 +30,7 @@ KEYMAP: dict[tuple[str, str], tuple[str, float]] = {}
 # Scorecard columns, in report order: the spec keys, then the report-only ones.
 COLS: tuple[str, ...] = tuple(r.key for r in H.spec)
 
-SCRIPT = "lab/metrics.py"  # the scorer `provenance()` hashes; keep it pointing at this file
+SCRIPT = "design/metrics.py"  # the scorer `provenance()` hashes; keep it pointing at this file
 # A reference column with no `tolerance:` row in harness.yaml drifts at this much, relative to
 # its certified value. ngspice is deterministic for a fixed binary + models, so a drift is a
 # moved simulator / PDK / deck, never run-to-run spread.
@@ -215,7 +215,7 @@ def table(rows: dict[str, dict], cols=COLS) -> str:
 
 
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(prog="lab.metrics")
+    ap = argparse.ArgumentParser(prog="design.metrics")
     ap.add_argument("--certify", action="store_true", help="(re)certify the reference into the frozen dir")
     ap.add_argument("--check", action="store_true", help="exit 1 if the frozen reference drifted")
     ap.add_argument("--baseline", action="store_true", help="simulate the frozen decks, print the scorecard")
