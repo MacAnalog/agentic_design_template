@@ -27,11 +27,15 @@ it is measured against.> The spec of record is `doc/target-spec.md`; its machine
 `spicexplorer-harness` (platform package, an editable path dependency — `uv sync` once per
 checkout) does the generic work, driven by `harness.yaml`; `Makefile` wraps it.
 
-- `make doctor` — is the simulation lane alive? (`lab/sim.py`)
+- `make doctor` — is the simulation lane alive? `lab/sim.py` simulates a one-resistor deck and
+  passes only on a parsed scalar + rawfile + the per-run `.spiceinit` marker (`doc/environment.md`).
+- `make test` — the generic `lab/` modules (`sim`, `stimulus`, `eye`, `exp`, `plot`), pytest;
+  the live-lane test skips without ngspice.
 - `make pack K="noise irn"` — assemble **working memory** for a task. Run at task start;
   re-run with `S="fc drifted after cap swap"` on any new failure signature before diagnosing.
 - `make lint` — repo invariants (`harness.yaml` drives them). Failure messages carry their fix.
-- `make check` — lint + the reference reproduces its certified scorecard.
+- `make check` — lint + the reference reproduces its certified scorecard (SKIP, exit 0, until
+  `reference_scorecard:` names one).
 - `make runs ARGS="--fails | --best <metric> | --exp NNN | --kind thd | --where topology=b"` —
   query the run ledger (`runs/ledger.ndjson`; every `lab.metrics.evaluate()` appends a row).
 - `make freeze` — write `SHA256SUMS` into the frozen dirs after certifying a reference.
@@ -44,7 +48,8 @@ checkout) does the generic work, driven by `harness.yaml`; `Makefile` wraps it.
 3. Every experiment: **falsifiable hypothesis first**; a control whenever a knob moves.
 4. Findings are **tables or plots**; prose is interpretation. Keeper numbers graduate from the
    ledger into the experiment README — the repo is the memory.
-5. **Parallelize batches** (`spicexplorer_harness.batch`; the width env var is `jobs_env` in `harness.yaml`).
+5. **Parallelize batches** (`spicexplorer_harness.batch(items, fn, env=H.jobs_env)`, or
+   `lab.exp.run_batch(designs, score)`; the width env var is `jobs_env` in `harness.yaml`).
 6. **Clean provenance.** Reference the PDK by name, pin its version in `doc/environment.md`,
    never vendor model bytes. `denylist:` in `harness.yaml` is a build failure, not a style note.
 7. **Designer ≠ verifier.** Delivery claims are re-measured from raw artefacts.

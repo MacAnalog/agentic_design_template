@@ -10,10 +10,13 @@ definitions and method notes under `.claude/`.
 
 1. Copy the tree; fill `harness.yaml`, `pyproject.toml` (name, description) and every `<…>`
    in `CLAUDE.md` and `doc/`.
-2. `uv sync` — the harness is an editable path dependency on the sibling platform checkout
-   (`../../spicexplorer-platform`); edit that path in `pyproject.toml` if the repo lives elsewhere.
-3. Implement `lab/sim.py` (`preflight`, `run`), `lab/dut.py` (`Design.deck`) and
-   `lab/metrics.py` (`measure`). `make doctor` must report the lane alive.
+2. `uv sync` — the harness, core and waveview are editable path dependencies on the sibling
+   platform checkout (`../../spicexplorer-platform`); edit those paths in `pyproject.toml` if the
+   repo lives elsewhere (every further `spicexplorer-*` member a design pulls in must be named
+   in both `dependencies` and `[tool.uv.sources]`).
+3. `make doctor` must report the lane alive (`lab/sim.py` is generic: a one-resistor deck through
+   ngspice with a per-run `.spiceinit`). Then implement `lab/dut.py` (`Design.deck`) and
+   `lab/metrics.py` (`measure`, the `--check` drift test); `make test` covers the generic modules.
 4. Certify a reference, `make freeze`, add it to `frozen:` in `harness.yaml`.
 5. `make lint` must pass before the first experiment.
 
@@ -24,7 +27,8 @@ definitions and method notes under `.claude/`.
 | `harness.yaml` | the design described to the harness: spec rows, frozen dirs, denylist, ledger columns |
 | `CLAUDE.md` | the entry map agents read first |
 | `doc/` | target spec, design reference (constraints), benches, environment, experiment log, journal + index, the memory model |
-| `lab/` | `sim` (lane), `dut` (the sizing point → deck), `metrics` (measure, check, log) |
+| `lab/` | generic, imported as-is: `sim` (the ngspice lane), `stimulus` (PRBS/PAM4/PWL), `eye` (symbol-aware eye metrics + BT4 receiver), `exp` (labelled batches, markdown), `plot` (spec boxes); per design: `dut` (the sizing point → deck), `metrics` (measure, check, log) |
+| `tests/` | `make test`: the generic `lab/` modules (the live-lane test skips without ngspice) |
 | `scripts/lint.py` | repo-specific checks on top of the harness |
 | `experiments/NNN-*/` | one directory per hypothesis; `_template/README.md` is the shape |
 | `pdf/` | papers + `INDEX.md` (cite by handle) |
