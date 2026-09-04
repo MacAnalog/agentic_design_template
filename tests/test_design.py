@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import sys
+import types
 import math
 import re
 from concurrent.futures import ThreadPoolExecutor
@@ -314,7 +316,8 @@ def test_drift_limit_prefers_the_spec_tolerance_band():
 def test_drift_flags_moved_and_missing_columns(monkeypatch):
     from design import metrics
 
-    monkeypatch.setattr(metrics, "certified", lambda: {"scorecard": {"gain_db": 60.0, "pm_deg": 70.0}})
+    monkeypatch.setattr(metrics, "certified_card",
+                        lambda: {"scorecard": {"gain_db": 60.0, "pm_deg": 70.0}})
     got = dict(sorted((k, why) for k, _g, _w, why in
                       metrics.drift({"gain_db": 60.4, "pm_deg": float("nan")})))
     assert "gain_db" not in got                       # inside the 0.5 band
@@ -370,6 +373,137 @@ def _load(rel: str):
     return mod
 
 
+_DUT_SRC = '''
+import dataclasses
+
+@dataclasses.dataclass(frozen=True)
+class Design:
+    topology: str = "t"
+    stub: bool = False
+    def benches(self): return ["op"]
+    def deck(self, bench):
+        if self.stub:
+            raise NotImplementedError(bench)
+        return f"* {self.topology} {bench}\\n"
+    def as_dict(self): return dataclasses.asdict(self)
+    @classmethod
+    def from_dict(cls, d):
+        f = {x.name for x in dataclasses.fields(cls)}
+        return cls(**{k: v for k, v in d.items() if k in f})
+
+REFERENCE = Design()
+'''
+
+_HARNESS_SRC = """
+name: ldo
+package: ldo
+exp_env: LDO_EXP
+jobs_env: LDO_JOBS
+sim_env: NGSPICE_BIN
+spec_doc: doc/target-spec.md
+reference_scorecard: decks/reference/scorecard.json
+frozen: [decks/stubbed, decks/reference]
+verifiers: [owner, signoff-verifier]
+spec:
+  - {key: gain_db, label: gain, op: ">=", bound: 60, unit: dB}
+"""
+
+
+@pytest.fixture(scope="module")
+def renamed_repo(tmp_path_factory):
+    """A checkout after the instantiation rename: `package: ldo`, no `design/` anywhere.
+
+    Module-scoped and single-named on purpose — `sys.modules["ldo"]` caches the first tree, so a
+    second fixture building another `ldo/` would silently test the wrong one.
+    """
+    import shutil
+
+    root = tmp_path_factory.mktemp("renamed")
+    src = Path(__file__).resolve().parents[1] / "design"
+    pkg = root / "ldo"
+    pkg.mkdir()
+    (pkg / "__init__.py").write_text("")
+    for f in ("sim.py", "metrics.py"):
+        shutil.copy(src / f, pkg / f)
+    (pkg / "dut.py").write_text(_DUT_SRC)
+    (root / "harness.yaml").write_text(_HARNESS_SRC)
+    (root / "doc").mkdir()
+    for rel, design in (("decks/stubbed", {"stub": True}), ("decks/reference", {"topology": "t"})):
+        d = root / rel
+        d.mkdir(parents=True)
+        (d / "design.json").write_text(json.dumps(design))
+        (d / "op.spice").write_text("* WAS CERTIFIED FROM AN OLDER BUILDER\n")
+    sys.path.insert(0, str(root))
+    yield root
+    sys.path.remove(str(root))
+    for name in [k for k in sys.modules if k == "ldo" or k.startswith("ldo.")]:
+        del sys.modules[name]
+
+
+def test_signed_certify_survives_the_rename(renamed_repo, monkeypatch, tmp_path):
+    """`provenance(script=…)` hashes the scorer. A literal `design/metrics.py` names a file that
+    the rename this template PRESCRIBES has just moved — and only a SIGNED certify ever notices."""
+    import importlib
+
+    metrics = importlib.import_module("ldo.metrics")
+    assert metrics.SCRIPT == "ldo/metrics.py" and (renamed_repo / metrics.SCRIPT).is_file()
+    monkeypatch.setattr(metrics, "run_decks",
+                        lambda decks, tag, record=True: ({"gain_db": 62.4},
+                                                         {b: {"status": "ok", "measures": {}} for b in decks}))
+    monkeypatch.setattr(metrics, "log_run", lambda h, tag, values, **kw: None)
+    from ldo.dut import Design
+
+    doc = metrics.certify(Design(), tag="t", out=tmp_path, author="owner", verified_by="signoff-verifier")
+    assert doc["provenance"]["script_sha"]
+
+
+def test_deck_rebuild_resolves_the_package_from_harness_yaml(renamed_repo):
+    """The check that catches a half-finished rename must not itself be broken BY the rename —
+    and one un-implemented frozen dir must not skip every dir after it (`continue`, not `return`)."""
+    from spicexplorer_harness import load
+    from spicexplorer_harness.lint import Lint
+
+    mod = _load("scripts/lint.py")
+    L = Lint(load(renamed_repo))
+    mod.deck_rebuild(L)
+    assert len(L.fails) == 1 and "decks/reference" in L.fails[0]     # the stubbed dir was skipped
+    assert "No module named 'design'" not in L.fails[0]
+
+
+def test_spec_quotes_needs_the_certified_precision_not_a_substring(renamed_repo):
+    from spicexplorer_harness import load
+    from spicexplorer_harness.lint import Lint
+
+    mod = _load("scripts/lint.py")
+    card = renamed_repo / "decks/reference/scorecard.json"
+    card.write_text(json.dumps({"scorecard": {"gain_db": 62.4}}))
+    doc = renamed_repo / "doc/target-spec.md"
+    for text, quoted in (("| gain | >= 60 dB | 62 | (over 1620 samples)", False),
+                         ("| gain | >= 60 dB | 62.4 |", True),
+                         ("| gain | >= 60 dB | 62.40 |", True)):
+        doc.write_text(text + "\n")
+        L = Lint(load(renamed_repo))
+        mod.spec_quotes(L)
+        assert (L.fails == []) is quoted, text
+        assert quoted or L.fails[0].startswith("[spec-quotes]")      # not the platform's spec-sync
+
+
+def test_certify_refuses_to_write_a_reference_missing_a_bench(_certify_env, monkeypatch, tmp_path):
+    """A frozen dir born without a bench is one `make freeze` from being sha-locked, and `drift()`
+    iterates the CERTIFIED keys — so the missing column can never be noticed again."""
+    metrics, _rows = _certify_env
+    monkeypatch.setattr(metrics, "run_decks", lambda decks, tag, record=True: (
+        {"gain_db": 61.0}, {b: {"status": "ok" if b == "b1" else "sim_error", "measures": {}}
+                            for b in decks}))
+    with pytest.raises(metrics.CertifyRefused, match="b2"):
+        metrics.certify(_D(), tag="t", out=tmp_path)
+    assert not list(tmp_path.iterdir())                       # nothing written, not even the decks
+    monkeypatch.setattr(metrics, "REFERENCE", _D())
+    monkeypatch.setattr(metrics, "frozen_dir", lambda: tmp_path)
+    assert metrics.main(["--certify"]) == 1                   # and the CLI exits non-zero
+    assert metrics.main(["--certify", "--force"]) == 0        # deliberately partial, on request
+
+
 def test_lint_extras_are_green_on_the_bare_template():
     from spicexplorer_harness import load
     from spicexplorer_harness.lint import Lint
@@ -381,16 +515,166 @@ def test_lint_extras_are_green_on_the_bare_template():
     assert L.fails == []
 
 
-def test_drc_violation_serializer_never_crashes_on_a_real_violation():
-    class V:  # what a runner returns: not JSON-serialisable, and only ever non-empty on a FAIL
-        def __init__(self, rule):
-            self.rule = rule
+def _drc_types():
+    """The platform's own result types when they are installed, else a field-exact mirror.
 
+    The mirror keeps `count`, which is the whole point: a `DrcViolation` is ALREADY one row per
+    rule, so a serializer that counts objects reports `{rule: 1}` beside `n_violations: 20`.
+    """
+    try:
+        from spicexplorer_signoff.results import DrcResult, DrcViolation
+    except ImportError:
+        from dataclasses import asdict, dataclass, field
+
+        @dataclass
+        class DrcViolation:  # mirrors spicexplorer_signoff.results.DrcViolation exactly
+            rule: str
+            count: int
+            locations: list = field(default_factory=list)
+
+        @dataclass
+        class DrcResult:
+            passed: bool
+            available: bool
+            n_violations: int = 0
+            violations: list = field(default_factory=list)
+            report_path: str | None = None
+            log: str = ""
+            reason: str = ""
+
+            def to_dict(self):
+                return asdict(self)
+
+    return DrcResult, DrcViolation
+
+
+def test_drc_violation_counts_sum_the_aggregated_rows():
+    DrcResult, DrcViolation = _drc_types()
+    viol = [DrcViolation(rule="M1.a", count=17), DrcViolation(rule="M2.b", count=3)]
+    r = DrcResult(passed=False, available=True, n_violations=sum(v.count for v in viol),
+                  violations=viol)
     signoff = _load("layout/signoff.py")
-    counts = signoff.violation_counts([V("M1.b"), V("M1.b"), V("V1.a"), {"rule": "M1.b"}, object()])
-    assert counts == {"M1.b": 3, "V1.a": 1, "?": 1}
+    counts = signoff.violation_counts(r.violations)
+    assert counts == {"M1.a": 17, "M2.b": 3}
+    assert sum(counts.values()) == r.n_violations == 20   # the record must not read as near-clean
     assert json.loads(json.dumps(counts)) == counts
+    assert signoff.violation_counts([{"rule": "V1.a", "count": 2}, object()]) == {"V1.a": 2, "?": 1}
     assert signoff.violation_counts([]) == {} and signoff.violation_counts(None) == {}
+
+
+def test_stage_records_come_from_the_runners_own_to_dict():
+    """`_record` keeps every field the platform returns (minus the raw log) — no hand-retyping."""
+    DrcResult, DrcViolation = _drc_types()
+    signoff = _load("layout/signoff.py")
+    r = DrcResult(passed=False, available=True, n_violations=5,
+                  violations=[DrcViolation(rule="M1.a", count=5)],
+                  report_path="drc.lyrdb", log="x" * 9000, reason="")
+    rec = signoff._record(r, pdk="p", density=False)
+    assert rec["report_path"] == "drc.lyrdb" and rec["n_violations"] == 5
+    assert "log" not in rec and rec["pdk"] == "p"
+    assert json.loads(json.dumps(rec, default=str))["violations"][0]["rule"] == "M1.a"
+
+
+@pytest.fixture
+def fake_lanes(monkeypatch):
+    """Stand-ins for the physical lanes (absent from this venv), each recording its kwargs."""
+    import sys
+    import types
+    from dataclasses import asdict, dataclass, field
+
+    seen: dict[str, dict] = {}
+
+    @dataclass
+    class R:
+        ok: bool = True
+        passed: bool = True
+        available: bool = True
+        matched: bool = True
+        n_violations: int = 0
+        n_checked: int = 0
+        n_c: int = 0
+        n_r: int = 0
+        worst_over_factor: float = 0.0
+        mode: str = "CC"
+        violations: list = field(default_factory=list)
+        unmatched: dict = field(default_factory=dict)
+        per_net_c_ff: dict = field(default_factory=dict)
+        report_path: str = ""
+        netlist_path: str = ""
+        log: str = ""
+        reason: str = ""
+
+        def to_dict(self):
+            return asdict(self)
+
+    class GdsBuilder:
+        def __init__(self, gen, out, **kw):
+            seen["GdsBuilder"] = kw
+            self.last = types.SimpleNamespace(area_um2=1.0, sha="s")
+
+        def __call__(self, params):
+            return Path("cell.gds")
+
+    def rec(name):
+        def fn(*a, **kw):
+            seen[name] = kw
+            return R()
+        return fn
+
+    layout = types.ModuleType("spicexplorer_layout")
+    layout.GdsBuilder, layout.render_png = GdsBuilder, rec("render_png")
+    so = types.ModuleType("spicexplorer_signoff")
+    so.check_current_density = rec("check_current_density")
+    mods = {"spicexplorer_layout": layout, "spicexplorer_signoff": so}
+    for sub, fname in (("drc", "run_drc"), ("lvs", "run_lvs"), ("pex", "run_pex")):
+        m = types.ModuleType(f"spicexplorer_signoff.{sub}")
+        setattr(m, fname, rec(fname))
+        mods[f"spicexplorer_signoff.{sub}"] = m
+    for name, mod in mods.items():
+        monkeypatch.setitem(sys.modules, name, mod)
+    return seen
+
+
+def test_build_runs_the_generator_in_the_resolved_interpreter(fake_lanes, monkeypatch, tmp_path):
+    """`GdsBuilder(python=None)` falls back to `sys.executable` — this venv, which has no
+    gdsfactory. The one function whose purpose is "no default" must actually return its path."""
+    signoff = _load("layout/signoff.py")
+    monkeypatch.setenv(signoff.GDS_PYTHON_ENV, sys.executable)
+    signoff.build(tmp_path)
+    assert fake_lanes["GdsBuilder"]["python"] == sys.executable
+
+
+def test_every_signoff_stage_names_its_pdk(fake_lanes, monkeypatch, tmp_path):
+    """No stage may inherit a runner's own default process: a wrong-but-known PDK passes the rule
+    deck and the electromigration limits of a technology this design is not built in."""
+    signoff = _load("layout/signoff.py")
+    monkeypatch.setenv(signoff.PDK_ENV, "some-pdk")
+    signoff.render(tmp_path / "c.gds", tmp_path / "c.png")
+    signoff.drc(tmp_path / "c.gds", tmp_path / "drc")
+    signoff.current_density(tmp_path)
+    signoff.lvs(tmp_path / "c.gds", tmp_path / "c.spice", tmp_path / "lvs")
+    signoff.pex(tmp_path / "c.gds", tmp_path / "c.spice", tmp_path / "pex")
+    for stage in ("render_png", "run_drc", "check_current_density", "run_lvs", "run_pex"):
+        assert fake_lanes[stage].get("pdk") == "some-pdk", stage
+
+
+def test_pdk_has_no_silent_default(monkeypatch):
+    signoff = _load("layout/signoff.py")
+    monkeypatch.delenv(signoff.PDK_ENV, raising=False)
+    assert signoff.PDK.startswith("<")            # the template ships a placeholder, not a process
+    with pytest.raises(SystemExit) as e:
+        signoff.pdk()
+    assert signoff.PDK_ENV in str(e.value) and "FIX:" in str(e.value)
+
+
+def test_prefix_comes_from_exp_env_not_sim_env():
+    """The platform derives every env name from `exp_env` (`Harness.__post_init__`); `sim_env` may
+    be set explicitly to something unrelated, and then every var this file asks for is wrong."""
+    signoff = _load("layout/signoff.py")
+    h = types.SimpleNamespace(exp_env="LDO_EXP", sim_env="NGSPICE_BIN")
+    assert signoff._prefix(h) == "LDO"
+    assert signoff._prefix(types.SimpleNamespace(exp_env="EXP", sim_env="X_Y")) == "SIM"
+    assert signoff.PREFIX == signoff._prefix(signoff.H)
 
 
 def test_gds_python_refuses_a_default_home_path(monkeypatch):
