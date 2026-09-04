@@ -194,12 +194,8 @@ def run(deck: str, label: str, *, timeout: int = 3600, extra_files: dict[str, st
     rd = root / "runs" / f"{label}-{deck_hash(deck)[:8]}"
     rel = rd.relative_to(root)
     rd.mkdir(parents=True, exist_ok=True)
-    busy = rd / ".busy"
-    try:
-        fd = os.open(busy, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-    except FileExistsError:
-        raise SimError(f"{label}: {rel} is busy (another run of the same deck is in progress)") from None
-    os.close(fd)
+    busy = rd / ".busy"          # holds the owner's PID; a dead owner's marker is reclaimed
+    _claim(busy, label, rel)
     try:
         for stale in rd.glob("*.raw"):
             stale.unlink()
@@ -232,6 +228,24 @@ def run(deck: str, label: str, *, timeout: int = 3600, extra_files: dict[str, st
     if not r.raws and not measures and not failed:
         raise SimError(f"{label}: no rawfile and no scalar ({rel})\n{_tail(log)}")
     return r
+
+
+def _claim(busy: Path, label: str, rel: Path) -> None:
+    for attempt in (0, 1):
+        try:
+            fd = os.open(busy, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            os.write(fd, str(os.getpid()).encode())
+            os.close(fd)
+            return
+        except FileExistsError:
+            try:
+                os.kill(int(busy.read_text().strip() or 0), 0)
+                alive = True
+            except (ProcessLookupError, ValueError, OSError):
+                alive = False
+            if alive or attempt:
+                raise SimError(f"{label}: {rel} is busy (another run of the same deck is in progress)") from None
+            busy.unlink(missing_ok=True)
 
 
 def _raw_path(run: Run | Path, name: str) -> Path:

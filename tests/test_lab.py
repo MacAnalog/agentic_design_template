@@ -146,6 +146,9 @@ def test_spiceinit_requires_userinit_dir(tmp_path, monkeypatch):
     assert sim.spiceinit("echo X") == "set foo=1\necho X\n"
     env = sim._env()
     assert env["PDK"] == tmp_path.parents[1].name and env["PDK_ROOT"] == str(tmp_path.parents[2])
+    (tmp_path / ".spiceinit").write_text("\n")
+    with pytest.raises(FileNotFoundError, match="empty"):
+        sim.spiceinit()
     monkeypatch.delenv("SPICE_USERINIT_DIR")
     with pytest.raises(FileNotFoundError):
         sim.spiceinit()
@@ -228,6 +231,22 @@ def test_failed_meas_becomes_run_failed(scratch):
                 "meas tran bad when v(a)=5\nmeas tran good when v(a)=0.5 rise=1\nwrite sim.raw\nquit\n"
                 ".endc\n.end\n", "failmeas")
     assert r.failed == ["bad"] and r.measures["good"] == pytest.approx(1.5e-9, rel=1e-3)
+
+
+@live
+def test_busy_marker_live_vs_stale(scratch):
+    import os
+
+    from spicexplorer_harness.ledger import deck_hash
+
+    rd = sim.work() / "runs" / f"probe-{deck_hash(sim.PROBE)[:8]}"
+    rd.mkdir(parents=True)
+    (rd / ".busy").write_text(str(os.getpid()))            # a live owner: refuse
+    with pytest.raises(sim.SimError, match="busy"):
+        sim.run(sim.PROBE, "probe")
+    (rd / ".busy").write_text(str(2**22 - 1))              # a dead owner (killed session): reclaim
+    assert sim.run(sim.PROBE, "probe").measures["i_ma"] == pytest.approx(1.0)
+    assert not (rd / ".busy").exists()
 
 
 @live
