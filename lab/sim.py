@@ -74,6 +74,9 @@ class Run:
     def __fspath__(self) -> str:
         return str(self.dir)
 
+    def __str__(self) -> str:
+        return str(self.dir)
+
     def text(self) -> str:
         return self.log.read_text(errors="replace")
 

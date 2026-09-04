@@ -125,6 +125,7 @@ def test_preflight_simulates_one_resistor(tmp_path, monkeypatch):
     r = sim.run(sim.PROBE, "probe")
     assert r.raw is not None and r.raw.exists() and abs(r.measures["i_ma"] - 1.0) < 1e-6
     assert Path(r).is_dir() and (Path(r) / ".spiceinit").exists() and r.wall > 0
+    assert str(r) == str(r.dir) == f"{r}"     # ledger rows store str(run); Path(run) reopens it
     assert sim.raw(r).get_trace("v(a)").get_wave()[0] == pytest.approx(1.0)
     with pytest.raises(sim.SimError):
         sim.run("* bad\nv1 a 0 1\nr1 a 0 1k\n.control\nop\nprint v(nowhere)\n.endc\n.end\n", "bad")
