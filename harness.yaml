@@ -10,16 +10,30 @@ jobs_env: JOBS          # width of spicexplorer_harness.batch
 goal: "<the metric to beat, its bound, and what may not be given back>"
 
 # The acceptance box. ops: < <= > >= in abs<=. Every bound must also appear in doc/target-spec.md.
+# Keys are UNIT-SCALED: `make lint` matches each bound as the literal `f"{bound:g}"` in the prose,
+# so a bound in base SI (1e-4 A) would have to read `0.0001` there — carry `_ua`/`_mv`/`_khz` keys
+# and scale in `lab.metrics.KEYMAP` instead. Optional v2 fields (`id`, `tolerance`,
+# `verification_method`, `allocated_from`, `source`, `certify`) are shown on S1.
 spec:
-  - {key: gain_db, label: gain, op: ">=", bound: 60, unit: dB}
-  - {key: pm_deg, label: PM, op: ">=", bound: 60, unit: deg}
-  - {key: power_uw, label: power, op: "<=", bound: 100, unit: uW}
+  - {key: gain_db, label: gain, op: ">=", bound: 60, unit: dB,
+     id: S1, verification_method: simulation, tolerance: {kind: abs, delta: 0.5}, certify: true,
+     source: {note: "<pdf/INDEX.md handle, standard, or the system row this was allocated from>"}}
+  - {key: pm_deg, label: PM, op: ">=", bound: 60, unit: deg, id: S2}
+  - {key: power_uw, label: power, op: "<=", bound: 100, unit: uW, id: S3}
 # Extra spec-frame lines for the pack: report-only columns, expensive sign-off definitions, gates.
+# Both instantiations needed all three shapes, so keep the habit:
+#   - "report-only: <keys measured on every evaluate but never pass/fail>"
+#   - "<Sn> is also checked at <the off-nominal points the fast scorecard does not run>"
+#   - "<what the reference is NOT: the conditions it was certified at, if they are not the target's>"
 spec_notes: []
 
 # Certified artefacts, sha-locked with SHA256SUMS (`make freeze` after certification).
 frozen: []                       # e.g. [decks/reference]
 reference_scorecard: ""          # e.g. decks/reference/scorecard.json ({"scorecard": {...}})
+
+# Who may sign a ledger row (`evidence: signed`). Uncomment with real ids: without a roster the
+# alias heuristic stands in, and a name that folds onto the author's is refused as a self-sign.
+# verifiers: [owner, signoff-verifier]
 
 # Memory surfaces: entries stay under size_cap (20 KB); the one-line-per-entry index may grow past it.
 memory: {index_size_cap: 32000}
@@ -27,12 +41,26 @@ memory: {index_size_cap: 32000}
 gitignore_must: ["runs/", "*.raw", "__pycache__/", "experiments/*/out/"]
 
 # Provenance scrub: [{pattern, why, flags}] regexes that may not appear anywhere in the tree
-# (flags: "" = case-sensitive; default is case-insensitive).
-denylist: []
+# (flags: "" = case-sensitive; default is case-insensitive). `harness.yaml` and `lint.py` are
+# exempt, so the patterns may be spelled here. Both instantiations converged on this list; add
+# the foundry names this design is NOT built in.
+denylist:
+  - {pattern: "\\bcadence\\b", why: EDA vendor name}
+  - {pattern: "\\bspectre\\b", why: commercial simulator name}
+  - {pattern: "\\bvirtuoso\\b", why: commercial schematic editor name}
+  - {pattern: "\\bmaestro\\b", why: commercial ADE tool name}
 
 # `make runs` columns ({key, w: width, p: decimals}; strings left-justified). One list, or a
-# {kind: [...]} map when other row kinds (thd, corner, mc) carry different fields.
+# {kind: [...]} map when other row kinds carry different fields — `lab.metrics` logs `evaluate`
+# rows plus one `bench` row per deck, so a repo with multiple benches wants the map:
+#   ledger_columns:
+#     evaluate: [{key: gain_db, w: 8, p: 1}, ...]
+#     bench:    [{key: bench, w: 18}, {key: status, w: 8}]
 ledger_columns:
-  - {key: gain_db, w: 8, p: 1}
-  - {key: pm_deg, w: 7, p: 1}
-  - {key: power_uw, w: 9, p: 2}
+  evaluate:
+    - {key: gain_db, w: 8, p: 1}
+    - {key: pm_deg, w: 7, p: 1}
+    - {key: power_uw, w: 9, p: 2}
+  bench:
+    - {key: bench, w: 18}
+    - {key: status, w: 8}

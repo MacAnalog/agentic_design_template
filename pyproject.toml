@@ -10,8 +10,16 @@ dependencies = [
     "spicexplorer-core",        # spice_engine.run_deck (lab.sim), spicelib RawRead (lab.sim.raw)
     "spicexplorer-waveview",    # stimulus + eye (lab.stimulus, lab.eye), WaveDataset/registry (lab.sim.dataset)
     # From outside the platform's uv workspace every transitive spicexplorer-* member must be
-    # named here AND in [tool.uv.sources]; uncomment as a design pulls them in:
+    # named here AND in [tool.uv.sources] — uv applies a path source only to a package the root
+    # project names DIRECTLY, so a member pulled in transitively (analog-db -> circuitgraph)
+    # resolves "not found in the registry" until it is listed here too. Uncomment as a design
+    # pulls them in, then one `uv sync` (`uv run --no-sync` afterwards):
     # "spicexplorer", "spicexplorer-analog-db", "spicexplorer-circuitgraph", "spicexplorer-netlist2xschem",
+    # The physical lanes; the simulation-only venv stops short of all three (both instantiations
+    # had to add them): gm/ID sizing, the layout generator + render, DRC/LVS/PEX + post-layout.
+    # "spicexplorer-gmid", "spicexplorer-layout", "spicexplorer-signoff",
+    # "pyyaml>=6",                                  # circuit/sizing yaml a generator reads
+    # "nbconvert>=7", "ipykernel>=6", "notebook>=7",  # `make notebooks`
 ]
 
 [dependency-groups]
@@ -30,6 +38,9 @@ spicexplorer-waveview = { path = "../../spicexplorer-platform/packages/spicexplo
 # spicexplorer-analog-db = { path = "../../spicexplorer-platform/examples/analog-db", editable = true }
 # spicexplorer-circuitgraph = { path = "../../spicexplorer-platform/packages/spicexplorer-circuitgraph", editable = true }
 # spicexplorer-netlist2xschem = { path = "../../spicexplorer-platform/packages/spicexplorer-netlist2xschem", editable = true }
+# spicexplorer-gmid = { path = "../../spicexplorer-platform/packages/spicexplorer-gmid", editable = true }
+# spicexplorer-layout = { path = "../../spicexplorer-platform/packages/spicexplorer-layout", editable = true }
+# spicexplorer-signoff = { path = "../../spicexplorer-platform/packages/spicexplorer-signoff", editable = true }
 
 [tool.ruff]
 line-length = 100

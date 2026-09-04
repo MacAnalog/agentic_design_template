@@ -8,13 +8,19 @@ HARNESS := $(PY) -m spicexplorer_harness.cli --repo .
 ARGS ?=
 
 help:  ## list every target
-	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-8s %s\n", $$1, $$2}'
+	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-10s %s\n", $$1, $$2}'
 
 lint:  ## repo invariants (harness.yaml + scripts/lint.py extras); failures carry their remediation
 	@$(PY) scripts/lint.py
 
 check:  ## lint + the reference reproduces its certified scorecard
 	@rc=0; $(PY) scripts/lint.py || rc=1; echo; $(PY) -m lab.metrics --check || rc=1; exit $$rc
+
+baseline:  ## simulate the frozen reference decks and print the scorecard (no drift verdict)
+	@$(PY) -m lab.metrics --baseline $(ARGS)
+
+certify:  ## (re)certify the reference into the frozen dir, then `make freeze` deliberately
+	@$(PY) -m lab.metrics --certify $(ARGS)
 
 pack:  ## working-memory context pack (K="noise gain" S="symptom text")
 	@$(HARNESS) pack $(K) $(if $(S),--symptom "$(S)") $(ARGS)
@@ -31,7 +37,13 @@ doctor:  ## is the simulation lane alive? (a one-resistor deck through lab.sim, 
 test:  ## the generic lab modules (stimulus, eye, exp, plot, lane); live tests skip without ngspice
 	@OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 $(PY) -m pytest -q
 
-clean:  ## delete simulation output (never the ledger)
-	@rm -rf experiments/*/out/
+notebooks:  ## execute notebooks/*.ipynb in place (outputs committed, so a reader sees the numbers)
+	@for nb in notebooks/*.ipynb; do [ -e "$$nb" ] || continue; \
+	  PATH="$(CURDIR)/.venv/bin:$$PATH" $(PY) -m jupyter nbconvert --to notebook --execute \
+	  --inplace --ExecutePreprocessor.timeout=1800 $$nb || exit 1; done
 
-.PHONY: help lint check pack runs freeze doctor test clean
+clean:  ## delete this checkout's work dir + experiment output (never the ledger)
+	@d=$$($(PY) -c "from lab.sim import work; print(work())" 2>/dev/null); \
+	  [ -n "$$d" ] && echo "rm -rf $$d" && rm -rf "$$d"; rm -rf experiments/*/out/
+
+.PHONY: help lint check baseline certify pack runs freeze doctor test notebooks clean
