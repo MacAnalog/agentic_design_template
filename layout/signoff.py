@@ -11,20 +11,23 @@ are KLayout runsets and kpex driven from this venv:
 
 * `$<PREFIX>_GDS_PYTHON` — the interpreter that can `import gdsfactory` and the PDK cells.
   There is no default: an unset variable is an error with its fix, never someone's home path.
+  `<PREFIX>` is the harness prefix, derived from `exp_env` the way the platform derives it.
 * `SIGNOFF_PYTHON`, if set, must name an interpreter that can import BOTH the PDK runset's own
   dependencies AND the layout API. Unset resolves to this checkout's venv, which has them. An
   interpreter missing one of them returns `matched=False` with an EMPTY `reason` while the real
   traceback sits in the returned log — which is why `lvs()` below copies the log tail into the
   record (LDO `doc/journal/…run-lvs-swallows-its-own-traceback.md`).
 
-The four lessons baked into the stage functions:
+The five lessons baked into the stage functions:
 
-1. `drc()` counts violations PER RULE. The runner's violation objects are not JSON-serialisable,
-   so a `json.dumps` of the raw list only ever runs when the list is non-empty — a clean cell
-   hides the crash until the first real violation.
+0. Every stage takes its verdict from the runner's own `to_dict()` (`_record`) and passes `pdk=`
+   from one place. Retyping a result by hand drops fields and invents bugs; letting each runner
+   default its PDK scores the cell against another process's rules without saying so.
+1. `drc()` splits violations PER RULE, summing each object's `count` — a `DrcViolation` is
+   already one row per rule, so counting objects reads as a near-clean cell.
 2. `lvs()` keeps the raw evidence beside the wrapper's verdict, and surfaces the log when the
    reason is empty.
-3. `benches()` re-scores through the SAME path as the pre-layout row (`design.metrics.run_decks`).
+3. `benches()` re-scores through the SAME path as the pre-layout row (the design package's `metrics.run_decks`).
    A tolerant post-layout runner that skips a bench the pre-layout row measured makes the two
    columns incomparable (LDO review-002 M4/M5).
 4. `current_density()` is a stage, not an afterthought. DRC checks geometry, LVS checks nets and
@@ -34,16 +37,23 @@ The four lessons baked into the stage functions:
 from __future__ import annotations
 
 import argparse
+import importlib
 import json
 import os
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+REPO = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO))
 
-from design import metrics as M  # noqa: E402
-from design.dut import REFERENCE  # noqa: E402
-from design.sim import H, work  # noqa: E402
+from spicexplorer_harness import load  # noqa: E402
+
+H = load(REPO)
+# Resolved through `package:`, never spelled `design.…`: this file must survive the instantiation
+# rename untouched (`git mv design <name>` + one line in harness.yaml).
+M = importlib.import_module(f"{H.package}.metrics")
+REFERENCE = importlib.import_module(f"{H.package}.dut").REFERENCE
+work = importlib.import_module(f"{H.package}.sim").work
 
 CELL = "<cell>"
 GEN = Path(__file__).resolve().parent / "gen_cell.py"
@@ -51,8 +61,36 @@ GEN = Path(__file__).resolve().parent / "gen_cell.py"
 # What each current-carrying net actually carries, on the conductor the generator draws it on.
 # e.g. Budget(net="vout", current_a=10e-3, layer="Metal1", width_um=0.8, note="output pin")
 BUDGETS: list = []
-PREFIX = H.sim_env.rsplit("_", 1)[0]          # harness.yaml prefix rule: EXP -> SIM/<DESIGN>
+
+# The PDK every stage scores against. EVERY platform runner defaults to one particular process,
+# so a design built elsewhere would silently be checked against a foreign rule deck AND foreign
+# electromigration limits, with no error. Name yours here (or export `$<PREFIX>_PDK`).
+PDK = "<pdk>"
+
+
+def _prefix(h) -> str:
+    """The harness env-name prefix — derived from `exp_env`, exactly as the platform derives it
+    (`spicexplorer_harness.config.Harness.__post_init__`). NOT from `sim_env`: that key may be
+    set explicitly to an unrelated name, and then every var this file asks for is wrong."""
+    return h.exp_env[:-4] if h.exp_env.endswith("_EXP") and len(h.exp_env) > 4 else "SIM"
+
+
+PREFIX = _prefix(H)
 GDS_PYTHON_ENV = f"{PREFIX}_GDS_PYTHON"
+PDK_ENV = f"{PREFIX}_PDK"
+
+
+def pdk() -> str:
+    """Which process the sign-off stages score against. No silent default, for the same reason
+    `gds_python()` has none: a wrong-but-known PDK passes every stage and means nothing."""
+    p = os.environ.get(PDK_ENV, "") or ("" if PDK.startswith("<") else PDK)
+    if not p:
+        raise SystemExit(
+            f"no PDK named: set `PDK` in layout/signoff.py (got {PDK!r}) or export {PDK_ENV}=<name>."
+            f"\n    FIX: every runner (run_drc/run_lvs/run_pex/render_png/check_current_density) "
+            "otherwise falls back to ITS OWN default process — the rule deck and the current-"
+            "density limits of a technology this design may not be built in")
+    return p
 
 
 def gds_python() -> str:
@@ -63,6 +101,7 @@ def gds_python() -> str:
             f"{GDS_PYTHON_ENV} must name the interpreter that has gdsfactory and the PDK cells "
             f"(got {p!r}).\n    FIX: export {GDS_PYTHON_ENV}=/path/to/that/python — record the "
             "path in doc/environment.md, never hard-code someone's home directory here")
+    return p  # NOT `None`: GdsBuilder(python=None) falls back to sys.executable, i.e. THIS venv
 
 
 # ------------------------------------------------------------------ build / render ----
@@ -84,7 +123,7 @@ def render(gds: Path, png: Path) -> dict:
     from spicexplorer_layout import render_png
 
     try:
-        render_png(gds, png)
+        render_png(gds, png, pdk=pdk())
         return {"ok": png.is_file(), "png": str(png)}
     except Exception as exc:  # noqa: BLE001 — a missing renderer is not a sign-off failure
         return {"ok": False, "png": str(png), "reason": str(exc)[:400]}
@@ -93,16 +132,30 @@ def render(gds: Path, png: Path) -> dict:
 # ------------------------------------------------------------------ sign-off ----------
 
 def violation_counts(violations) -> dict[str, int]:
-    """Violations -> {rule: count}: JSON-safe whatever the runner's objects are.
+    """Violations -> {rule: how many}, the per-rule split a reviewer reads.
 
-    Serialising the raw list crashes on the first REAL violation and never before, because the
-    line only runs when the list is non-empty. Which rules fired is also what a reviewer reads.
+    A `DrcViolation` is ALREADY AGGREGATED — one object per rule, carrying `count` — and
+    `run_drc` reports `n_violations = sum(count)`. Counting the objects instead would print
+    `{rule: 1}` beside `n_violations: 20` and read as a near-clean cell.
     """
     per_rule: dict[str, int] = {}
     for v in violations or ():
-        rule = str(getattr(v, "rule", None) or (v.get("rule") if isinstance(v, dict) else None) or "?")
-        per_rule[rule] = per_rule.get(rule, 0) + 1
+        d = v if isinstance(v, dict) else getattr(v, "__dict__", {})
+        rule = str(d.get("rule") or "?")
+        per_rule[rule] = per_rule.get(rule, 0) + int(d.get("count", 1) or 1)
     return dict(sorted(per_rule.items(), key=lambda kv: (-kv[1], kv[0])))
+
+
+def _record(r, **extra) -> dict:
+    """A runner's own `to_dict()` (JSON-clean) plus only what this file genuinely adds.
+
+    Never re-typed field by field: retyping is what let the violation-count bug in, and it
+    silently drops whatever the platform adds later (`pdk`, `locations`, `coupling_ff`).
+    `log` is replaced by the tails the stages ask for — a full tool log is not a verdict.
+    """
+    d = {k: v for k, v in r.to_dict().items() if k != "log"}
+    d.update(extra)
+    return d
 
 
 def drc(gds: Path, out: Path, *, density: bool = False) -> dict:
@@ -111,11 +164,10 @@ def drc(gds: Path, out: Path, *, density: bool = False) -> dict:
     at least once, so "0 violations" is not quietly a smaller claim than a reader assumes."""
     from spicexplorer_signoff.drc import run_drc
 
-    r = run_drc(str(gds), CELL, str(out), no_density=not density)
+    r = run_drc(str(gds), CELL, str(out), no_density=not density, pdk=pdk())
     print(f"  DRC: passed={r.passed} violations={r.n_violations}")
-    return {"passed": bool(r.passed), "available": bool(r.available), "density": bool(density),
-            "n_violations": int(r.n_violations), "violations_per_rule": violation_counts(r.violations),
-            "report": r.report_path, "reason": r.reason}
+    return _record(r, density=bool(density), pdk=pdk(),
+                   violations_per_rule=violation_counts(r.violations))
 
 
 def current_density(out: Path) -> dict:
@@ -127,22 +179,18 @@ def current_density(out: Path) -> dict:
     """
     from spicexplorer_signoff import check_current_density
 
-    r = check_current_density(BUDGETS)
+    r = check_current_density(BUDGETS, pdk=pdk())
     print(f"  Jmax: passed={r.passed} over={r.worst_over_factor:.2f}x n={r.n_checked}")
-    return {"passed": bool(r.passed), "available": bool(r.available), "n_checked": int(r.n_checked),
-            "n_violations": int(r.n_violations), "worst_over_factor": float(r.worst_over_factor),
-            "violations": [v.__dict__ for v in r.violations], "reason": r.reason}
+    return _record(r)
 
 
 def lvs(gds: Path, netlist: Path, out: Path) -> dict:
     from spicexplorer_signoff.lvs import run_lvs
 
-    r = run_lvs(str(gds), str(netlist), CELL, str(out))
+    r = run_lvs(str(gds), str(netlist), CELL, str(out), pdk=pdk())
     log = r.log or ""
     matched = bool(r.matched) or "Netlists match" in log
-    rec = {"passed": bool(r.passed), "matched": matched, "available": bool(r.available),
-           "unmatched": dict(r.unmatched or {}), "report": r.report_path,
-           "netlist_sha": getattr(r, "netlist_sha", ""), "reason": r.reason}
+    rec = _record(r, matched=matched, pdk=pdk())
     if not matched and not (r.reason or "").strip():
         # the runner does not promote a non-zero exit into `reason`; the cause is in the log
         rec["log_tail"] = log[-1500:]
@@ -153,19 +201,17 @@ def lvs(gds: Path, netlist: Path, out: Path) -> dict:
 def pex(gds: Path, netlist: Path, out: Path, *, mode: str = "CC") -> dict:
     from spicexplorer_signoff.pex import run_pex
 
-    r = run_pex(gds, CELL, netlist, out, mode=mode)
+    r = run_pex(gds, CELL, netlist, out, mode=mode, pdk=pdk())
     print(f"  PEX: ok={r.ok} n_C={r.n_c} n_R={r.n_r}")
     top = sorted(((v, k) for k, v in (r.per_net_c_ff or {}).items()), reverse=True)[:12]
-    return {"ok": bool(r.ok), "available": bool(r.available), "mode": r.mode,
-            "netlist": r.netlist_path, "n_c": int(r.n_c), "n_r": int(r.n_r),
-            "per_net_c_ff": {k: round(v, 3) for v, k in top}, "reason": r.reason,
-            "log_tail": (r.log or "")[-1500:] if not r.ok else ""}
+    return _record(r, pdk=pdk(), top_c_ff={k: round(v, 3) for v, k in top},
+                   log_tail="" if r.ok else (r.log or "")[-1500:])
 
 
 def benches(pex_netlist: Path, out: Path, tag: str = "postlayout") -> dict:
     """The post-layout scorecard: the cell's OWN benches with the extracted subckt spliced in.
 
-    Nothing new is measured here — same benches, same `design.metrics` promotion, so the pre and
+    Nothing new is measured here — same benches, same `metrics.promote`, so the pre and
     post columns are comparable by construction.
     """
     from spicexplorer_signoff.postlayout import prep_pex_subckt, splice_subckt
@@ -207,22 +253,29 @@ def main(argv=None) -> int:
     gds, netlist = out / f"{CELL}.gds", out / f"{CELL}_lvs.spice"
     rec: dict = {}
     if "build" in stages:
-        print("build:"); rec["build"] = build(out, Path(a.sizing) if a.sizing else None)
+        print("build:")
+        rec["build"] = build(out, Path(a.sizing) if a.sizing else None)
     if "render" in stages:
-        print("render:"); rec["render"] = render(gds, out / f"{CELL}.png")
+        print("render:")
+        rec["render"] = render(gds, out / f"{CELL}.png")
     if "drc" in stages:
-        print("drc:"); rec["drc"] = drc(gds, out / "drc", density=a.density)
+        print("drc:")
+        rec["drc"] = drc(gds, out / "drc", density=a.density)
     if "jmax" in stages:
-        print("current density:"); rec["current_density"] = current_density(out)
+        print("current density:")
+        rec["current_density"] = current_density(out)
     if "lvs" in stages:
-        print("lvs:"); rec["lvs"] = lvs(gds, netlist, out / "lvs")
+        print("lvs:")
+        rec["lvs"] = lvs(gds, netlist, out / "lvs")
     if "pex" in stages:
-        print("pex:"); rec["pex"] = pex(gds, netlist, out / "pex")
+        print("pex:")
+        rec["pex"] = pex(gds, netlist, out / "pex")
     if "benches" in stages:
         hits = sorted((out / "pex").rglob("*_pex_netlist.spice"))
         if not hits:
             raise SystemExit(f"no kpex netlist under {out / 'pex'} — run the pex stage first")
-        print("benches:"); rec["benches"] = benches(hits[-1], out)
+        print("benches:")
+        rec["benches"] = benches(hits[-1], out)
     (out / "signoff.json").write_text(json.dumps(rec, indent=1, default=str) + "\n")
     print("\nwrote", out / "signoff.json")
     return 0
