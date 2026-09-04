@@ -28,9 +28,12 @@ KIND: REFERENCE (procedural gotchas; recipes that outgrow this file go to `doc/m
   followed by ` meas tran bad when v(a)=5 failed!`; the lane skips that `Error:` line and returns
   the name in `Run.failed`, which `lab.metrics.measure` turns into NaN. Successful measures print
   `good                =  1.500000e-09` and land in `Run.measures` (`sim.parse_measures` =
-  `spicexplorer_waveview.parse_measures`).
+  `spicexplorer_core.spice_engine.sim_log.parse_measures`, re-exported by `spicexplorer_waveview`;
+  it reads stdout and stderr, since a body `.meas` in batch mode reports on stderr). A `print`
+  scalar is read only for a named vector — `let x = …` then `print x` — never `print <expression>`.
 - Two runs of the same label and deck at once: the second raises `SimError(... is busy)` instead of
-  clobbering the first; different decks under one label get different directories (deck hash).
+  clobbering the first (`.busy` holds `<pid> <host>`: a dead or unparsable owner is reclaimed, another
+  user's live process or a fresh foreign-host marker stays busy); different decks under one label get different directories (deck hash).
 - The PDK init file spells paths as `$PDK_ROOT/$PDK`; the lane defaults both from
   `SPICE_USERINIT_DIR` when they are unset.
 - <the first trap this lane set for you, and the fix>

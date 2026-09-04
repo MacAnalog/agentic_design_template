@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import math
 import re
-import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -99,16 +98,25 @@ def test_eye_bipolar_electrical_signal():
     assert math.isnan(m["er_db"]) and abs(m["oma_norm"] - 2.0) < 0.2
 
 
-def test_latency_is_fft_fast_and_exact():
+def test_latency_is_exact_and_matches_a_direct_correlation():
+    """Exact to the sample, polarity included; on a short sequence the FFT correlation picks the
+    same lag as a direct bounded-lag dot product (no wall-clock assertion: shared server)."""
     d = stimulus.Data("nrz", 20.0, order=15, n_warm=8)
     dt = d.ui / eye.OVERSAMPLE
     t = np.arange(0, d.t_end + 3e-9, dt)
     delay = 37 * dt
     y = 0.3 * stimulus.ideal_waveform(t - delay, d)
-    t0 = time.perf_counter()
     lag, sign = eye.latency(t, -y, d)
-    assert time.perf_counter() - t0 < 2.0, "latency() must be an FFT correlation, not a Python loop"
     assert sign == -1 and abs(lag - delay) < dt / 2
+
+    d = stimulus.Data("nrz", 20.0, order=7, n_warm=2)
+    dt = d.ui / 20
+    t = np.arange(0, d.t_end + 3e-9, dt)
+    y = 0.3 * stimulus.ideal_waveform(t - 11 * dt, d)
+    ideal, yy = stimulus.ideal_waveform(t, d), y - y.mean()
+    n_max = int(max(3 * d.ui, 2e-9) / dt) + 1
+    direct = [float(np.dot(yy[k:], ideal[: len(ideal) - k])) for k in range(n_max)]
+    assert eye.latency(t, y, d) == (int(np.argmax(np.abs(direct))) * dt, 1)
 
 
 def test_unknown_format_raises():
