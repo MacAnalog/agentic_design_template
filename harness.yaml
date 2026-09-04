@@ -1,9 +1,9 @@
 # The one file that describes this design to the harness (spicexplorer-harness).
 # Keys not listed here keep their defaults; unknown keys fail `make lint`.
 name: <design>
-# package: design    # NOT YET A KEY — the loader rejects unknown keys. The design package is
-#                    # named for the design (`design/` here; instances use `ldo/`, `mzm_tx/`);
-#                    # until the platform grows a `package:` field it is `PACKAGE` in scripts/lint.py.
+package: design         # this design's own Python package, named for the DESIGN and renamed at
+                        # instantiation (`git mv design <name>`); instances use `ldo/`, `mzm_tx/`.
+                        # `make lint`'s `package-importable` locates it — nothing is imported.
 exp_env: EXP            # env var stamping every ledger row with the experiment id
 jobs_env: JOBS          # width of spicexplorer_harness.batch
 # sim_env: SIM_NGSPICE  # the native ngspice binary design/sim.py runs (default: exp_env's prefix + _NGSPICE)

@@ -12,7 +12,9 @@ when a trap has bitten twice (`doc/journal/gap-as-signal.md`); its message carri
 
 from __future__ import annotations
 
+import importlib
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -22,13 +24,11 @@ sys.path.insert(0, str(REPO))
 from spicexplorer_harness import lint, load  # noqa: E402
 from spicexplorer_harness.lint import Lint  # noqa: E402
 
-# The design package: `design/` in the bare template, renamed per instance (`ldo/`, `mzm_tx/`).
-# It cannot live in harness.yaml yet — the platform loader rejects unknown keys, so a `package:`
-# key needs a `Harness` field first (platform follow-up, noted in harness.yaml).
-PACKAGE = "design"
-
-# How a certified number may be written in doc/target-spec.md; any one match passes.
-QUOTE_FORMATS = ("{:.4g}", "{:.3g}", "{:g}", "{:.3f}", "{:.2f}", "{:.1f}", "{:.0f}")
+# How a certified number may be written in doc/target-spec.md; any one WHOLE-TOKEN match passes.
+# Three significant figures minimum, on purpose: at `{:.0f}` a doc reading `62` would "quote" a
+# certified 61.5 and 62.4 alike, and the drift check would pass the drift it exists to catch.
+QUOTE_FORMATS = ("{:.4g}", "{:.3g}", "{:g}", "{:.3f}", "{:.2f}")
+NUMBER = re.compile(r"-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?")
 
 
 def _frozen_dirs(L: Lint) -> list[Path]:
@@ -48,11 +48,19 @@ def deck_rebuild(L: Lint) -> None:
     for d in _frozen_dirs(L):
         rel = d.relative_to(L.h.root).as_posix()
         try:
-            from design.dut import Design
+            # via `package:`, never `from design.dut import …`: the check that catches a
+            # half-finished rename must not itself be broken BY the rename
+            Design = importlib.import_module(f"{L.h.package}.dut").Design
             point = Design.from_dict(json.loads((d / "design.json").read_text()))
             built = {b: point.deck(b) for b in point.benches()}
         except NotImplementedError:
-            return  # a bare template: Design.deck is still the stub
+            continue  # a bare template: Design.deck is still the stub. `continue`, not `return`
+        except ModuleNotFoundError as exc:
+            L.fail("deck-rebuild", f"cannot import {L.h.package}.dut: {exc}",
+                   f"harness.yaml says `package: {L.h.package}` — finish the rename (the package "
+                   "dir, its imports, the Makefile, layout/signoff.py, experiments/_template/) "
+                   "or point `package:` at the directory that exists")
+            continue
         except Exception as exc:  # noqa: BLE001
             L.fail("deck-rebuild", f"cannot rebuild {rel} from its design.json: {exc!r}",
                    "design.json must round-trip through design.dut.Design.from_dict; "
@@ -79,38 +87,24 @@ def spec_quotes(L: Lint) -> None:
         card = json.loads(h.text(h.reference_scorecard))["scorecard"]
     except (ValueError, KeyError, TypeError):
         return
-    doc = h.text(h.spec_doc).replace("**", "")
+    doc = h.text(h.spec_doc).replace("**", "").replace("−", "-")
+    # whole tokens, never a substring: `62` inside `1620` is not a quotation of 62, and a doc
+    # that says `62` is not quoting a certified 62.4
+    tokens = set(NUMBER.findall(doc))
     for row in h.spec:
         v = card.get(row.key)
         if not isinstance(v, (int, float)) or isinstance(v, bool) or v != v:
             continue
         written = [f.format(v) for f in QUOTE_FORMATS]
-        if not any(t in doc or t.replace("-", "−") in doc for t in written):
-            L.fail("spec-sync",
+        if not tokens.intersection(written):
+            L.fail("spec-quotes",
                    f"certified {row.key} = {v:.4g} is not quoted in {h.spec_doc}",
                    f"the spec table's reference-baseline column quotes {h.reference_scorecard}; "
                    f"copy the certified number across (e.g. `{written[0]}`), or re-certify")
 
 
-def package_importable(L: Lint) -> None:
-    """`PACKAGE` names a real, importable package: the rename at instantiation is easy to
-    half-finish, and every doc line, agent definition and Makefile target points at the name."""
-    import importlib
-
-    if not (L.h.root / PACKAGE / "__init__.py").is_file():
-        L.fail("package", f"scripts/lint.py PACKAGE = {PACKAGE!r} but {PACKAGE}/__init__.py is missing",
-               f"`git mv <old> {PACKAGE}` (or point PACKAGE at the real directory) — the design "
-               "package is named for the DESIGN, and CLAUDE.md, the Makefile and every doc cite it")
-        return
-    try:
-        importlib.import_module(PACKAGE)
-    except Exception as exc:  # noqa: BLE001
-        L.fail("package", f"`import {PACKAGE}` fails: {exc!r}",
-               f"fix the package's imports; `make doctor`, `make test` and every experiment "
-               f"start with `from {PACKAGE} import …`")
-
-
-EXTRA = (package_importable, deck_rebuild, spec_quotes)
+# `package-importable` is NOT here: the platform ships it (driven by `package:` in harness.yaml).
+EXTRA = (deck_rebuild, spec_quotes)
 
 if __name__ == "__main__":
     sys.exit(lint.main(load(REPO), extra=EXTRA))
