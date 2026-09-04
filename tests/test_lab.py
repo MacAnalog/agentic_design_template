@@ -266,3 +266,136 @@ def test_concurrent_runs_same_label_do_not_clobber(scratch):
     with ThreadPoolExecutor(2) as pool:
         got = list(pool.map(go, ["1k", "2k"]))
     assert got[0] == pytest.approx(1.0) and got[1] == pytest.approx(0.5)
+
+
+# ------------------------------------------------------------------ scorecard ---------
+
+class _D:
+    """A two-bench Design stand-in: enough for the scorecard lifecycle, no simulator."""
+
+    def __init__(self, corner: str = "tt"):
+        self.corner = corner
+
+    def benches(self):
+        return ["b1", "b2"]
+
+    def deck(self, bench):
+        return f"* {bench}\n.end\n"
+
+    def as_dict(self):
+        return {"corner": self.corner}
+
+
+def test_promote_scales_mapped_keys_and_namespaces_the_rest(monkeypatch):
+    from lab import metrics
+
+    monkeypatch.setitem(metrics.KEYMAP, ("ac", "gain"), ("gain_db", 1.0))
+    monkeypatch.setitem(metrics.KEYMAP, ("ac", "p"), ("power_uw", 1e6))
+    got = metrics.promote("ac", {"gain": 61.0, "p": 5e-5, "stray": 2.0})
+    assert got == {"gain_db": 61.0, "power_uw": pytest.approx(50.0), "ac.stray": 2.0}
+
+
+def test_table_reports_pass_and_fail():
+    from lab import metrics
+
+    md = metrics.table({"ok": {"gain_db": 61, "pm_deg": 70, "power_uw": 9},
+                        "bad": {"gain_db": 10, "pm_deg": 70, "power_uw": 9}})
+    assert "| PASS |" in md and "FAIL (1)" in md
+
+
+def test_drift_limit_prefers_the_spec_tolerance_band():
+    from lab import metrics
+
+    # harness.yaml gives gain_db `tolerance: {kind: abs, delta: 0.5}`; pm_deg declares none
+    assert metrics.drift_limit("gain_db", 60.0) == pytest.approx(0.5)
+    assert metrics.drift_limit("pm_deg", 60.0) == pytest.approx(0.6)
+
+
+def test_drift_flags_moved_and_missing_columns(monkeypatch):
+    from lab import metrics
+
+    monkeypatch.setattr(metrics, "certified", lambda: {"scorecard": {"gain_db": 60.0, "pm_deg": 70.0}})
+    got = dict(sorted((k, why) for k, _g, _w, why in
+                      metrics.drift({"gain_db": 60.4, "pm_deg": float("nan")})))
+    assert "gain_db" not in got                       # inside the 0.5 band
+    assert got["pm_deg"] == "NOT MEASURED"
+    assert [k for k, *_ in metrics.drift({"gain_db": 61.0, "pm_deg": 70.0})] == ["gain_db"]
+
+
+@pytest.fixture
+def _certify_env(monkeypatch):
+    from lab import metrics
+
+    rows: list[dict] = []
+    monkeypatch.setattr(metrics, "run_decks",
+                        lambda decks, tag, record=True: ({"gain_db": 61.0, "pm_deg": 70.0,
+                                                          "power_uw": 9.0, "dead": float("nan")},
+                                                         {b: {"status": "ok", "measures": {}} for b in decks}))
+    monkeypatch.setattr(metrics, "log_run", lambda h, tag, values, **kw: rows.append({"tag": tag, **kw}))
+    return metrics, rows
+
+
+def test_certify_unsigned_writes_no_provenance_block(_certify_env, tmp_path):
+    metrics, rows = _certify_env
+    doc = metrics.certify(_D(), tag="t", out=tmp_path)
+    # a provenance block with no signed row behind it is a lint failure nobody can green
+    assert "provenance" not in doc and "tag" not in doc
+    assert rows[0].get("evidence", "scratch") == "scratch"
+    assert set(doc["scorecard"]) == {"gain_db", "pm_deg", "power_uw"}   # NaN dropped
+    assert (tmp_path / "b1.spice").exists() and (tmp_path / "decks.sha256").exists()
+
+
+def test_certify_signed_block_recomputes_and_matches_its_row(_certify_env, tmp_path):
+    from spicexplorer_harness import hashes
+
+    metrics, rows = _certify_env
+    doc = metrics.certify(_D(), tag="t", out=tmp_path, author="designer", verified_by="verifier")
+    prov = doc["provenance"]
+    assert doc["tag"] == "t" and doc["corner"] == "tt"           # the keys _backing_rows matches on
+    assert hashes.recompute(metrics.H.root, prov, values=doc["scorecard"]) == []
+    row = rows[0]
+    assert row["evidence"] == "signed" and row["verified_by"] == "verifier"
+    assert all(row[k] == prov[k] for k in hashes.HASH_KEYS)
+
+
+# ------------------------------------------------------------------ lint + layout -----
+
+def _load(rel: str):
+    import importlib.util
+
+    path = Path(__file__).resolve().parents[1] / rel
+    spec = importlib.util.spec_from_file_location(path.stem + "_mod", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_lint_extras_are_green_on_the_bare_template():
+    from spicexplorer_harness import load
+    from spicexplorer_harness.lint import Lint
+
+    mod = _load("scripts/lint.py")
+    L = Lint(load(Path(__file__).resolve().parents[1]))
+    for check in mod.EXTRA:
+        check(L)
+    assert L.fails == []
+
+
+def test_drc_violation_serializer_never_crashes_on_a_real_violation():
+    class V:  # what a runner returns: not JSON-serialisable, and only ever non-empty on a FAIL
+        def __init__(self, rule):
+            self.rule = rule
+
+    signoff = _load("layout/signoff.py")
+    counts = signoff.violation_counts([V("M1.b"), V("M1.b"), V("V1.a"), {"rule": "M1.b"}, object()])
+    assert counts == {"M1.b": 3, "V1.a": 1, "?": 1}
+    assert json.loads(json.dumps(counts)) == counts
+    assert signoff.violation_counts([]) == {} and signoff.violation_counts(None) == {}
+
+
+def test_gds_python_refuses_a_default_home_path(monkeypatch):
+    signoff = _load("layout/signoff.py")
+    monkeypatch.delenv(signoff.GDS_PYTHON_ENV, raising=False)
+    with pytest.raises(SystemExit) as e:
+        signoff.gds_python()
+    assert signoff.GDS_PYTHON_ENV in str(e.value) and "FIX:" in str(e.value)
