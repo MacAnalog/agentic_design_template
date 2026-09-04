@@ -17,7 +17,7 @@ dirs below all exist to satisfy that rule. A memory you cannot load is not a mem
 |---|---|---|---|
 | **working** | assembled fresh: `make pack K="…"` | retrieval over the tiers below | the agent, at task start and again on every new symptom (`S="…"`) |
 | **episodic** | `runs/ledger.ndjson` — one row per simulation, gitignored, per checkout | **automatic**: `design.metrics.evaluate()` via `spicexplorer_harness.log_run` | `make runs`, the pack's Episodes section |
-| **semantic** | `doc/journal/` (one file per lesson) + `doc/journal.md` (index); overflow in `doc/memory/semantic/`; curated docs `doc/design-reference.md`, `doc/pdk-notes.md`, `pdf/INDEX.md`, experiment READMEs | distillation at experiment close-out, or the moment a failure surprises you; **provenance required** | the pack's Lessons/Constraints/Papers sections |
+| **semantic** | `doc/journal/` (one file per lesson) + `doc/journal.md` (index); overflow in `doc/memory/semantic/`; curated docs `doc/design-reference.md`, `doc/pdk-notes.md`, `pdf/INDEX.md`, experiment READMEs, verifier reports in `doc/reviews/` | distillation at experiment close-out, or the moment a failure surprises you; **provenance required** | the pack's Lessons/Constraints/Papers sections |
 | **procedural** | `design/`, `scripts/`, `Makefile`, `harness.yaml`, agent definitions, `CLAUDE.md`; recipes in `doc/memory/procedural/` | **human-reviewed only** (trap → gate promotion) | `CLAUDE.md` harness commands |
 
 ## 2. Learning actions
@@ -52,4 +52,10 @@ rows. Shared docs are written at close-out, from the experiment's own README.
 `make lint` (`spicexplorer_harness.lint`): every entry indexed, typed, dated, under the size
 cap, supersession complete; every experiment dir logged with Paper/Hypothesis/Verdict rows;
 every PDF indexed; spec numbers present in `doc/target-spec.md`; frozen dirs match their
-`SHA256SUMS`; the denylist is clean; the pack retrieves at least one constraint and one lesson.
+`SHA256SUMS`; the denylist is clean; the pack retrieves at least one constraint and one lesson;
+the design package imports; a frozen deck still rebuilds; a signed scorecard still recomputes.
+
+**A gate is only a gate once you have watched it go green.** Before recording a red check as
+"waiting on someone to do X", do X once and look. A failure whose passing condition has never
+been demonstrated may be unsatisfiable by anything a reader can do, and it will absorb effort
+every time it is re-read.

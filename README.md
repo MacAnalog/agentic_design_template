@@ -17,10 +17,13 @@ definitions and method notes under `.claude/`.
    repo lives elsewhere (every further `spicexplorer-*` member a design pulls in must be named
    in both `dependencies` and `[tool.uv.sources]`).
 3. `make doctor` must report the lane alive (`design/sim.py` is a thin policy layer over the
-   platform's `run_deck`: a one-resistor deck through ngspice with a per-run `.spiceinit`). Then implement `design/dut.py` (`Design.deck`) and
-   `design/metrics.py` (`measure`, the `--check` drift test); `make test` covers the generic modules.
-4. Certify a reference, `make freeze`, add it to `frozen:` in `harness.yaml`.
-5. `make lint` must pass before the first experiment.
+   platform's `run_deck`: a one-resistor deck through ngspice with a per-run `.spiceinit`). Then
+   implement `design/dut.py` (`benches()` + `deck(bench)`) and `design/metrics.py`'s `KEYMAP`;
+   `make test` covers the generic modules and the scorecard lifecycle.
+4. `make certify` (add `ARGS="--author X --verified-by Y"` once a second actor has re-measured it),
+   `make freeze`, add the dir to `frozen:` and the scorecard to `reference_scorecard:`.
+5. `make lint` must pass before the first experiment. For the layout lane, uncomment the
+   `spicexplorer-gmid` / `-layout` / `-signoff` sources in `pyproject.toml` and `uv sync`.
 
 ## Layout
 
@@ -28,11 +31,13 @@ definitions and method notes under `.claude/`.
 |---|---|
 | `harness.yaml` | the design described to the harness: spec rows, frozen dirs, denylist, ledger columns |
 | `CLAUDE.md` | the entry map agents read first |
-| `doc/` | target spec, design reference (constraints), benches, environment, experiment log, journal + index, the memory model |
+| `doc/` | target spec, design reference (constraints), benches, environment, experiment log, journal + index, `reviews/` (verifier reports), the memory model |
 | `design/` | generic, imported as-is — thin wrappers over the platform: `sim` (this repo's where/which/what policy over `spicexplorer_core.spice_engine.run_deck`), `stimulus` and `eye` (re-exports of `spicexplorer_waveview.stimulus`/`.eye`: PRBS/PAM4/PWL, symbol-aware eye metrics + BT4 receiver), `exp` (labelled batches, markdown), `plot` (spec boxes); per design: `dut` (the sizing point → deck), `metrics` (measure, check, log). The `design/` → platform table is in `doc/journal/design-consolidated-from-three-lanes.md` |
 | `tests/` | `make test`: the generic `design/` modules (the live-lane test skips without ngspice) |
 | `scripts/lint.py` | repo-specific checks on top of the harness |
-| `experiments/NNN-*/` | one directory per hypothesis; `_template/README.md` is the shape |
+| `layout/` | the layout of record as code: `gen_cell.py` (generator contract, `LayoutParams`, the per-net obstacle map) and `signoff.py` (build → render → DRC → current density → LVS → PEX → the cell's own benches) |
+| `experiments/NNN-*/` | one directory per hypothesis; `_template/` is the shape — `README.md`, `run.py` (simulates into git-ignored `out/` and committed `figs/`) and `mk_readme.py` (regenerates the README from `out/*.json`) |
+| `notebooks/` | executed in place by `make notebooks`, outputs committed |
 | `pdf/` | papers + `INDEX.md` (cite by handle) |
 | `.claude/agents/` | variant-runner, signoff-verifier, schematic-builder, paper-analyst, gardener |
 | `.claude/skills/` | the visual-evidence methods: schematic of record, testbench schematics, findings as plots, layout evidence |

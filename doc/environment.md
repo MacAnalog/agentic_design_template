@@ -9,6 +9,8 @@ KIND: REFERENCE (procedural gotchas; recipes that outgrow this file go to `doc/m
 | corner sections | <names as the PDK spells them> |
 | work dir | `$<work_env>` (`harness.yaml`; prefix rule → `FOO_WORK` / `SIM_WORK`), else `$SX_SCRATCH/<design>-<checkout hash>/runs/<label>-<deck hash>/` (else `~/sx-scratch/…`); per checkout, never inside the repo, never under `/tmp` (rejected), never a tool name in the path |
 | per-run init | every run dir gets `.spiceinit` = the PDK's file + `design.sim.SPICEINIT_EXTRA` lines (a compatibility `set`, an extra `osdi` load); a cwd `.spiceinit` shadows `$SPICE_USERINIT_DIR` and `~/.spiceinit`, which is why it is copied, not referenced |
+| layout lane | **two interpreters, deliberately**: `$<PREFIX>_GDS_PYTHON` runs the generator (it needs gdsfactory + the PDK cells; there is no default — an unset variable is an error with its fix, never a home path), while DRC/LVS/PEX run from this venv through `spicexplorer_signoff`. `SIGNOFF_PYTHON`, if set, must import BOTH the PDK runset's own dependencies and the layout API; an interpreter missing one reports `matched=False` with an EMPTY reason and the traceback only in the log |
+| physical lanes | `spicexplorer-gmid` / `-layout` / `-signoff` are commented out of `pyproject.toml`: the simulation-only venv stops short of all three. Uncomment + one `uv sync` before the sizing (gm/ID), layout or PEX work starts |
 | doctor | `make doctor` simulates a one-resistor deck and requires `i_ma = 1` parsed from the log, a rawfile and the per-run init marker; it fails when `SPICE_USERINIT_DIR` is unset or its `.spiceinit` is empty. Once the design has a PDK device, call `preflight(deck, expect)` with its own probe |
 
 ## Gotchas
@@ -36,4 +38,9 @@ KIND: REFERENCE (procedural gotchas; recipes that outgrow this file go to `doc/m
   user's live process or a fresh foreign-host marker stays busy); different decks under one label get different directories (deck hash).
 - The PDK init file spells paths as `$PDK_ROOT/$PDK`; the lane defaults both from
   `SPICE_USERINIT_DIR` when they are unset.
+- **Pin the PDK by commit, not by name.** Record the exact revision (and the model-card revision
+  if the PDK versions them separately) in the table above: a PASS measured against a different
+  PDK revision than the baseline's is not comparable, and nothing else in the repo records it.
+- **Trust `--version`, not the install path.** A tool unpacked under a directory named for one
+  release is routinely a different one.
 - <the first trap this lane set for you, and the fix>

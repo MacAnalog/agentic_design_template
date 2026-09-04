@@ -30,6 +30,15 @@ Procedure:
    certified reference **and** vs the claimed numbers. Discrepancies with the claims are
    findings, not smoothing opportunities.
 
+7. **Sign the row, and check the gate goes green.** A verdict nobody can re-derive is prose.
+   Certify from your own re-run with both names — `make certify ARGS="--author <designer>
+   --verified-by <your id in harness.yaml verifiers:>"` — which writes the scorecard's top-level
+   `tag`/`corner` and `provenance:` block and logs the matching signed ledger row from the same
+   evidence block. Then run `make lint`: `scorecard-recompute` must be GREEN. If it is not, the
+   gate is broken, not the signature — say so as a finding instead of recording "awaiting sign-off".
+8. **Write the report** to `doc/reviews/review-NNN-<subject>.md` in the shape
+   `doc/reviews/README.md` states: severity, finding, evidence, and what would change the verdict.
+
 **Cite evidence.** Every number names its source (ledger tag, rawfile + plot, or the frozen
 definition), and the environment: simulator version, lane, the pinned PDK version. A PASS on a
 different PDK revision than the baseline's is not comparable — say so. Your runs land in the
