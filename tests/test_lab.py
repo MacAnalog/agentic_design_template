@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 import math
 import re
+import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import numpy as np
@@ -21,6 +23,23 @@ def _have_ngspice() -> bool:
         return False
 
 
+live = pytest.mark.skipif(not _have_ngspice(), reason="no ngspice binary on this host")
+
+# Real ngspice-45 batch log excerpts (probe decks under $SX_SCRATCH), verbatim.
+LOG_INVALID_LINE = "Warning: 'r1 a 0' is not a valid resistor instance line, ignored!\ni_ma = -0.000000e+00\n"
+LOG_FAILED_MEAS = ("Error: measure  bad  when(WHEN) : out of interval\n"
+                   " meas tran bad when v(a)=5 failed!\n\ngood                =  1.500000e-09\n")
+LOG_BAD_LET = ("Warning from checkvalid: vector nowhere is not available or has zero length.\n"
+               "Error: RHS \"v(nowhere)*2\" invalid\n")
+
+
+@pytest.fixture
+def scratch(tmp_path, monkeypatch):
+    monkeypatch.setenv("SX_SCRATCH", str(tmp_path))
+    monkeypatch.delenv(sim.WORK_ENV, raising=False)
+    return tmp_path
+
+
 # ------------------------------------------------------------------ stimulus ----------
 
 def test_prbs_is_deterministic_and_periodic():
@@ -33,6 +52,8 @@ def test_prbs_is_deterministic_and_periodic():
 def test_symbol_levels():
     assert set(stimulus.symbols("nrz", 7, 200).tolist()) == {-1.0, 1.0}
     assert set(np.round(stimulus.symbols("pam4", 7, 200), 6).tolist()) == {-1.0, -0.333333, 0.333333, 1.0}
+    with pytest.raises(ValueError):
+        stimulus.symbols("pam8", 7, 10)
 
 
 def test_pwl_tap_delay_is_exact():
@@ -46,10 +67,10 @@ def test_pwl_tap_delay_is_exact():
 
 # ------------------------------------------------------------------ eye ---------------
 
-def _synthetic(fmt: str, closed: bool = False):
+def _synthetic(fmt: str, closed: bool = False, bipolar: bool = False):
     d = stimulus.Data(fmt, 10.0, order=7, n_warm=8)
     t = np.arange(0, d.t_end + 2e-9, d.ui / 50)
-    x = 0.5 + 0.5 * stimulus.ideal_waveform(t, d)          # unipolar, 0..1
+    x = stimulus.ideal_waveform(t, d) if bipolar else 0.5 + 0.5 * stimulus.ideal_waveform(t, d)
     if closed:
         x = 0.5 + 0.02 * np.random.default_rng(0).standard_normal(t.size)
     return t, x, d
@@ -71,23 +92,53 @@ def test_eye_closed_is_finite(fmt):
     assert all(math.isfinite(v) for v in m.values() if isinstance(v, float))
 
 
-# ------------------------------------------------------------------ lane --------------
-
-def test_parse_measures():
-    log = ("i_ma = 1.000000e+00\nugf = 1.2345e+06 at=  3.2\nbad = failed\n"
-           "Total analysis time (seconds) = 0.001\nDoing analysis at TEMP = 27.0\n")
-    m, failed = sim.parse_measures(log)
-    assert m == {"i_ma": 1.0, "ugf": 1.2345e6} and failed == ["bad"]
+def test_eye_bipolar_electrical_signal():
+    """Levels -1/+1: OMA and VECP come from the level difference, ER is undefined (nan), not 57 dB."""
+    m = eye.eye_metrics(*_synthetic("nrz", bipolar=True), full_scale=2.0)
+    assert m["ok"] == 1 and 0 <= m["vecp_db"] < 3 and m["eye_h_norm"] > 0.4
+    assert math.isnan(m["er_db"]) and abs(m["oma_norm"] - 2.0) < 0.2
 
 
-def test_fatal_lines():
-    assert sim.fatal_lines("Error: no such vector as x")
+def test_latency_is_fft_fast_and_exact():
+    d = stimulus.Data("nrz", 20.0, order=15, n_warm=8)
+    dt = d.ui / eye.OVERSAMPLE
+    t = np.arange(0, d.t_end + 3e-9, dt)
+    delay = 37 * dt
+    y = 0.3 * stimulus.ideal_waveform(t - delay, d)
+    t0 = time.perf_counter()
+    lag, sign = eye.latency(t, -y, d)
+    assert time.perf_counter() - t0 < 2.0, "latency() must be an FFT correlation, not a Python loop"
+    assert sign == -1 and abs(lag - delay) < dt / 2
+
+
+def test_unknown_format_raises():
+    with pytest.raises(ValueError):
+        eye.levels("pam8")
+    with pytest.raises(ValueError):
+        eye.rx_bandwidth("pam8", 10.0)
+
+
+# ------------------------------------------------------------------ lane: the log -----
+
+def test_parse_measures_real_failed_meas_form():
+    m, failed = sim.parse_measures(LOG_FAILED_MEAS)
+    assert m == {"good": 1.5e-09} and failed == ["bad"]
+    m, failed = sim.parse_measures("i_ma = 1.000000e+00\nugf = 1.2345e+06 at=  3.2\n"
+                                   "Total analysis time (seconds) = 0.001\nDoing analysis at TEMP = 27.0\n")
+    assert m == {"i_ma": 1.0, "ugf": 1.2345e6} and failed == []
+
+
+def test_fatal_lines_classification():
+    assert sim.fatal_lines(LOG_INVALID_LINE), "an ignored device line is the silent-zero class"
+    assert sim.fatal_lines(LOG_BAD_LET)
     assert sim.fatal_lines("doAnalyses: iteration limit reached")
-    assert sim.fatal_lines("Error on line 12 : xm1 ... Unknown model type psp103va")
-    assert not sim.fatal_lines("Warning: vd: no DC value\nNote: Starting dynamic gmin stepping\n")
+    assert sim.fatal_lines("Error on line 12 : xm1 ... Unknown model type xyz")
+    assert not sim.fatal_lines(LOG_FAILED_MEAS), "a failed .meas is Run.failed, not a fatal run"
+    assert not sim.fatal_lines("Warning: singular matrix:  check nodes a and b\n"
+                               "Note: Starting dynamic gmin stepping\nWarning: vd: no DC value\n")
 
 
-def test_spiceinit_and_pdk_env_from_userinit_dir(tmp_path, monkeypatch):
+def test_spiceinit_requires_userinit_dir(tmp_path, monkeypatch):
     (tmp_path / ".spiceinit").write_text("set foo=1\n")
     monkeypatch.setenv("SPICE_USERINIT_DIR", str(tmp_path))
     monkeypatch.delenv("PDK_ROOT", raising=False)
@@ -95,13 +146,23 @@ def test_spiceinit_and_pdk_env_from_userinit_dir(tmp_path, monkeypatch):
     assert sim.spiceinit("echo X") == "set foo=1\necho X\n"
     env = sim._env()
     assert env["PDK"] == tmp_path.parents[1].name and env["PDK_ROOT"] == str(tmp_path.parents[2])
+    monkeypatch.delenv("SPICE_USERINIT_DIR")
+    with pytest.raises(FileNotFoundError):
+        sim.spiceinit()
+    assert sim.preflight()["ok"] is False
 
 
-def test_work_dir_under_scratch(tmp_path, monkeypatch):
-    monkeypatch.setenv("SX_SCRATCH", str(tmp_path))
-    monkeypatch.delenv(sim.WORK_ENV, raising=False)
+def test_work_dir_rules(scratch, monkeypatch):
     w = sim.work()
-    assert w.parent == tmp_path and "<" not in w.name and w.name.endswith(sim.CHECKOUT)
+    assert w.parent == scratch and "<" not in w.name and w.name.endswith(sim.CHECKOUT)
+    monkeypatch.setenv(sim.WORK_ENV, "/tmp/anything")
+    with pytest.raises(ValueError):
+        sim.work()
+
+
+def test_run_rejects_empty_label(scratch):
+    with pytest.raises(ValueError):
+        sim.run(sim.PROBE, "")
 
 
 def test_run_batch_keeps_order_and_errors():
@@ -116,16 +177,65 @@ def test_run_batch_keeps_order_and_errors():
     assert exp.md(rows, ["label", "v"]).splitlines()[2] == "| a | 10.00 |"
 
 
-@pytest.mark.skipif(not _have_ngspice(), reason="no ngspice binary on this host")
-def test_preflight_simulates_one_resistor(tmp_path, monkeypatch):
-    monkeypatch.setenv("SX_SCRATCH", str(tmp_path))
-    monkeypatch.delenv(sim.WORK_ENV, raising=False)
+def test_plot_smoke(scratch):
+    from lab import plot
+
+    t, x, d = _synthetic("pam4")
+    m = eye.eye_metrics(t, x, d)
+    p = plot.eye(t, x, d, scratch / "fig" / "eye.png", title="t", metrics={**m, "gain_db": 61},
+                 keys=("gain_db", "er_db"))
+    rows = [{"label": "a", "rate_gbd": r, "gain_db": 60 + r / 10, "pm_deg": 70 - r} for r in (10, 20, 40)]
+    q = plot.frontier(rows, scratch / "fig" / "frontier.png", ys=("gain_db", "pm_deg"))
+    assert p.stat().st_size > 1000 and q.stat().st_size > 1000
+
+
+# ------------------------------------------------------------------ lane: live --------
+
+@live
+def test_preflight_simulates_one_resistor(scratch):
     info = sim.preflight()
     assert info["ok"], info
     r = sim.run(sim.PROBE, "probe")
-    assert r.raw is not None and r.raw.exists() and abs(r.measures["i_ma"] - 1.0) < 1e-6
+    assert r.raw is not None and r.raw.exists() and abs(r.measures["i_ma"] - 1.0) < 1e-6 and r.rc == 0
     assert Path(r).is_dir() and (Path(r) / ".spiceinit").exists() and r.wall > 0
     assert str(r) == str(r.dir) == f"{r}"     # ledger rows store str(run); Path(run) reopens it
     assert sim.raw(r).get_trace("v(a)").get_wave()[0] == pytest.approx(1.0)
-    with pytest.raises(sim.SimError):
-        sim.run("* bad\nv1 a 0 1\nr1 a 0 1k\n.control\nop\nprint v(nowhere)\n.endc\n.end\n", "bad")
+
+
+def _deck(body: str) -> str:
+    return f"* p\nv1 a 0 1\nr1 a 0 1k\n.control\nop\n{body}\nwrite sim.raw\nquit\n.endc\n.end\n"
+
+
+@live
+def test_run_raises_on_real_errors(scratch):
+    with pytest.raises(sim.SimError, match="RHS"):
+        sim.run(_deck("let x = v(nowhere)*2\nprint x"), "bad_let")
+    with pytest.raises(sim.SimError, match="ignored"):        # the silent-zero class
+        sim.run("* p\nv1 a 0 1\nr1 a 0\n.control\nop\nlet i_ma = -i(v1)*1e3\nprint i_ma\n"
+                "write sim.raw\nquit\n.endc\n.end\n", "invalid_line")
+    with pytest.raises(sim.SimError, match="rc=3"):
+        sim.run("* p\nv1 a 0 1\nr1 a 0 1k\n.control\nop\nlet i_ma = -i(v1)*1e3\nprint i_ma\n"
+                "write sim.raw\nquit 3\n.endc\n.end\n", "rc3")
+    try:
+        sim.run(_deck("let x = v(nowhere)*2\nprint x"), "bad_let")
+    except sim.SimError as e:
+        assert str(sim.work()) not in str(e), "error text must not carry the absolute work path"
+
+
+@live
+def test_failed_meas_becomes_run_failed(scratch):
+    r = sim.run("* p\nv1 a 0 pulse(0 1 1n 1n 1n 5n 10n)\nr1 a 0 1k\n.control\ntran 0.1n 20n\n"
+                "meas tran bad when v(a)=5\nmeas tran good when v(a)=0.5 rise=1\nwrite sim.raw\nquit\n"
+                ".endc\n.end\n", "failmeas")
+    assert r.failed == ["bad"] and r.measures["good"] == pytest.approx(1.5e-9, rel=1e-3)
+
+
+@live
+def test_concurrent_runs_same_label_do_not_clobber(scratch):
+    def go(rval):
+        return sim.run(f"* p\nv1 a 0 1\nr1 a 0 {rval}\n.control\nop\nlet i_ma = -i(v1)*1e3\n"
+                       f"print i_ma\nwrite sim.raw\nquit\n.endc\n.end\n", "same").measures["i_ma"]
+
+    with ThreadPoolExecutor(2) as pool:
+        got = list(pool.map(go, ["1k", "2k"]))
+    assert got[0] == pytest.approx(1.0) and got[1] == pytest.approx(0.5)

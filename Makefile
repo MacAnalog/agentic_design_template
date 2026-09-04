@@ -28,8 +28,8 @@ freeze:  ## write SHA256SUMS into the frozen dirs after a deliberate certificati
 doctor:  ## is the simulation lane alive? (a one-resistor deck through lab.sim, per-run .spiceinit proven)
 	@$(PY) -m lab.sim
 
-test:  ## the generic lab modules (stimulus, eye, lane); the preflight test skips without ngspice
-	@$(PY) -m pytest -q
+test:  ## the generic lab modules (stimulus, eye, exp, plot, lane); live tests skip without ngspice
+	@OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 $(PY) -m pytest -q
 
 clean:  ## delete simulation output (never the ledger)
 	@rm -rf experiments/*/out/

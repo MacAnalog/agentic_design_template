@@ -13,7 +13,7 @@ from scipy import signal
 from .stimulus import Data, ideal_waveform
 
 VECP_CAP_DB = 40.0
-FLOOR = 1e-6            # level floor (fraction of full scale) keeping ER/OMA finite
+FLOOR = 1e-6            # low-level floor (fraction of full scale) keeping ER finite
 SAMPLE_HALF_UI = 0.1    # +-window around the sampling instant for level statistics
 PHASES = 40             # sampling phases swept over one UI
 OVERSAMPLE = 200        # samples per UI after resampling
@@ -33,25 +33,28 @@ def bessel_lowpass(t: np.ndarray, x: np.ndarray, f3db: float, order: int = 4) ->
 
 def rx_bandwidth(fmt: str, rate_gbd: float) -> float:
     """The reference receiver's -3 dB point: 0.75 x baud (NRZ), 0.5 x baud (PAM4)."""
-    return (0.5 if fmt == "pam4" else 0.75) * rate_gbd * 1e9
+    return {"nrz": 0.75, "pam4": 0.5}[_fmt(fmt)] * rate_gbd * 1e9
+
+
+def _fmt(fmt: str) -> str:
+    if fmt not in ("nrz", "pam4"):
+        raise ValueError(f"unknown format {fmt!r} (nrz | pam4)")
+    return fmt
 
 
 def latency(t: np.ndarray, y: np.ndarray, data: Data) -> tuple[float, int]:
-    """(delay s, polarity +-1) maximizing |correlation| of `y` with the ideal symbol waveform."""
+    """(delay s, polarity +-1) maximizing |correlation| of `y` with the ideal symbol waveform (FFT correlation, lags 0..max(3 UI, 2 ns))."""
     dt = t[1] - t[0]
     ideal = ideal_waveform(t, data)
     yy = y - y.mean()
     n_max = int(max(3 * data.ui, 2e-9) / dt) + 1
-    best, lag, sign = -np.inf, 0, 1
-    for k in range(n_max):
-        c = float(np.dot(yy[k:], ideal[: len(yy) - k]))
-        if abs(c) > best:
-            best, lag, sign = abs(c), k, (1 if c >= 0 else -1)
-    return lag * dt, sign
+    c = signal.correlate(yy, ideal, mode="full", method="fft")[len(ideal) - 1:][:n_max]
+    k = int(np.argmax(abs(c)))
+    return k * dt, (1 if c[k] >= 0 else -1)
 
 
 def levels(fmt: str) -> np.ndarray:
-    return np.array([-1.0, 1.0]) if fmt == "nrz" else np.array([-1.0, -1 / 3, 1 / 3, 1.0])
+    return np.array([-1.0, 1.0]) if _fmt(fmt) == "nrz" else np.array([-1.0, -1 / 3, 1 / 3, 1.0])
 
 
 def _groups(y, centers, half, sym_idx, nlv):
@@ -70,12 +73,14 @@ def _openings(g) -> list[float]:
 
 def eye_metrics(t: np.ndarray, x: np.ndarray, data: Data, *, filtered: bool = True,
                 full_scale: float = 1.0) -> dict:
-    """Scorecard of one eye on a unipolar signal (e.g. optical power; ER/OMA need a positive low level).
+    """Scorecard of one eye. OMA/VECP come from the level difference (any polarity); ER is
+    defined for a unipolar input (optical power, never negative) and nan for a bipolar one.
 
     Keys: eye_h_norm, eye_w_ui, vecp_db, er_db, oma_db (+ rlm, pam4_eye_heights for PAM4) and
     the sampling point found (sample_phase_ui, latency_ps, polarity, levels).
     """
     dt = data.ui / OVERSAMPLE
+    unipolar = bool(np.min(x) >= 0)
     tu, y = resample(t, x, dt)
     if filtered:
         y = bessel_lowpass(tu, y, rx_bandwidth(data.fmt, data.rate_gbd))
@@ -101,18 +106,18 @@ def eye_metrics(t: np.ndarray, x: np.ndarray, data: Data, *, filtered: bool = Tr
         return {"eye_h_norm": -1.0, "eye_w_ui": 0.0, "vecp_db": VECP_CAP_DB, "er_db": 0.0,
                 "oma_db": -60.0, "ok": 0}
     ph, h_min, heights, means = best
-    floor = FLOOR * full_scale
-    p_hi, p_lo = max(means[-1], floor), max(means[0], floor)
-    oma = p_hi - p_lo
+    p_hi, p_lo = means[-1], means[0]
+    oma = p_hi - p_lo                                         # unclamped: any polarity
     sub = oma / (len(lv) - 1)                                 # one ideal eye's amplitude
+    floor = FLOOR * full_scale
     open_ph = [p for p in phases
                if (g := _groups(y, centers(p), 1, sym_idx, len(lv))) is not None
                and min(_openings(g)) > 0]
     out = {"sample_phase_ui": ph, "latency_ps": float(lag * 1e12), "polarity": sign,
            "levels": means, "eye_h_norm": float(h_min / full_scale),
            "eye_w_ui": len(open_ph) / PHASES, "oma_norm": float(oma),
-           "oma_db": float(10 * np.log10(max(oma, floor) / full_scale)),
-           "er_db": float(10 * np.log10(p_hi / p_lo)),
+           "oma_db": float(10 * np.log10(oma / full_scale)) if oma > 0 else -60.0,
+           "er_db": float(10 * np.log10(max(p_hi, floor) / max(p_lo, floor))) if unipolar else float("nan"),
            "vecp_db": float(min(10 * np.log10(sub / h_min), VECP_CAP_DB))
            if h_min > 0 and sub > 0 else VECP_CAP_DB,
            "ok": 1}

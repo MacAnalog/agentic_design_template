@@ -4,21 +4,29 @@ KIND: REFERENCE (procedural gotchas; recipes that outgrow this file go to `doc/m
 
 | item | value |
 |---|---|
-| PDK | <name>, pinned at <git SHA / version>; its ngspice init file is `$SPICE_USERINIT_DIR/.spiceinit` |
-| simulator lane | native ngspice through `lab/sim.py`: `$<PREFIX>_NGSPICE` (PREFIX from `exp_env`, e.g. `LDO_EXP` → `LDO_NGSPICE`; `SIM_NGSPICE` when `exp_env` has no prefix), else `ngspice` on PATH, else `~/local/bin/ngspice` |
+| PDK | <name>, pinned at <git SHA / version>; its ngspice init file is `$SPICE_USERINIT_DIR/.spiceinit` (**required**: the lane refuses to run without it) |
+| simulator lane | native ngspice through `lab/sim.py`: `$<PREFIX>_NGSPICE` (PREFIX from `exp_env`, e.g. `FOO_EXP` → `FOO_NGSPICE`; `SIM_NGSPICE` when `exp_env` has no prefix), else `ngspice` on PATH |
 | corner sections | <names as the PDK spells them> |
-| work dir | `$<PREFIX>_WORK`, else `$SX_SCRATCH/<design>-<checkout hash>/runs/<label>/` (else `~/sx-scratch/…`); per checkout, outside the repo, never a tool name in the path |
-| per-run init | every run dir gets `.spiceinit` = the PDK's file + `spiceinit_extra` lines (e.g. `set ngbehavior=hsa` for the IHP HBTs); a cwd `.spiceinit` shadows `$SPICE_USERINIT_DIR` and `~/.spiceinit`, which is why it is copied, not referenced |
-| doctor | `make doctor` simulates a one-resistor deck and requires `i_ma = 1` parsed from the log, a rawfile and the per-run init marker; once the design has a PDK device, call `preflight(deck, expect)` with its own probe |
+| work dir | `$<PREFIX>_WORK`, else `$SX_SCRATCH/<design>-<checkout hash>/runs/<label>-<deck hash>/` (else `~/sx-scratch/…`); per checkout, never inside the repo, never under `/tmp` (rejected), never a tool name in the path |
+| per-run init | every run dir gets `.spiceinit` = the PDK's file + `lab.sim.SPICEINIT_EXTRA` lines (a compatibility `set`, an extra `osdi` load); a cwd `.spiceinit` shadows `$SPICE_USERINIT_DIR` and `~/.spiceinit`, which is why it is copied, not referenced |
+| doctor | `make doctor` simulates a one-resistor deck and requires `i_ma = 1` parsed from the log, a rawfile and the per-run init marker; it fails when `SPICE_USERINIT_DIR` is unset or its `.spiceinit` is empty. Once the design has a PDK device, call `preflight(deck, expect)` with its own probe |
 
 ## Gotchas
 
-- ngspice exits 0 after a failed operating point and leaves a rawfile full of zeros: `lab.sim.run`
-  scans the log (`Error:` lines, `doAnalyses: iteration limit reached`, `Transient solution
-  failed`, `timestep too small`, `singular matrix`, unknown model) and raises `SimError` before
-  anything is trusted.
-- `print`/`meas` scalars are read from the log (`sim.parse_measures`); a `meas` that fails comes
-  back by name in `Run.failed` and lands as NaN in the scorecard.
+- ngspice exits 0 after a failed operating point and leaves a rawfile full of zeros. `lab.sim.run`
+  scans the log before anything is trusted and raises `SimError` on: `Error:` lines (waveview's
+  `error` level, e.g. `Error: RHS "v(nowhere)*2" invalid`), the bare strings
+  `doAnalyses: iteration limit reached`, `Transient solution failed`, `timestep too small`,
+  `Unknown model type`, `Error on line`, and the one `Warning:` that hides a wrong deck —
+  `'r1 a 0' is not a valid resistor instance line, ignored!` (a dropped device gives `i_ma = -0.0`
+  and a rawfile). Other warnings (`Warning: singular matrix` during gmin stepping) are recoverable
+  and do not fail the run. A non-zero exit code always fails it (`Run.rc`).
+- A failed `.meas` is not fatal. ngspice-45 prints `Error: measure  bad  when(WHEN) : out of interval`
+  followed by ` meas tran bad when v(a)=5 failed!`; the lane skips that `Error:` line and returns
+  the name in `Run.failed`, which `lab.metrics.measure` turns into NaN. Successful measures print
+  `good                =  1.500000e-09` and land in `Run.measures` (`sim.parse_measures`).
+- Two runs of the same label and deck at once: the second raises `SimError(... is busy)` instead of
+  clobbering the first; different decks under one label get different directories (deck hash).
 - The PDK init file spells paths as `$PDK_ROOT/$PDK`; the lane defaults both from
   `SPICE_USERINIT_DIR` when they are unset.
 - <the first trap this lane set for you, and the fix>
