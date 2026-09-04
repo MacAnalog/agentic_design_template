@@ -399,3 +399,46 @@ def test_gds_python_refuses_a_default_home_path(monkeypatch):
     with pytest.raises(SystemExit) as e:
         signoff.gds_python()
     assert signoff.GDS_PYTHON_ENV in str(e.value) and "FIX:" in str(e.value)
+
+
+def test_a_signed_certification_greens_scorecard_recompute(monkeypatch, tmp_path):
+    """End to end: what `certify(--author --verified-by)` writes is what the lint accepts.
+
+    The LDO instantiation shipped a scorecard whose `scorecard-recompute` no signature could
+    ever green. This is the demonstration that the gate CAN go green — a gate whose passing
+    condition has never been shown is an assumption, not a gate.
+    """
+    import shutil
+
+    from spicexplorer_harness import load
+    from spicexplorer_harness.lint import Lint, scorecard_recompute
+
+    from lab import metrics
+
+    repo = Path(__file__).resolve().parents[1]
+    (tmp_path / "lab").mkdir()
+    shutil.copy(repo / "lab" / "metrics.py", tmp_path / "lab" / "metrics.py")
+    (tmp_path / "harness.yaml").write_text(
+        "name: t\nfrozen: [decks/reference]\n"
+        "reference_scorecard: decks/reference/scorecard.json\n"
+        "verifiers: [verifier]\n"
+        'spec:\n  - {key: gain_db, label: gain, op: ">=", bound: 60, unit: dB}\n')
+    h = load(tmp_path)
+    monkeypatch.setattr(metrics, "H", h)
+    monkeypatch.setattr(metrics, "run_decks",
+                        lambda decks, tag, record=True: ({"gain_db": 61.0},
+                                                         {b: {"status": "ok", "measures": {}} for b in decks}))
+    metrics.certify(_D(), tag="ref", out=tmp_path / "decks" / "reference",
+                    author="designer", verified_by="verifier")
+
+    L = Lint(h)
+    scorecard_recompute(L)
+    assert L.fails == []
+
+    # and a hand-edited number is caught: the value is inside the computation hash
+    card = json.loads((tmp_path / "decks/reference/scorecard.json").read_text())
+    card["scorecard"]["gain_db"] = 99.0
+    (tmp_path / "decks/reference/scorecard.json").write_text(json.dumps(card))
+    L2 = Lint(load(tmp_path))
+    scorecard_recompute(L2)
+    assert L2.fails

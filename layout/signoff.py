@@ -1,4 +1,4 @@
-"""Layout sign-off driver: GDS -> render -> DRC -> LVS -> PEX -> the cell's OWN frozen benches.
+"""Layout sign-off: GDS -> render -> DRC -> current density -> LVS -> PEX -> the cell's OWN benches.
 
 Every stage is a platform runner (`spicexplorer_layout`, `spicexplorer_signoff`); this file only
 sequences them and writes the verdicts a reviewer reads. Imports are lazy so the module loads
@@ -17,7 +17,7 @@ are KLayout runsets and kpex driven from this venv:
   traceback sits in the returned log — which is why `lvs()` below copies the log tail into the
   record (LDO `doc/journal/…run-lvs-swallows-its-own-traceback.md`).
 
-The three lessons baked into the stage functions:
+The four lessons baked into the stage functions:
 
 1. `drc()` counts violations PER RULE. The runner's violation objects are not JSON-serialisable,
    so a `json.dumps` of the raw list only ever runs when the list is non-empty — a clean cell
@@ -27,6 +27,9 @@ The three lessons baked into the stage functions:
 3. `benches()` re-scores through the SAME path as the pre-layout row (`lab.metrics.run_decks`).
    A tolerant post-layout runner that skips a bench the pre-layout row measured makes the two
    columns incomparable (LDO review-002 M4/M5).
+4. `current_density()` is a stage, not an afterthought. DRC checks geometry, LVS checks nets and
+   PEX models resistance: none of them asks whether the metal carrying the load current is wide
+   enough. The LDO cell of record passed all three at 12-28x over the Metal1 limit.
 """
 from __future__ import annotations
 
@@ -44,6 +47,10 @@ from lab.sim import H, work  # noqa: E402
 
 CELL = "<cell>"
 GEN = Path(__file__).resolve().parent / "gen_cell.py"
+
+# What each current-carrying net actually carries, on the conductor the generator draws it on.
+# e.g. Budget(net="vout", current_a=10e-3, layer="Metal1", width_um=0.8, note="output pin")
+BUDGETS: list = []
 PREFIX = H.sim_env.rsplit("_", 1)[0]          # harness.yaml prefix rule: EXP -> SIM/<DESIGN>
 GDS_PYTHON_ENV = f"{PREFIX}_GDS_PYTHON"
 
@@ -111,6 +118,22 @@ def drc(gds: Path, out: Path, *, density: bool = False) -> dict:
             "report": r.report_path, "reason": r.reason}
 
 
+def current_density(out: Path) -> dict:
+    """The electromigration budget no rule deck checks — arithmetic over `BUDGETS`, no GDS parsed.
+
+    Fill `BUDGETS` with the few nets that carry real current (supply, ground, output) as the
+    layout actually draws them. A budget whose limit cannot be resolved is NOT a pass: silence
+    from a check that did not run is not evidence.
+    """
+    from spicexplorer_signoff import check_current_density
+
+    r = check_current_density(BUDGETS)
+    print(f"  Jmax: passed={r.passed} over={r.worst_over_factor:.2f}x n={r.n_checked}")
+    return {"passed": bool(r.passed), "available": bool(r.available), "n_checked": int(r.n_checked),
+            "n_violations": int(r.n_violations), "worst_over_factor": float(r.worst_over_factor),
+            "violations": [v.__dict__ for v in r.violations], "reason": r.reason}
+
+
 def lvs(gds: Path, netlist: Path, out: Path) -> dict:
     from spicexplorer_signoff.lvs import run_lvs
 
@@ -167,7 +190,7 @@ def benches(pex_netlist: Path, out: Path, tag: str = "postlayout") -> dict:
 
 # ------------------------------------------------------------------ driver ------------
 
-STAGES = ("build", "render", "drc", "lvs", "pex", "benches")
+STAGES = ("build", "render", "drc", "jmax", "lvs", "pex", "benches")
 
 
 def main(argv=None) -> int:
@@ -189,6 +212,8 @@ def main(argv=None) -> int:
         print("render:"); rec["render"] = render(gds, out / f"{CELL}.png")
     if "drc" in stages:
         print("drc:"); rec["drc"] = drc(gds, out / "drc", density=a.density)
+    if "jmax" in stages:
+        print("current density:"); rec["current_density"] = current_density(out)
     if "lvs" in stages:
         print("lvs:"); rec["lvs"] = lvs(gds, netlist, out / "lvs")
     if "pex" in stages:
