@@ -54,12 +54,12 @@ def eye(t: np.ndarray, x: np.ndarray, data: Data, out: Path, *, title: str = "",
     """Two eye panels (unfiltered, after the reference receiver) with the spec box text drawn on."""
     fig, axs = plt.subplots(1, 2, figsize=(8, 3.2))
     bw = rx_bandwidth(data.fmt, data.rate_gbd) / (data.rate_gbd * 1e9)
-    for ax, filt, design in ((axs[0], False, "unfiltered"), (axs[1], True, f"after ref Rx (BT4, {bw:g} x baud)")):
+    for ax, filt, panel in ((axs[0], False, "unfiltered"), (axs[1], True, f"after ref Rx (BT4, {bw:g} x baud)")):
         ph, y = fold(t, x, data, filtered=filt)
         ax.plot(ph * 1e12, y, ",", color="navy", alpha=0.35)
         ax.set_xlabel("time within 2 UI [ps]")
         ax.set_ylabel(ylabel)
-        ax.set_title(design, fontsize=8)
+        ax.set_title(panel, fontsize=8)
     if metrics and keys:
         axs[1].text(0.02, 0.98, spec_text(metrics, keys), transform=axs[1].transAxes, va="top",
                     fontsize=7, bbox={"boxstyle": "round", "fc": "white", "alpha": 0.8})
@@ -73,11 +73,11 @@ def series(rows: list[dict], out: Path, *, x: str, ys, by: str = "label", title:
     fig, axs = plt.subplots(1, len(ys), figsize=(3.2 * len(ys), 3.2), squeeze=False)
     labels = sorted({r.get(by, "") for r in rows}, key=str)
     for ax, y in zip(axs[0], ys):
-        for design in labels:
+        for name in labels:
             pts = sorted((r[x], r[y]) for r in rows
-                         if r.get(by) == design and isinstance(r.get(y), (int, float)))
+                         if r.get(by) == name and isinstance(r.get(y), (int, float)))
             if pts:
-                ax.plot([p[0] for p in pts], [p[1] for p in pts], "o-", ms=3, label=str(design))
+                ax.plot([p[0] for p in pts], [p[1] for p in pts], "o-", ms=3, label=str(name))
         spec_band(ax, y)
         r = SPEC.get(y)
         ax.set_title(f"{y}: {r.label} {r.op} {r.bound:g}" if r else y, fontsize=8)

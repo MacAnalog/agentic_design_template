@@ -45,7 +45,7 @@ this file is the method and the gates a design repo owes.
 
 ## The gates a clean run still fails
 
-- **Current density is nobody's else's check.** A rule deck checks geometry, LVS checks
+- **Current density is nobody else's check.** A rule deck checks geometry, LVS checks
   connectivity, extraction models milliohms: a cell passes all three and every bench while
   12–28× over the Metal1 limit. Size the power path from the brief's current budget *before*
   drawing and reserve the floorplan room — widening rails in place afterwards buys 79–117 new

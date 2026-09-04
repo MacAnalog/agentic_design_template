@@ -15,14 +15,14 @@ Rules:
 - **Adaptive recall.** On any NEW failure signature mid-task (unexpected peaking, a drifted
   corner, a convergence error, a railed internal node) re-run `make pack S="<the symptom>"`
   **before** diagnosing from scratch. A matching lesson or episode usually exists.
-- **Decks are built, never text-edited.** Change a `design.dut.Design`; let `design` regenerate every
+- **Decks are built, never text-edited.** Change a `design.dut.Design`; let `design.dut` regenerate every
   deck from it. Never edit a frozen dir — its `SHA256SUMS` is lint-pinned.
-- **Batches are parallel** (`design.parallel.batch` / `spicexplorer_harness.batch`; the width env
+- **Batches are parallel** (`spicexplorer_harness.batch` / `design.exp.run_batch`; the width env
   var is named in `harness.yaml`). One failed point never aborts a sweep.
 - **Every batch includes the untouched reference as its first row**, and a control whenever a
   knob is re-allocated rather than changed — otherwise you measured a re-shuffle, not an idea.
 - **Sim economy.** Expensive runs (transients, corner sets, Monte Carlo) only after the cheap
-  scorecard passes the hard box (`design.metrics.gate` where the repo has one). Never bypass it.
+  scorecard passes the hard box (`design.metrics.violations`/`table`). Never bypass it.
 - **Trust no run you have not health-checked.** A run counts only if the rawfile holds every
   expected plot and the log is free of fatal strings. ngspice returns exit code 0 after a failed
   operating point and leaves a rawfile full of zeros; a suspiciously round, zero or NaN
