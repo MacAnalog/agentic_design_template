@@ -25,10 +25,13 @@ runs:  ## query the run ledger (ARGS="--fails" | "--best gain_db --desc" | "--ex
 freeze:  ## write SHA256SUMS into the frozen dirs after a deliberate certification
 	@$(HARNESS) freeze
 
-doctor:  ## is the simulation lane alive?
+doctor:  ## is the simulation lane alive? (a one-resistor deck through lab.sim, per-run .spiceinit proven)
 	@$(PY) -m lab.sim
+
+test:  ## the generic lab modules (stimulus, eye, lane); the preflight test skips without ngspice
+	@$(PY) -m pytest -q
 
 clean:  ## delete simulation output (never the ledger)
 	@rm -rf experiments/*/out/
 
-.PHONY: help lint check pack runs freeze doctor clean
+.PHONY: help lint check pack runs freeze doctor test clean

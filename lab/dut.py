@@ -10,6 +10,8 @@ class Design:
     topology: str = "<topology>"
 
     def deck(self) -> str:
+        """The complete ngspice deck: `*` title line, DUT + bench, its own `.control` block
+        (`print`/`meas` scalars for `lab.metrics.measure`, and/or `write sim.raw`)."""
         raise NotImplementedError("emit the testbench + DUT subckt for this sizing point")
 
     def as_dict(self) -> dict:

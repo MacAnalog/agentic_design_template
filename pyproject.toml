@@ -5,9 +5,18 @@ description = "<the block, the PDK, the headline number to beat>"
 requires-python = ">=3.11"
 dependencies = [
     "numpy>=1.26",
+    "scipy>=1.11",              # lab.eye: the Bessel-Thomson reference receiver
     "matplotlib>=3.8",
-    "spicexplorer-harness",
+    "spicexplorer-harness",     # ledger, lints, context pack, spec-as-data (harness.yaml)
+    "spicexplorer-core",        # spicelib RawRead pin (lab.sim.raw)
+    "spicexplorer-waveview",    # log classification + WaveDataset/registry measurements (lab.sim)
+    # From outside the platform's uv workspace every transitive spicexplorer-* member must be
+    # named here AND in [tool.uv.sources]; uncomment as a design pulls them in:
+    # "spicexplorer", "spicexplorer-analog-db", "spicexplorer-circuitgraph", "spicexplorer-netlist2xschem",
 ]
+
+[dependency-groups]
+dev = ["pytest>=8"]
 
 [tool.uv]
 package = false
@@ -16,7 +25,17 @@ package = false
 # The generic harness (ledger, lints, context pack, spec) comes from the platform checkout that
 # sits beside this repo in spicexplorer-workspace; edit the path if the repo lives elsewhere.
 spicexplorer-harness = { path = "../../spicexplorer-platform/packages/spicexplorer-harness", editable = true }
+spicexplorer-core = { path = "../../spicexplorer-platform/packages/spicexplorer-core", editable = true }
+spicexplorer-waveview = { path = "../../spicexplorer-platform/packages/spicexplorer-waveview", editable = true }
+# spicexplorer = { path = "../../spicexplorer-platform/packages/spicexplorer", editable = true }
+# spicexplorer-analog-db = { path = "../../spicexplorer-platform/examples/analog-db", editable = true }
+# spicexplorer-circuitgraph = { path = "../../spicexplorer-platform/packages/spicexplorer-circuitgraph", editable = true }
+# spicexplorer-netlist2xschem = { path = "../../spicexplorer-platform/packages/spicexplorer-netlist2xschem", editable = true }
 
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
