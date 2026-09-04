@@ -34,6 +34,7 @@ CHECKOUT = hashlib.sha256(str(REPO).encode()).hexdigest()[:8]
 _PREFIX = H.exp_env[:-4] if H.exp_env.endswith("_EXP") else "SIM"
 LANE_ENV = f"{_PREFIX}_NGSPICE"   # the native binary; else `ngspice` on PATH, else ~/local/bin/ngspice
 WORK_ENV = f"{_PREFIX}_WORK"      # the work root; else $SX_SCRATCH/<design>-<checkout>
+SPICEINIT_EXTRA = ""              # lines every run appends to the PDK init (e.g. "set ngbehavior=hsa")
 
 PROBE = """* lane preflight: one resistor
 v1 a 0 1
@@ -161,14 +162,15 @@ def _tail(s: str, n: int = 30) -> str:
 # ------------------------------------------------------------------ run ---------------
 
 def run(deck: str, label: str, *, timeout: int = 3600, extra_files: dict[str, str] | None = None,
-        spiceinit_extra: str = "") -> Run:
+        spiceinit_extra: str | None = None) -> Run:
     """Simulate `deck` (its own `.control`: `write <x>.raw` and/or `print`/`meas`) in `work()/runs/<label>/`."""
     label = _slug(label)
     rd = work() / "runs" / label
     rd.mkdir(parents=True, exist_ok=True)
     for stale in rd.glob("*.raw"):
         stale.unlink()
-    (rd / ".spiceinit").write_text(spiceinit(spiceinit_extra))
+    extra = SPICEINIT_EXTRA if spiceinit_extra is None else spiceinit_extra
+    (rd / ".spiceinit").write_text(spiceinit(extra))
     (rd / "deck.sp").write_text(deck)
     for name, text in (extra_files or {}).items():
         (rd / name).write_text(text)
@@ -234,7 +236,8 @@ def preflight(deck: str = PROBE, expect: tuple[str, float, float] = ("i_ma", 1.0
             "userinit": str(userinit_dir() or ""), "ok": False, "note": ""}
     try:
         info["ngspice"] = ngspice()
-        r = run(deck, "_preflight", timeout=120, spiceinit_extra="echo LANE_INIT_OK")
+        r = run(deck, "_preflight", timeout=120,
+                spiceinit_extra=f"{SPICEINIT_EXTRA}\necho LANE_INIT_OK")
         key, want, tol = expect
         got = r.measures.get(key, float("nan"))
         init_ok = "LANE_INIT_OK" in r.text()
