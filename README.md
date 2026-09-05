@@ -9,8 +9,10 @@ definitions and method notes under `.claude/`.
 ## Instantiate
 
 1. Copy the tree; fill `harness.yaml`, `pyproject.toml` (name, description) and every `<…>`
-   in `CLAUDE.md` and `doc/`. Rename the design package: `git mv design <name>`, set `PACKAGE`
-   in `scripts/lint.py`, and update the imports (`make lint` checks the package is importable).
+   in `CLAUDE.md` and `doc/`. Rename the design package: `git mv design <name>`, set
+   `package:` in `harness.yaml`, and update the imports plus `Makefile` and
+   `experiments/_template/` (`make lint` checks the package is importable; `layout/signoff.py`
+   and `scripts/lint.py` resolve it from `package:` and need no edit).
    It is named for the DESIGN — the instances are `ldo/` and `mzm_tx/`.
 2. `uv sync` — the harness, core and waveview are editable path dependencies on the sibling
    platform checkout (`../../spicexplorer-platform`); edit those paths in `pyproject.toml` if the

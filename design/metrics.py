@@ -169,10 +169,12 @@ def certify(design: Design = REFERENCE, tag: str = "reference_certify", out: Pat
     # writes that over the whole dir INCLUDING scorecard.json, so it could never re-derive.
     digest = out / "decks.sha256"
     digest.write_text("".join(f"{hashes.sha256_text(t)}  {b}.spice\n" for b, t in sorted(decks.items())))
-    try:  # a frozen dir outside the repo (a scratch certification) keeps its absolute path
-        raw_rel = digest.relative_to(H.root).as_posix()
+    try:
+        raw_rel: str | None = digest.relative_to(H.root).as_posix()
     except ValueError:
-        raw_rel = str(digest)
+        # a frozen dir outside the repo (a scratch certification) has NO repo-relative name, and
+        # an absolute host path in a committed scorecard leaks a home dir and never re-hashes
+        raw_rel = None
     doc: dict = {
         "design": design.as_dict(),
         "scorecard": card,

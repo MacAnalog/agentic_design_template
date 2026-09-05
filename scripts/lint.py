@@ -27,7 +27,11 @@ from spicexplorer_harness.lint import Lint  # noqa: E402
 # How a certified number may be written in doc/target-spec.md; any one WHOLE-TOKEN match passes.
 # Three significant figures minimum, on purpose: at `{:.0f}` a doc reading `62` would "quote" a
 # certified 61.5 and 62.4 alike, and the drift check would pass the drift it exists to catch.
-QUOTE_FORMATS = ("{:.4g}", "{:.3g}", "{:g}", "{:.3f}", "{:.2f}")
+QUOTE_FORMATS = ("{:.4g}", "{:.3g}", "{:g}")
+# fixed-point spellings a `g` format never emits (a doc may write 62.40 for a certified 62.4).
+# Only at |v| >= 1: below that they are the imprecision this check exists to catch (`{:.2f}` of
+# 0.001234 is `0.00`), and the unit-scaled-keys rule keeps scorecard values off that range anyway.
+QUOTE_FIXED = ("{:.3f}", "{:.2f}")
 NUMBER = re.compile(r"-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?")
 
 
@@ -96,6 +100,7 @@ def spec_quotes(L: Lint) -> None:
         if not isinstance(v, (int, float)) or isinstance(v, bool) or v != v:
             continue
         written = [f.format(v) for f in QUOTE_FORMATS]
+        written += [f.format(v) for f in QUOTE_FIXED] if abs(v) >= 1 else []
         if not tokens.intersection(written):
             L.fail("spec-quotes",
                    f"certified {row.key} = {v:.4g} is not quoted in {h.spec_doc}",

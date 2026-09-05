@@ -480,7 +480,7 @@ def test_spec_quotes_needs_the_certified_precision_not_a_substring(renamed_repo)
     doc = renamed_repo / "doc/target-spec.md"
     for text, quoted in (("| gain | >= 60 dB | 62 | (over 1620 samples)", False),
                          ("| gain | >= 60 dB | 62.4 |", True),
-                         ("| gain | >= 60 dB | 62.40 |", True)):
+                         ("| gain | >= 60 dB | 62.40 |", True)):   # {:.2f}, only at |v| >= 1
         doc.write_text(text + "\n")
         L = Lint(load(renamed_repo))
         mod.spec_quotes(L)
