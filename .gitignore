@@ -2,5 +2,7 @@ runs/
 *.raw
 __pycache__/
 experiments/*/out/
+decks/*/out/
 .venv/
-.venv/
+.ruff_cache/
+.pytest_cache/

@@ -5,9 +5,25 @@ description = "<the block, the PDK, the headline number to beat>"
 requires-python = ">=3.11"
 dependencies = [
     "numpy>=1.26",
-    "matplotlib>=3.8",
-    "spicexplorer-harness",
+    "matplotlib>=3.8",          # design.plot
+    "spicexplorer-harness",     # ledger, lints, context pack, spec-as-data (harness.yaml)
+    "spicexplorer-core",        # spice_engine.run_deck (design.sim), spicelib RawRead (design.sim.raw)
+    "spicexplorer-waveview",    # stimulus + eye (design.stimulus, design.eye), WaveDataset/registry (design.sim.dataset)
+    # From outside the platform's uv workspace every transitive spicexplorer-* member must be
+    # named here AND in [tool.uv.sources] — uv applies a path source only to a package the root
+    # project names DIRECTLY, so a member pulled in transitively (analog-db -> circuitgraph)
+    # resolves "not found in the registry" until it is listed here too. Uncomment as a design
+    # pulls them in, then one `uv sync` (`uv run --no-sync` afterwards):
+    # "spicexplorer", "spicexplorer-analog-db", "spicexplorer-circuitgraph", "spicexplorer-netlist2xschem",
+    # The physical lanes; the simulation-only venv stops short of all three (both instantiations
+    # had to add them): gm/ID sizing, the layout generator + render, DRC/LVS/PEX + post-layout.
+    # "spicexplorer-gmid", "spicexplorer-layout", "spicexplorer-signoff",
+    # "pyyaml>=6",                                  # circuit/sizing yaml a generator reads
+    # "nbconvert>=7", "ipykernel>=6", "notebook>=7",  # `make notebooks`
 ]
+
+[dependency-groups]
+dev = ["pytest>=8"]
 
 [tool.uv]
 package = false
@@ -16,7 +32,20 @@ package = false
 # The generic harness (ledger, lints, context pack, spec) comes from the platform checkout that
 # sits beside this repo in spicexplorer-workspace; edit the path if the repo lives elsewhere.
 spicexplorer-harness = { path = "../../spicexplorer-platform/packages/spicexplorer-harness", editable = true }
+spicexplorer-core = { path = "../../spicexplorer-platform/packages/spicexplorer-core", editable = true }
+spicexplorer-waveview = { path = "../../spicexplorer-platform/packages/spicexplorer-waveview", editable = true }
+# spicexplorer = { path = "../../spicexplorer-platform/packages/spicexplorer", editable = true }
+# spicexplorer-analog-db = { path = "../../spicexplorer-platform/examples/analog-db", editable = true }
+# spicexplorer-circuitgraph = { path = "../../spicexplorer-platform/packages/spicexplorer-circuitgraph", editable = true }
+# spicexplorer-netlist2xschem = { path = "../../spicexplorer-platform/packages/spicexplorer-netlist2xschem", editable = true }
+# spicexplorer-gmid = { path = "../../spicexplorer-platform/packages/spicexplorer-gmid", editable = true }
+# spicexplorer-layout = { path = "../../spicexplorer-platform/packages/spicexplorer-layout", editable = true }
+# spicexplorer-signoff = { path = "../../spicexplorer-platform/packages/spicexplorer-signoff", editable = true }
 
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
