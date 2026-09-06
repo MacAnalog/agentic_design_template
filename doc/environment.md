@@ -4,11 +4,45 @@ KIND: REFERENCE (procedural gotchas; recipes that outgrow this file go to `doc/m
 
 | item | value |
 |---|---|
-| PDK | <name>, pinned at <git SHA / version> |
-| simulator lane(s) | <docker image / native binary>, selected by <env var> |
+| PDK | <name>, pinned at <git SHA / version>; its ngspice init file is `$SPICE_USERINIT_DIR/.spiceinit` (**required**: the lane refuses to run without it) |
+| simulator lane | native ngspice through `design/sim.py` = this repo's policy over the platform's `spicexplorer_core.spice_engine.run_deck`: the binary is `$<sim_env>` (`harness.yaml`; default by the prefix rule from `exp_env`, e.g. `FOO_EXP` → `FOO_NGSPICE`, `SIM_NGSPICE` when `exp_env` has no prefix), else `ngspice` on PATH |
 | corner sections | <names as the PDK spells them> |
-| work dir | per checkout, outside the repo |
+| work dir | `$<work_env>` (`harness.yaml`; prefix rule → `FOO_WORK` / `SIM_WORK`), else `$SX_SCRATCH/<design>-<checkout hash>/runs/<label>-<deck hash>/` (else `~/sx-scratch/…`); per checkout, never inside the repo, never under `/tmp` (rejected), never a tool name in the path |
+| per-run init | every run dir gets `.spiceinit` = the PDK's file + `design.sim.SPICEINIT_EXTRA` lines (a compatibility `set`, an extra `osdi` load); a cwd `.spiceinit` shadows `$SPICE_USERINIT_DIR` and `~/.spiceinit`, which is why it is copied, not referenced |
+| layout lane | **two interpreters, deliberately**: `$<PREFIX>_GDS_PYTHON` runs the generator (it needs gdsfactory + the PDK cells; there is no default — an unset variable is an error with its fix, never a home path), while DRC/LVS/PEX run from this venv through `spicexplorer_signoff`. `SIGNOFF_PYTHON`, if set, must import BOTH the PDK runset's own dependencies and the layout API; an interpreter missing one reports `matched=False` with an EMPTY reason and the traceback only in the log |
+| sign-off PDK | `layout/signoff.py` passes one `PDK` to every stage — the rule deck, the render colours and the electromigration limits. Set the module constant or `$<PREFIX>_PDK`; there is deliberately **no default**, because each platform runner has its own and a wrong-but-known PDK passes every stage while meaning nothing |
+| `<PREFIX>` | the harness env-name prefix, derived from `exp_env` (`FOO_EXP` → `FOO_`; `SIM_` when `exp_env` carries no prefix) — the same rule the platform applies to `sim_env`/`work_env`. NOT derived from `sim_env`, which an instance may set to an unrelated binary name |
+| physical lanes | `spicexplorer-gmid` / `-layout` / `-signoff` are commented out of `pyproject.toml`: the simulation-only venv stops short of all three. Uncomment + one `uv sync` before the sizing (gm/ID), layout or PEX work starts |
+| doctor | `make doctor` simulates a one-resistor deck and requires `i_ma = 1` parsed from the log, a rawfile and the per-run init marker; it fails when `SPICE_USERINIT_DIR` is unset or its `.spiceinit` is empty. Once the design has a PDK device, call `preflight(deck, expect)` with its own probe |
 
 ## Gotchas
 
+- ngspice exits 0 after a failed operating point and leaves a rawfile full of zeros. `run_deck`
+  scans the log before anything is trusted (`spicexplorer_core.spice_engine.sim_log.fatal_lines`;
+  `design.sim.SimError` is the platform's `DeckRunError`) and raises on every error-level line:
+  `Error:` lines (e.g. `Error: RHS "v(nowhere)*2" invalid`), the bare strings
+  `doAnalyses: iteration limit reached`, `Transient solution failed`, `timestep too small`,
+  `singular matrix`, `Unknown model type`, `could not find a valid modelname`, `Error on line`,
+  `simulation interrupted`, and the one `Warning:` that hides a wrong deck —
+  `'r1 a 0' is not a valid resistor instance line, ignored!` (a dropped device gives `i_ma = -0.0`
+  and a rawfile). `Warning:`-prefixed forms (`Warning: singular matrix` during gmin stepping) are
+  recoverable and do not fail the run. A non-zero exit code always fails it (`Run.rc`); so does a run
+  with neither a rawfile nor a scalar (this repo's rule, in `design.sim.run`).
+- A failed `.meas` is not fatal. ngspice-45 prints `Error: measure  bad  when(WHEN) : out of interval`
+  followed by ` meas tran bad when v(a)=5 failed!`; the lane skips that `Error:` line and returns
+  the name in `Run.failed`, which `design.metrics.measure` turns into NaN. Successful measures print
+  `good                =  1.500000e-09` and land in `Run.measures` (`sim.parse_measures` =
+  `spicexplorer_core.spice_engine.sim_log.parse_measures`, re-exported by `spicexplorer_waveview`;
+  it reads stdout and stderr, since a body `.meas` in batch mode reports on stderr). A `print`
+  scalar is read only for a named vector — `let x = …` then `print x` — never `print <expression>`.
+- Two runs of the same label and deck at once: the second raises `SimError(... is busy)` instead of
+  clobbering the first (`.busy` holds `<pid> <host>`: a dead or unparsable owner is reclaimed, another
+  user's live process or a fresh foreign-host marker stays busy); different decks under one label get different directories (deck hash).
+- The PDK init file spells paths as `$PDK_ROOT/$PDK`; the lane defaults both from
+  `SPICE_USERINIT_DIR` when they are unset.
+- **Pin the PDK by commit, not by name.** Record the exact revision (and the model-card revision
+  if the PDK versions them separately) in the table above: a PASS measured against a different
+  PDK revision than the baseline's is not comparable, and nothing else in the repo records it.
+- **Trust `--version`, not the install path.** A tool unpacked under a directory named for one
+  release is routinely a different one.
 - <the first trap this lane set for you, and the fix>

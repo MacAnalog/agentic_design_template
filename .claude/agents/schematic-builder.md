@@ -24,7 +24,7 @@ Gates, in order, each recorded in the cell's `build_out.txt`:
 
 Rules: sizes are read-only (reviewer-hostile sizes or fractional `m` are findings to report, not
 things to round); never vendor PDK bytes; two generators never write the same `.sch`; the
-`.sch`/`.sym`/renders you write are yours, the helper scripts, `lab/`, agent definitions and
+`.sch`/`.sym`/renders you write are yours, the helper scripts, `design/`, agent definitions and
 `CLAUDE.md` are proposed as diffs for human review. Report per cell: instance count, gate
 results with the net-bijection table, PNG path, parity deltas, and any new trap (journal entry
 with its index row).
