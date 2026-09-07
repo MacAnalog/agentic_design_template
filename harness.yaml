@@ -41,7 +41,7 @@ reference_scorecard: ""          # e.g. decks/reference/scorecard.json ({"scorec
 # Memory surfaces: entries stay under size_cap (20 KB); the one-line-per-entry index may grow past it.
 memory: {index_size_cap: 32000}
 
-gitignore_must: ["runs/", "*.raw", "__pycache__/", "experiments/*/out/"]
+gitignore_must: ["runs/", "*.raw", "__pycache__/", "experiments/*/out/", ".sx/platform"]
 
 # Provenance scrub: [{pattern, why, flags}] regexes that may not appear anywhere in the tree
 # (flags: "" = case-sensitive; default is case-insensitive). `harness.yaml` and `lint.py` are

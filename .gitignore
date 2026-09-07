@@ -6,3 +6,4 @@ decks/*/out/
 .venv/
 .ruff_cache/
 .pytest_cache/
+.sx/platform

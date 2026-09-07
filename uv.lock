@@ -28,9 +28,9 @@ dev = [
 requires-dist = [
     { name = "matplotlib", specifier = ">=3.8" },
     { name = "numpy", specifier = ">=1.26" },
-    { name = "spicexplorer-core", editable = "../../spicexplorer-platform/packages/spicexplorer-core" },
-    { name = "spicexplorer-harness", editable = "../../spicexplorer-platform/packages/spicexplorer-harness" },
-    { name = "spicexplorer-waveview", editable = "../../spicexplorer-platform/packages/spicexplorer-waveview" },
+    { name = "spicexplorer-core", editable = ".sx/platform/packages/spicexplorer-core" },
+    { name = "spicexplorer-harness", editable = ".sx/platform/packages/spicexplorer-harness" },
+    { name = "spicexplorer-waveview", editable = ".sx/platform/packages/spicexplorer-waveview" },
 ]
 
 [package.metadata.requires-dev]
@@ -1026,7 +1026,7 @@ resolution-markers = [
     "python_full_version < '3.12'",
 ]
 dependencies = [
-    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" } },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/7a/97/5a3609c4f8d58b039179648e62dd220f89864f56f7357f5d4f45c29eb2cc/scipy-1.17.1.tar.gz", hash = "sha256:95d8e012d8cb8816c226aef832200b1d45109ed4464303e997c5b13122b297c0", size = 30573822, upload-time = "2026-02-23T00:26:24.851Z" }
 wheels = [
@@ -1100,7 +1100,7 @@ resolution-markers = [
     "python_full_version >= '3.12'",
 ]
 dependencies = [
-    { name = "numpy", version = "2.5.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+    { name = "numpy", version = "2.5.2", source = { registry = "https://pypi.org/simple" } },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/7e/74/66de6258867beb2ef08f35f9f2ac017a52cacd5081714d239ff1a442d458/scipy-1.18.1.tar.gz", hash = "sha256:52c4b7422442aba924d03ad4019852b08a92e64ea187b933135687bfe2747307", size = 30781235, upload-time = "2026-08-21T23:28:50.599Z" }
 wheels = [
@@ -1196,7 +1196,7 @@ wheels = [
 [[package]]
 name = "spicexplorer-core"
 version = "0.0.0"
-source = { editable = "../../spicexplorer-platform/packages/spicexplorer-core" }
+source = { editable = ".sx/platform/packages/spicexplorer-core" }
 dependencies = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "numpy", version = "2.5.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
@@ -1212,7 +1212,7 @@ requires-dist = [
 [[package]]
 name = "spicexplorer-harness"
 version = "0.0.0"
-source = { editable = "../../spicexplorer-platform/packages/spicexplorer-harness" }
+source = { editable = ".sx/platform/packages/spicexplorer-harness" }
 dependencies = [
     { name = "pyyaml" },
 ]
@@ -1227,7 +1227,7 @@ provides-extras = ["neo4j"]
 [[package]]
 name = "spicexplorer-waveview"
 version = "0.0.0"
-source = { editable = "../../spicexplorer-platform/packages/spicexplorer-waveview" }
+source = { editable = ".sx/platform/packages/spicexplorer-waveview" }
 dependencies = [
     { name = "matplotlib" },
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
@@ -1250,7 +1250,7 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2" },
     { name = "scipy", specifier = ">=1.11" },
     { name = "spicelib", specifier = ">=1.5,<1.6" },
-    { name = "spicexplorer-core", editable = "../../spicexplorer-platform/packages/spicexplorer-core" },
+    { name = "spicexplorer-core", editable = ".sx/platform/packages/spicexplorer-core" },
 ]
 
 [[package]]

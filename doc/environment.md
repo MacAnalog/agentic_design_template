@@ -4,6 +4,8 @@ KIND: REFERENCE (procedural gotchas; recipes that outgrow this file go to `doc/m
 
 | item | value |
 |---|---|
+| `SX_ROOT` | the SpiceXplorer workspace checkout (`spicexplorer-workspace`: platform + tools + docs). Read-only for designers on the lab workstation (`/opt/macanalog/spicexplorer-workspace`, admin-updated), or your own clone; exported by `~/.sx_env`. `make init` turns it into the git-ignored link `.sx/platform`, which `pyproject.toml` installs the `spicexplorer-*` packages through (uv does not expand env vars in a source path, so the link is the pointer). `SPICEXPLORER_ROOT`, the platform's own root variable, is `$SX_ROOT/spicexplorer-platform` |
+| `.sx/skills` | the `analog-skill-directory` submodule (shared agents, skills, guard hooks) pinned per design; `.claude/agents/*` and `.claude/skills/*` are per-entry symlinks into it (`bin/sx-link`, run by `make init`; `make lint` checks they resolve) |
 | PDK | <name>, pinned at <git SHA / version>; its ngspice init file is `$SPICE_USERINIT_DIR/.spiceinit` (**required**: the lane refuses to run without it) |
 | simulator lane | native ngspice through `design/sim.py` = this repo's policy over the platform's `spicexplorer_core.spice_engine.run_deck`: the binary is `$<sim_env>` (`harness.yaml`; default by the prefix rule from `exp_env`, e.g. `FOO_EXP` → `FOO_NGSPICE`, `SIM_NGSPICE` when `exp_env` has no prefix), else `ngspice` on PATH |
 | corner sections | <names as the PDK spells them> |
