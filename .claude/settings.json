@@ -1,23 +1,77 @@
 {
-  "_comment": "Drop-in `.claude/settings.json` for a repo whose skill library is the `.sx/skills` submodule (a design repo). The design-directory root uses `analog-skill-directory/` instead — see macanalog-design-directory/.claude/settings.json. Both guard sets also run from each person's own config dir on the workstation; a guard firing twice is harmless.",
   "permissions": {
-    "deny": ["Read(//CMC)", "Read(//CMC/**)", "Edit(//CMC)", "Edit(//CMC/**)", "Grep(//CMC/**)"],
+    "deny": [
+      "Read(//CMC)",
+      "Read(//CMC/**)",
+      "Edit(//CMC)",
+      "Edit(//CMC/**)",
+      "Grep(//CMC/**)"
+    ],
     "allow": [
-      "Bash(make:*)", "Bash(uv run:*)", "Bash(uv sync:*)", "Bash(uv lock:*)",
-      "Bash(git status:*)", "Bash(git diff:*)", "Bash(git log:*)", "Bash(git submodule status:*)",
-      "Bash(python3 .sx/skills/hooks/naming_guard.py:*)", "Bash(python3 .sx/skills/hooks/pdk_guard.py:*)",
+      "Bash(make:*)",
+      "Bash(uv run:*)",
+      "Bash(uv sync:*)",
+      "Bash(uv lock:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git submodule status:*)",
+      "Bash(python3 .sx/skills/hooks/naming_guard.py:*)",
+      "Bash(python3 .sx/skills/hooks/pdk_guard.py:*)",
       "Bash(.sx/skills/bin/sx-link:*)"
     ]
   },
   "hooks": {
     "PreToolUse": [
-      {"matcher": "Bash", "hooks": [{"type": "command", "command": "bash \"$CLAUDE_PROJECT_DIR/.sx/skills/hooks/deny-cmc-hook.sh\"", "timeout": 5}]},
-      {"matcher": "Bash|Read", "hooks": [{"type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/.sx/skills/hooks/pdk_guard.py\" --hook", "timeout": 10}]},
-      {"matcher": "Bash|Write|Edit", "hooks": [{"type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/.sx/skills/hooks/naming_guard.py\" --hook", "timeout": 10}]}
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ -f \"$CLAUDE_PROJECT_DIR/.sx/skills/hooks/deny-cmc-hook.sh\" ]; then bash \"$CLAUDE_PROJECT_DIR/.sx/skills/hooks/deny-cmc-hook.sh\"; else echo \"guard hooks inactive until make init (.sx/skills missing)\" >&2; fi",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Bash|Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ -f \"$CLAUDE_PROJECT_DIR/.sx/skills/hooks/pdk_guard.py\" ]; then python3 \"$CLAUDE_PROJECT_DIR/.sx/skills/hooks/pdk_guard.py\" --hook; else echo \"guard hooks inactive until make init (.sx/skills missing)\" >&2; fi",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "Bash|Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ -f \"$CLAUDE_PROJECT_DIR/.sx/skills/hooks/naming_guard.py\" ]; then python3 \"$CLAUDE_PROJECT_DIR/.sx/skills/hooks/naming_guard.py\" --hook; else echo \"guard hooks inactive until make init (.sx/skills missing)\" >&2; fi",
+            "timeout": 10
+          }
+        ]
+      }
     ],
     "PostToolUse": [
-      {"matcher": "Bash", "hooks": [{"type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/.sx/skills/hooks/pdk_guard.py\" --detect", "timeout": 10}]}
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ -f \"$CLAUDE_PROJECT_DIR/.sx/skills/hooks/pdk_guard.py\" ]; then python3 \"$CLAUDE_PROJECT_DIR/.sx/skills/hooks/pdk_guard.py\" --detect; else echo \"guard hooks inactive until make init (.sx/skills missing)\" >&2; fi",
+            "timeout": 10
+          }
+        ]
+      }
     ]
   },
-  "sandbox": {"filesystem": {"denyRead": ["/CMC"]}}
+  "sandbox": {
+    "filesystem": {
+      "denyRead": [
+        "/CMC"
+      ]
+    }
+  }
 }
