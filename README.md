@@ -48,6 +48,6 @@ definitions and method notes under `.claude/`.
 | `pdf/` | papers + `INDEX.md` (cite by handle) |
 | `.sx/` | per-checkout plumbing: `platform` (git-ignored link to `$SX_ROOT/spicexplorer-platform`) and `skills` (the `analog-skill-directory` submodule: shared agents, skills, guard hooks, `bin/sx-link`) |
 | `.claude/agents/` | links into `.sx/skills/agents/`: variant-runner, signoff-verifier, schematic-builder, paper-analyst, gardener + the layout chain (brief-author, designer, reviewer, schematic-codesign); design-specific agents are plain files beside them |
-| `.claude/skills/` | links into `.sx/skills/skills/`: the visual-evidence methods (schematic of record, testbench schematics, findings as plots, layout evidence), gm/ID sizing + LUTs, current mirrors, layout annotation, neutral naming, the Cadence journal, spectre/virtuoso |
+| `.claude/skills/` | links into `.sx/skills/skills/`: the visual-evidence methods (schematic of record, testbench schematics, findings as plots, layout evidence), gm/ID sizing + LUTs, current mirrors, layout annotation, neutral naming, the remote-simulator learning journal and the bridge's two simulator skills |
 | `.claude/settings.json` | the guard hooks (NDA kit bytes, tool-neutral naming, `/CMC`) running from `.sx/skills/hooks/` |
 | `runs/` | `ledger.ndjson`, git-ignored; keeper numbers graduate into experiment READMEs |
