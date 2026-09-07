@@ -49,5 +49,5 @@ definitions and method notes under `.claude/`.
 | `.sx/` | per-checkout plumbing: `platform` (git-ignored link to `$SX_ROOT/spicexplorer-platform`) and `skills` (the `analog-skill-directory` submodule: shared agents, skills, guard hooks, `bin/sx-link`) |
 | `.claude/agents/` | links into `.sx/skills/agents/`: variant-runner, signoff-verifier, schematic-builder, paper-analyst, gardener + the layout chain (brief-author, designer, reviewer, schematic-codesign); design-specific agents are plain files beside them |
 | `.claude/skills/` | links into `.sx/skills/skills/`: the visual-evidence methods (schematic of record, testbench schematics, findings as plots, layout evidence), gm/ID sizing + LUTs, current mirrors, layout annotation, neutral naming, the remote-simulator learning journal and the bridge's two simulator skills |
-| `.claude/settings.json` | the guard hooks (NDA kit bytes, tool-neutral naming, `/CMC`) running from `.sx/skills/hooks/` |
+| `.claude/settings.json` | the one hook (`.sx/skills/hooks/cmc_ask_hook.py`): anything under `/CMC` asks for permission; nothing else is blocked (owner ruling 2026-09-07) |
 | `runs/` | `ledger.ndjson`, git-ignored; keeper numbers graduate into experiment READMEs |
