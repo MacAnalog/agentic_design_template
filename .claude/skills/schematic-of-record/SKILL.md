@@ -8,6 +8,18 @@ description: Turn a certified SPICE netlist into the human-readable xschem schem
 **Generate, never transcribe.** Every size, net and model comes from the as-built netlist; the
 drawing is a projection of it, and two gates prove the projection is faithful.
 
+## What counts as a schematic
+
+A request for a schematic — "see the circuit", "draw it", "the equivalent schematic of this
+model" — means an **xschem `.sch`/`.sym` produced by this method**, with its committed render: a
+drawing generated from the netlist and proven equal to it by the two gates below. A hand-drawn
+SVG, a block diagram, a sketch on a report page or a netlist listing is not a schematic and must
+not be offered as one; if the sheet does not exist yet, build it (the `schematic-builder` agent)
+and then show the render. The one exception is a cell that has **already been ported to the
+commercial schematic editor** through the bridge's `xvport` lane: there the ported cellview is the
+schematic of record, and the deliverable is its render or cellview name, kept identical to the
+`.sch` by the circuitgraph check.
+
 ## Flow
 
 1. **Draw from the netlist.** Start with the platform generator, which places rails, stacks,
