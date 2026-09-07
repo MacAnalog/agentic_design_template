@@ -49,6 +49,8 @@ spec of record is `doc/target-spec.md`, its machine twin `spec:` in `harness.yam
   simulated there, and only results come back. Kit bytes never reach the workstation or the model — anything
   under `/CMC` asks for the person's permission (the one hook); every server-side artifact is design-named,
   never tool-named (`naming_guard --scan` audits it).
+  **A declined `/CMC` prompt is never a stop:** continue without those bytes (the kit is consumed by path
+  on the server; open-PDK files are unrestricted; ask the person one sentence if a kit fact is needed).
 - **SpiceXplorer first.** Before writing a script, use what exists and compose it: the platform packages
   (`spicexplorer_core` — `spice_engine.run_deck`, measurements; `spicexplorer_harness` — ledger, pack, lint,
   spec; `spicexplorer-optimize`; `spicexplorer_gmid`; `spicexplorer_layout` + `spicexplorer_signoff`;
