@@ -46,8 +46,9 @@ spec of record is `doc/target-spec.md`, its machine twin `spec:` in `harness.yam
   on the workstation; `make doctor` proves the lane. An open-PDK bench is never routed through the commercial tools.
 - **Commercial PDK under NDA → the bridge lane only.** Those simulations run on the EDA server through the lab's
   remote-simulator bridge (the bridge submodule under `.sx/skills/external/` and its two simulator skills linked into `.claude/skills/`): decks are built here, uploaded by basename with *relative* `include`s,
-  simulated there, and only results come back. Kit bytes never reach the workstation or the model (`pdk_guard`
-  blocks it); every server-side artifact is design-named, never tool-named (`naming_guard`).
+  simulated there, and only results come back. Kit bytes never reach the workstation or the model — anything
+  under `/CMC` asks for the person's permission (the one hook); every server-side artifact is design-named,
+  never tool-named (`naming_guard --scan` audits it).
 - **SpiceXplorer first.** Before writing a script, use what exists and compose it: the platform packages
   (`spicexplorer_core` — `spice_engine.run_deck`, measurements; `spicexplorer_harness` — ledger, pack, lint,
   spec; `spicexplorer-optimize`; `spicexplorer_gmid`; `spicexplorer_layout` + `spicexplorer_signoff`;

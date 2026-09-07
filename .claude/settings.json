@@ -1,11 +1,10 @@
 {
   "permissions": {
-    "deny": [
-      "Read(//CMC)",
+    "ask": [
       "Read(//CMC/**)",
-      "Edit(//CMC)",
       "Edit(//CMC/**)",
-      "Grep(//CMC/**)"
+      "Grep(//CMC/**)",
+      "Glob(//CMC/**)"
     ],
     "allow": [
       "Bash(make:*)",
@@ -16,62 +15,21 @@
       "Bash(git diff:*)",
       "Bash(git log:*)",
       "Bash(git submodule status:*)",
-      "Bash(python3 .sx/skills/hooks/naming_guard.py:*)",
-      "Bash(python3 .sx/skills/hooks/pdk_guard.py:*)",
       "Bash(.sx/skills/bin/sx-link:*)"
     ]
   },
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Bash",
+        "matcher": "Bash|Read|Grep|Glob|Edit|Write|MultiEdit|NotebookEdit",
         "hooks": [
           {
             "type": "command",
-            "command": "if [ -f \"$CLAUDE_PROJECT_DIR/.sx/skills/hooks/deny-cmc-hook.sh\" ]; then bash \"$CLAUDE_PROJECT_DIR/.sx/skills/hooks/deny-cmc-hook.sh\"; else echo \"guard hooks inactive until make init (.sx/skills missing)\" >&2; fi",
+            "command": "if [ -f \"$CLAUDE_PROJECT_DIR/.sx/skills/hooks/cmc_ask_hook.py\" ]; then python3 \"$CLAUDE_PROJECT_DIR/.sx/skills/hooks/cmc_ask_hook.py\"; fi",
             "timeout": 5
-          }
-        ]
-      },
-      {
-        "matcher": "Bash|Read",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "if [ -f \"$CLAUDE_PROJECT_DIR/.sx/skills/hooks/pdk_guard.py\" ]; then python3 \"$CLAUDE_PROJECT_DIR/.sx/skills/hooks/pdk_guard.py\" --hook; else echo \"guard hooks inactive until make init (.sx/skills missing)\" >&2; fi",
-            "timeout": 10
-          }
-        ]
-      },
-      {
-        "matcher": "Bash|Write|Edit",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "if [ -f \"$CLAUDE_PROJECT_DIR/.sx/skills/hooks/naming_guard.py\" ]; then python3 \"$CLAUDE_PROJECT_DIR/.sx/skills/hooks/naming_guard.py\" --hook; else echo \"guard hooks inactive until make init (.sx/skills missing)\" >&2; fi",
-            "timeout": 10
-          }
-        ]
-      }
-    ],
-    "PostToolUse": [
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "if [ -f \"$CLAUDE_PROJECT_DIR/.sx/skills/hooks/pdk_guard.py\" ]; then python3 \"$CLAUDE_PROJECT_DIR/.sx/skills/hooks/pdk_guard.py\" --detect; else echo \"guard hooks inactive until make init (.sx/skills missing)\" >&2; fi",
-            "timeout": 10
           }
         ]
       }
     ]
-  },
-  "sandbox": {
-    "filesystem": {
-      "denyRead": [
-        "/CMC"
-      ]
-    }
   }
 }
