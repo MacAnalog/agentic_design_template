@@ -68,6 +68,9 @@ record), `gardener` (report-only, by design). Visual evidence is not optional: `
 `schematic-of-record`, `testbench-schematic` (components, not text), `findings-as-plots` (spec
 boxes on figures), `layout-evidence` (brief → generator → GDS → DRC/Jmax/LVS/PEX → review, via the
 workspace `layout-*` agents) — say how each is produced and gated.
+A request for a schematic means the xschem sheet of record built by `schematic-of-record`
+(never an ad-hoc drawing); only a cell already ported through the bridge's `xvport` lane is shown
+from its ported cellview instead.
 
 ## Parallel sessions, blast radius, git
 
