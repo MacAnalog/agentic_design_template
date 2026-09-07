@@ -29,18 +29,21 @@ dev = ["pytest>=8"]
 package = false
 
 [tool.uv.sources]
-# The generic harness (ledger, lints, context pack, spec) comes from the platform checkout that
-# sits beside this repo in spicexplorer-workspace; edit the path if the repo lives elsewhere.
-spicexplorer-harness = { path = "../../spicexplorer-platform/packages/spicexplorer-harness", editable = true }
-spicexplorer-core = { path = "../../spicexplorer-platform/packages/spicexplorer-core", editable = true }
-spicexplorer-waveview = { path = "../../spicexplorer-platform/packages/spicexplorer-waveview", editable = true }
-# spicexplorer = { path = "../../spicexplorer-platform/packages/spicexplorer", editable = true }
-# spicexplorer-analog-db = { path = "../../spicexplorer-platform/examples/analog-db", editable = true }
-# spicexplorer-circuitgraph = { path = "../../spicexplorer-platform/packages/spicexplorer-circuitgraph", editable = true }
-# spicexplorer-netlist2xschem = { path = "../../spicexplorer-platform/packages/spicexplorer-netlist2xschem", editable = true }
-# spicexplorer-gmid = { path = "../../spicexplorer-platform/packages/spicexplorer-gmid", editable = true }
-# spicexplorer-layout = { path = "../../spicexplorer-platform/packages/spicexplorer-layout", editable = true }
-# spicexplorer-signoff = { path = "../../spicexplorer-platform/packages/spicexplorer-signoff", editable = true }
+# The platform packages come from the SpiceXplorer workspace checkout `$SX_ROOT` through the
+# git-ignored link `.sx/platform -> $SX_ROOT/spicexplorer-platform` that `make init` creates. The
+# path is deliberately relative (uv does not expand env vars here), so uv.lock stays portable and
+# the design repo can live anywhere — a design directory, a laptop — as long as SX_ROOT is set.
+# A read-only SX_ROOT works: editable installs write only into this repo's .venv.
+spicexplorer-harness = { path = ".sx/platform/packages/spicexplorer-harness", editable = true }
+spicexplorer-core = { path = ".sx/platform/packages/spicexplorer-core", editable = true }
+spicexplorer-waveview = { path = ".sx/platform/packages/spicexplorer-waveview", editable = true }
+# spicexplorer = { path = ".sx/platform/packages/spicexplorer", editable = true }
+# spicexplorer-analog-db = { path = ".sx/platform/examples/analog-db", editable = true }
+# spicexplorer-circuitgraph = { path = ".sx/platform/packages/spicexplorer-circuitgraph", editable = true }
+# spicexplorer-netlist2xschem = { path = ".sx/platform/packages/spicexplorer-netlist2xschem", editable = true }
+# spicexplorer-gmid = { path = ".sx/platform/packages/spicexplorer-gmid", editable = true }
+# spicexplorer-layout = { path = ".sx/platform/packages/spicexplorer-layout", editable = true }
+# spicexplorer-signoff = { path = ".sx/platform/packages/spicexplorer-signoff", editable = true }
 
 [tool.ruff]
 line-length = 100

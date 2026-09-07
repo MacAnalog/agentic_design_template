@@ -14,7 +14,9 @@ from __future__ import annotations
 
 import importlib
 import json
+import os
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -108,8 +110,34 @@ def spec_quotes(L: Lint) -> None:
                    f"copy the certified number across (e.g. `{written[0]}`), or re-certify")
 
 
+def sx_links(L: Lint) -> None:
+    """`.sx/platform` is a platform checkout and every linked agent/skill resolves (`make init`).
+
+    The platform packages install through `.sx/platform` and the shared agent/skill definitions
+    are per-entry symlinks into the `.sx/skills` submodule; a checkout where either dangles runs
+    with no harness or with no agents, silently. Both are per-checkout state, so `make init` is
+    the fix in every case.
+    """
+    root = L.h.root
+    plat = root / ".sx" / "platform"
+    if not (plat / "packages" / "spicexplorer-harness" / "pyproject.toml").is_file():
+        where = os.readlink(plat) if plat.is_symlink() else "missing"
+        L.fail("sx-links", f".sx/platform does not resolve to a spicexplorer-platform checkout ({where})",
+               "export SX_ROOT=<your spicexplorer-workspace checkout> (the lab: ~/.sx_env) and run `make init`")
+    tool = root / ".sx" / "skills" / "bin" / "sx-link"
+    if not tool.is_file():
+        L.fail("sx-links", ".sx/skills (the analog-skill-directory submodule) is not initialised",
+               "run `make init` (= git submodule update --init --recursive .sx/skills, then the links)")
+        return
+    r = subprocess.run([str(tool), str(root), "--set", "design", "--check"], capture_output=True, text=True)
+    if r.returncode:
+        first = next((ln for ln in r.stdout.splitlines() if ln and not ln.startswith(" ")), "links missing")
+        L.fail("sx-links", first.strip(), "run `make init` (re-links every entry from .sx/skills; a "
+               "nested submodule needs the --recursive it does)")
+
+
 # `package-importable` is NOT here: the platform ships it (driven by `package:` in harness.yaml).
-EXTRA = (deck_rebuild, spec_quotes)
+EXTRA = (deck_rebuild, spec_quotes, sx_links)
 
 if __name__ == "__main__":
     sys.exit(lint.main(load(REPO), extra=EXTRA))

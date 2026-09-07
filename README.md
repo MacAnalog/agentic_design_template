@@ -8,16 +8,21 @@ definitions and method notes under `.claude/`.
 
 ## Instantiate
 
+0. `export SX_ROOT=<your spicexplorer-workspace checkout>` (the lab's `~/.sx_env` does this) and
+   `make init`: links `.sx/platform -> $SX_ROOT/spicexplorer-platform`, initialises the `.sx/skills`
+   library (analog-skill-directory) with its agent/skill links, and runs `uv sync`. Repeat in every
+   new checkout or worktree. Prefer `make new` in `macanalog-design-directory`, which names the repo
+   by the lab convention and does this for you.
 1. Copy the tree; fill `harness.yaml`, `pyproject.toml` (name, description) and every `<…>`
    in `CLAUDE.md` and `doc/`. Rename the design package: `git mv design <name>`, set
    `package:` in `harness.yaml`, and update the imports plus `Makefile` and
    `experiments/_template/` (`make lint` checks the package is importable; `layout/signoff.py`
    and `scripts/lint.py` resolve it from `package:` and need no edit).
    It is named for the DESIGN — the instances are `ldo/` and `mzm_tx/`.
-2. `uv sync` — the harness, core and waveview are editable path dependencies on the sibling
-   platform checkout (`../../spicexplorer-platform`); edit those paths in `pyproject.toml` if the
-   repo lives elsewhere (every further `spicexplorer-*` member a design pulls in must be named
-   in both `dependencies` and `[tool.uv.sources]`).
+2. The harness, core and waveview are editable path dependencies through `.sx/platform`
+   (`make init` made the link; a read-only `SX_ROOT` is fine). Every further `spicexplorer-*`
+   member a design pulls in must be named in both `dependencies` and `[tool.uv.sources]`, then
+   `uv sync` once.
 3. `make doctor` must report the lane alive (`design/sim.py` is a thin policy layer over the
    platform's `run_deck`: a one-resistor deck through ngspice with a per-run `.spiceinit`). Then
    implement `design/dut.py` (`benches()` + `deck(bench)`) and `design/metrics.py`'s `KEYMAP`;
@@ -41,6 +46,8 @@ definitions and method notes under `.claude/`.
 | `experiments/NNN-*/` | one directory per hypothesis; `_template/` is the shape — `README.md`, `run.py` (simulates into git-ignored `out/` and committed `figs/`) and `mk_readme.py` (regenerates the README from `out/*.json`) |
 | `notebooks/` | executed in place by `make notebooks`, outputs committed |
 | `pdf/` | papers + `INDEX.md` (cite by handle) |
-| `.claude/agents/` | variant-runner, signoff-verifier, schematic-builder, paper-analyst, gardener |
-| `.claude/skills/` | the visual-evidence methods: schematic of record, testbench schematics, findings as plots, layout evidence |
+| `.sx/` | per-checkout plumbing: `platform` (git-ignored link to `$SX_ROOT/spicexplorer-platform`) and `skills` (the `analog-skill-directory` submodule: shared agents, skills, guard hooks, `bin/sx-link`) |
+| `.claude/agents/` | links into `.sx/skills/agents/`: variant-runner, signoff-verifier, schematic-builder, paper-analyst, gardener + the layout chain (brief-author, designer, reviewer, schematic-codesign); design-specific agents are plain files beside them |
+| `.claude/skills/` | links into `.sx/skills/skills/`: the visual-evidence methods (schematic of record, testbench schematics, findings as plots, layout evidence), gm/ID sizing + LUTs, current mirrors, layout annotation, neutral naming, the remote-simulator learning journal and the bridge's two simulator skills |
+| `.claude/settings.json` | the guard hooks (NDA kit bytes, tool-neutral naming, `/CMC`) running from `.sx/skills/hooks/` |
 | `runs/` | `ledger.ndjson`, git-ignored; keeper numbers graduate into experiment READMEs |
