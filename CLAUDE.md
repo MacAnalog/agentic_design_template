@@ -39,6 +39,23 @@ spec of record is `doc/target-spec.md`, its machine twin `spec:` in `harness.yam
   deliberately carries no provenance block, and `--certify` writes nothing if a bench failed. Until
   `reference_scorecard:` names one **`make check` SKIPs (exit 0): a no-op, not a pass**.
 
+## Simulation lanes and reuse (contract for every agent in this repo)
+
+- **Open-source PDK (IHP SG13G2, sky130, gf180 …) → the open lane.** ngspice (with OSDI/openvaf models) through this repo's lane
+  module (`design/sim.py`), KLayout / magic / netgen / kpex for layout and sign-off, xschem for schematics — natively
+  on the workstation; `make doctor` proves the lane. An open-PDK bench is never routed through the commercial tools.
+- **Commercial PDK under NDA → the bridge lane only.** Those simulations run on the EDA server through the lab's
+  remote-simulator bridge (the bridge submodule under `.sx/skills/external/` and its two simulator skills linked into `.claude/skills/`): decks are built here, uploaded by basename with *relative* `include`s,
+  simulated there, and only results come back. Kit bytes never reach the workstation or the model (`pdk_guard`
+  blocks it); every server-side artifact is design-named, never tool-named (`naming_guard`).
+- **SpiceXplorer first.** Before writing a script, use what exists and compose it: the platform packages
+  (`spicexplorer_core` — `spice_engine.run_deck`, measurements; `spicexplorer_harness` — ledger, pack, lint,
+  spec; `spicexplorer-optimize`; `spicexplorer_gmid`; `spicexplorer_layout` + `spicexplorer_signoff`;
+  `spicexplorer_waveview`; `spicexplorer_circuitgraph`; `spicexplorer_netlist2xschem`), the orchestration
+  workflows and MCP tools (`spicexplorer_orchestration.workflows`: layout, sizing, campaign, sign-off,
+  literature), and the reusable agents and skills in `.sx/skills` (the lab's `analog-skill-directory`). A missing function is added to the platform or the
+  library by PR (gap-as-signal), never reimplemented privately in this repo.
+
 ## Rules (mechanically enforced where possible; the rest is contract)
 
 1. **Reference first.** A number that has not passed the frozen definitions is a claim.
