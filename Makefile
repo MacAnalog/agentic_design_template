@@ -21,6 +21,12 @@ init:  ## set up this checkout: .sx/platform -> $$SX_ROOT/spicexplorer-platform,
 	@uv sync
 	@echo "init OK: .sx/platform -> $$(readlink .sx/platform); $$(ls .claude/agents | wc -l) agents + $$(ls .claude/skills | wc -l) skills linked from .sx/skills; next: make doctor"
 
+skills-update:  ## move .sx/skills (the shared agent/skill library) to its main, re-link, and stage the pin — then commit it
+	@git -C .sx/skills fetch -q origin main && git -C .sx/skills checkout -q origin/main
+	@.sx/skills/bin/sx-link . --set design
+	@git add .sx/skills .claude
+	@echo "skills @ $$(git -C .sx/skills rev-parse --short HEAD): $$(ls .claude/agents | wc -l) agents + $$(ls .claude/skills | wc -l) skills linked; staged — commit the pin: git commit -m 'skills: bump .sx/skills to $$(git -C .sx/skills rev-parse --short HEAD)'"
+
 lint:  ## repo invariants (harness.yaml + scripts/lint.py extras); failures carry their remediation
 	@$(PY) scripts/lint.py
 
@@ -57,4 +63,4 @@ clean:  ## delete this checkout's work dir + experiment output (never the ledger
 	@d=$$($(PY) -c "from design.sim import work; print(work())" 2>/dev/null); \
 	  [ -n "$$d" ] && echo "rm -rf $$d" && rm -rf "$$d"; rm -rf experiments/*/out/
 
-.PHONY: help init lint check baseline certify pack runs freeze doctor test notebooks clean
+.PHONY: help init skills-update lint check baseline certify pack runs freeze doctor test notebooks clean
