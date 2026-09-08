@@ -96,7 +96,8 @@ spec of record is `doc/target-spec.md`, its machine twin `spec:` in `harness.yam
 
 The shared definitions are **links** into `.sx/skills` (the lab's `analog-skill-directory`, a
 pinned submodule): never edit a linked file in place — change it in the library by PR and bump the
-pin; a design-specific agent is a plain file beside the links. In `.claude/agents/` (each starts
+pin (`make skills-update` moves the pin to the library's main and re-links; commit what it stages — do it at the
+start of a session when `make status` in the design directory says the design's skills are behind); a design-specific agent is a plain file beside the links. In `.claude/agents/` (each starts
 from `make pack`, reads `harness.yaml`, obeys rules 7–10):
 `paper-analyst` (paper → falsifiable brief; never simulates), `variant-runner` (parallel batches),
 `signoff-verifier` (re-measures independently, signs the row), `schematic-builder` (the `.sch` of
