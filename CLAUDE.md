@@ -44,13 +44,16 @@ spec of record is `doc/target-spec.md`, its machine twin `spec:` in `harness.yam
 - **Open-source PDK (IHP SG13G2, sky130, gf180 …) → the open lane.** ngspice (with OSDI/openvaf models) through this repo's lane
   module (`design/sim.py`), KLayout / magic / netgen / kpex for layout and sign-off, xschem for schematics — natively
   on the workstation; `make doctor` proves the lane. An open-PDK bench is never routed through the commercial tools.
-- **Commercial PDK under NDA → the bridge lane only.** Those simulations run on the EDA server through the lab's
-  remote-simulator bridge (the bridge submodule under `.sx/skills/external/` and its two simulator skills linked into `.claude/skills/`): decks are built here, uploaded by basename with *relative* `include`s,
-  simulated there, and only results come back. Kit bytes never reach the workstation or the model — anything
-  under `/CMC` asks for the person's permission (the one hook); every server-side artifact is design-named,
-  never tool-named (`naming_guard --scan` audits it).
-  **A declined `/CMC` prompt is never a stop:** continue without those bytes (the kit is consumed by path
-  on the server; open-PDK files are unrestricted; ask the person one sentence if a kit fact is needed).
+- **Commercial PDK under NDA → the bridge lane only, through the platform's `spicexplorer-spectre`.** Those simulations
+  run on the EDA server through the lab's remote-simulator bridge; the reusable half of that lane is the platform package
+  `spicexplorer_spectre` (`lane.run_deck` for deck text, `lane.run_dir` for a whole netlist directory, `results`, the
+  `doctor` probe, and `sx-spectre`, a launcher callable exactly like the `spectre` binary). This repo's `design/sim.py`
+  WRAPS it — the repo's policy only: where runs go, which env vars, the mode, the doctor's expected keys — and never
+  carries a private bridge driver, so a lane bug is fixed once, in the platform, for every design. Depend on
+  `spicexplorer-spectre` (see `pyproject.toml`); do not name `virtuoso-bridge` yourself — the platform pins it. Decks
+  are built here, uploaded by basename with *relative* `include`s, simulated there, and only results come back. Kit
+  bytes never reach the workstation or the model — anything under `/CMC` asks for the person's permission (the one
+  hook); every server-side artifact is design-named, never tool-named.
 - **SpiceXplorer first.** Before writing a script, use what exists and compose it: the platform packages
   (`spicexplorer_core` — `spice_engine.run_deck`, measurements; `spicexplorer_harness` — ledger, pack, lint,
   spec; `spicexplorer-optimize`; `spicexplorer_gmid`; `spicexplorer_layout` + `spicexplorer_signoff`;

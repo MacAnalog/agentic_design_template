@@ -18,6 +18,10 @@ dependencies = [
     # The physical lanes; the simulation-only venv stops short of all three (both instantiations
     # had to add them): gm/ID sizing, the layout generator + render, DRC/LVS/PEX + post-layout.
     # "spicexplorer-gmid", "spicexplorer-layout", "spicexplorer-signoff",
+    # A commercial-PDK design: the bridge lane (deck in, PSF dir out, doctor, `sx-spectre`). It brings
+    # `virtuoso-bridge` with it, pinned by the platform — do NOT name virtuoso-bridge here (a second
+    # source for one package makes uv refuse to resolve). `design/sim.py` then wraps `spicexplorer_spectre`.
+    # "spicexplorer-spectre",
     # "pyyaml>=6",                                  # circuit/sizing yaml a generator reads
     # "nbconvert>=7", "ipykernel>=6", "notebook>=7",  # `make notebooks`
 ]
@@ -35,6 +39,7 @@ package = false
 # the design repo can live anywhere — a design directory, a laptop — as long as SX_ROOT is set.
 # A read-only SX_ROOT works: editable installs write only into this repo's .venv.
 spicexplorer-harness = { path = ".sx/platform/packages/spicexplorer-harness", editable = true }
+# spicexplorer-spectre = { path = ".sx/platform/packages/spicexplorer-spectre", editable = true }
 spicexplorer-core = { path = ".sx/platform/packages/spicexplorer-core", editable = true }
 spicexplorer-waveview = { path = ".sx/platform/packages/spicexplorer-waveview", editable = true }
 # spicexplorer = { path = ".sx/platform/packages/spicexplorer", editable = true }
