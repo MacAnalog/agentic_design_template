@@ -93,6 +93,8 @@ spec of record is `doc/target-spec.md`, its machine twin `spec:` in `harness.yam
    skill: quick fix (one concern, ≤ ~50 lines, test fails-before/passes-after) → PR now; anything bigger, and every
    new or changed agent/skill definition → a descriptive issue on the owning repo first (labels `found-by-agent`,
    `proposal:skill`/`proposal:agent`; members hold `triage` on the framework repos, so `--label` applies).
+   **This template's repo is public**: an issue or PR there names no commercial kit, NDA-lane detail, member design
+   or measured result — file such a template matter on the private design directory (`[template]` prefix) instead.
    Bitten twice → propose the lint. The local workaround is minimal and carries
    `# GAP: MacAnalog/<repo>#<n>`. Doing something a second design would repeat → propose the skill or agent that
    removes the repeat, even though nothing is broken.
