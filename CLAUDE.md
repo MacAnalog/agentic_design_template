@@ -92,7 +92,8 @@ spec of record is `doc/target-spec.md`, its machine twin `spec:` in `harness.yam
    a harness gate, a linked skill or agent) goes back to its repo **at confirmation time** — the `sx-contributing`
    skill: quick fix (one concern, ≤ ~50 lines, test fails-before/passes-after) → PR now; anything bigger, and every
    new or changed agent/skill definition → a descriptive issue on the owning repo first (labels `found-by-agent`,
-   `proposal:skill`/`proposal:agent`). Bitten twice → propose the lint. The local workaround is minimal and carries
+   `proposal:skill`/`proposal:agent` — as the first body line `Labels: …` when you only have `read`; GitHub drops
+   `--label` silently there). Bitten twice → propose the lint. The local workaround is minimal and carries
    `# GAP: MacAnalog/<repo>#<n>`. Doing something a second design would repeat → propose the skill or agent that
    removes the repeat, even though nothing is broken.
 9. **Sim economy.** Expensive runs only after the cheap scorecard passes the box.
