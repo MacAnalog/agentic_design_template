@@ -55,7 +55,9 @@ spec of record is `doc/target-spec.md`, its machine twin `spec:` in `harness.yam
   uploaded by basename with *relative* `include`s, simulated there, and only results come back. Kit bytes never reach
   the workstation or the model — anything under `/CMC` asks for the person's permission (the one hook); every
   server-side artifact is design-named, never tool-named.
-- **SpiceXplorer first.** Before writing a script, use what exists and compose it: the platform packages
+- **SpiceXplorer first.** Before writing a script, use what exists and compose it (HOW to run it: the `spicexplorer-tools`
+  skill — what this pyproject names runs in this venv with `uv run --no-sync`; any platform tool runs from
+  `.sx/platform/.venv/bin/<script|python>`; never `uv run --project .sx/platform` without `--no-sync`): the platform packages
   (`spicexplorer_core` — `spice_engine.run_deck`, measurements; `spicexplorer_harness` — ledger, pack, lint,
   spec; `spicexplorer-optimize`; `spicexplorer_gmid`; `spicexplorer_layout` + `spicexplorer_signoff`;
   `spicexplorer_waveview`; `spicexplorer_circuitgraph`; `spicexplorer_netlist2xschem`), the orchestration

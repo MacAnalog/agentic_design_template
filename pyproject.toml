@@ -9,15 +9,21 @@ dependencies = [
     "spicexplorer-harness",     # ledger, lints, context pack, spec-as-data (harness.yaml)
     "spicexplorer-core",        # spice_engine.run_deck (design.sim), spicelib RawRead (design.sim.raw)
     "spicexplorer-waveview",    # stimulus + eye (design.stimulus, design.eye), WaveDataset/registry (design.sim.dataset)
+    # The design tools every agent reaches for (all editable path sources into $SX_ROOT — no copies, cheap to carry):
+    "spicexplorer",             # the optimizer (`spicexplorer-optimize`, spicexplorer.optimization)
+    "spicexplorer-netlist2tf",  # netlist -> small-signal transfer function (library: transfer_function, extract_tf)
+    "spicexplorer-gmid",        # gm/ID sizing off the committed LUTs (ihp-sg13g2, sky130; commercial PDKs need a LUT first)
+    "spicexplorer-circuitgraph",  # topology graph (netlist2tf + netlist2xschem use it)
+    "spicexplorer-netlist2xschem",  # schematic of record (`netlist2xschem`, the schematic-builder agent)
     # From outside the platform's uv workspace every transitive spicexplorer-* member must be
     # named here AND in [tool.uv.sources] — uv applies a path source only to a package the root
     # project names DIRECTLY, so a member pulled in transitively (analog-db -> circuitgraph)
     # resolves "not found in the registry" until it is listed here too. Uncomment as a design
     # pulls them in, then one `uv sync` (`uv run --no-sync` afterwards):
-    # "spicexplorer", "spicexplorer-analog-db", "spicexplorer-circuitgraph", "spicexplorer-netlist2xschem",
+    # "spicexplorer-analog-db",
     # The physical lanes; the simulation-only venv stops short of all three (both instantiations
     # had to add them): gm/ID sizing, the layout generator + render, DRC/LVS/PEX + post-layout.
-    # "spicexplorer-gmid", "spicexplorer-layout", "spicexplorer-signoff",
+    # "spicexplorer-layout", "spicexplorer-signoff",
     # A commercial-PDK design adds the platform's bridge-lane package (deck in, PSF dir out, doctor,
     # a launcher callable like the simulator binary) and wraps it in design/sim.py — CLAUDE.md,
     # "Simulation lanes and reuse", names it. Do NOT name the bridge itself here: it comes with that
@@ -41,6 +47,11 @@ package = false
 # the design repo can live anywhere — a design directory, a laptop — as long as SX_ROOT is set.
 # A read-only SX_ROOT works: editable installs write only into this repo's .venv.
 spicexplorer-harness = { path = ".sx/platform/packages/spicexplorer-harness", editable = true }
+spicexplorer = { path = ".sx/platform/packages/spicexplorer", editable = true }
+spicexplorer-netlist2tf = { path = ".sx/platform/packages/spicexplorer-netlist2tf", editable = true }
+spicexplorer-gmid = { path = ".sx/platform/packages/spicexplorer-gmid", editable = true }
+spicexplorer-circuitgraph = { path = ".sx/platform/packages/spicexplorer-circuitgraph", editable = true }
+spicexplorer-netlist2xschem = { path = ".sx/platform/packages/spicexplorer-netlist2xschem", editable = true }
 # a commercial-PDK design adds the bridge-lane package here too (same .sx/platform/packages/<name> shape)
 spicexplorer-core = { path = ".sx/platform/packages/spicexplorer-core", editable = true }
 spicexplorer-waveview = { path = ".sx/platform/packages/spicexplorer-waveview", editable = true }
