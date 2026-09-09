@@ -88,7 +88,13 @@ spec of record is `doc/target-spec.md`, its machine twin `spec:` in `harness.yam
 7. **Designer ≠ verifier.** Claims are re-measured from raw artefacts and signed by a second actor
    (`verifiers:`); the report lands in `doc/reviews/`.
 8. **Gap-as-signal.** If you struggle, fix the harness and journal it. Before recording a gate as
-   "waiting on X", do X once and watch it go green.
+   "waiting on X", do X once and watch it go green. A defect or gap in the *framework* (a platform tool, a lane,
+   a harness gate, a linked skill or agent) goes back to its repo **at confirmation time** — the `sx-contributing`
+   skill: quick fix (one concern, ≤ ~50 lines, test fails-before/passes-after) → PR now; anything bigger, and every
+   new or changed agent/skill definition → a descriptive issue on the owning repo first (labels `found-by-agent`,
+   `proposal:skill`/`proposal:agent`). Bitten twice → propose the lint. The local workaround is minimal and carries
+   `# GAP: MacAnalog/<repo>#<n>`. Doing something a second design would repeat → propose the skill or agent that
+   removes the repeat, even though nothing is broken.
 9. **Sim economy.** Expensive runs only after the cheap scorecard passes the box.
 10. **Write-risk ordering.** Episodic writes are automatic; semantic writes need provenance;
     procedural writes (`design/`, `scripts/`, agent defs, this file) are human-reviewed — agents

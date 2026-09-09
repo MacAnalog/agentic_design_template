@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: How to report and patch (the sx-contributing skill)
+    url: https://github.com/MacAnalog/analog-skill-directory/blob/main/skills/sx-contributing/SKILL.md
+    about: The one decision rule (quick fix → PR now; anything bigger, and every agent/skill definition → an issue here), which repo owns what, the gh recipes from a member account, the NDA line.
