@@ -2,9 +2,7 @@
   "permissions": {
     "ask": [
       "Read(//CMC/**)",
-      "Edit(//CMC/**)",
-      "Grep(//CMC/**)",
-      "Glob(//CMC/**)"
+      "Edit(//CMC/**)"
     ],
     "allow": [
       "Bash(make:*)",
