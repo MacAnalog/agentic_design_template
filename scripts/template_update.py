@@ -171,10 +171,14 @@ def _apply(a: str, b: str, paths: list[str], directory: str | None = None,
         if not diff.strip():
             continue
         exists = (REPO / target).exists()
+        # A release that ADDS a file has nothing for the design to be missing: if that apply fails
+        # (something else in the way, an unwritable path) it is a real failure, and reporting it as
+        # "you do not carry this file" is how a new module silently never arrives.
+        creates = bool(re.search(r"^new file mode ", diff, re.M))
         ok, msg = _apply_one(diff, directory)
         if ok:
             out.append((str(target), "merged" if exists else "added", ""))
-        elif not exists:
+        elif not exists and not creates:
             out.append((str(target), "skipped", "this design does not carry the file the change edits"))
         else:
             out.append((str(target), "CONFLICT" if "conflict" in msg.lower() else "REJECTED", msg))
@@ -213,10 +217,19 @@ def update(target: str | None) -> int:
             print("      " + msg.replace("\n", "\n      "))
     if not rows:
         print("  (no files changed between these releases outside what this design owns)")
-    VERSION_FILE.parent.mkdir(parents=True, exist_ok=True)
-    VERSION_FILE.write_text(want + "\n")
     bad = [r for r in rows if r[1] in ("CONFLICT", "REJECTED")]
-    print(f"\n.sx/template-version -> {want} (nothing is committed)")
+    # The version is the record of what this design HAS, so it is written only when the release
+    # actually landed. Recorded on a conflicted run, it makes the next `update` start from `want`
+    # — and the change the design never took is never offered again.
+    if not bad:
+        VERSION_FILE.parent.mkdir(parents=True, exist_ok=True)
+        VERSION_FILE.write_text(want + "\n")
+        print(f"\n.sx/template-version -> {want} (nothing is committed)")
+    else:
+        print(f"\n.sx/template-version stays at {cur}: {len(bad)} file(s) did not land "
+              f"({', '.join(r[0] for r in bad)}). Resolve them, then re-run `make template-update` "
+              f"— it records {want} once the release applies cleanly. If you DECLINE one of these "
+              f"changes deliberately, say so: `echo {want} > .sx/template-version`.")
     print("NOW: read every merged file, resolve each CONFLICT (they are decisions: the template's "
           "generic change meeting your design's own lines), then `make lint && make test`.")
     print("A hunk whose TEXT names the template's `design.` package arrives spelled that way — fix "
