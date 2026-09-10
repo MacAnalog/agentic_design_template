@@ -16,6 +16,15 @@ cut from in `.sx/template-version` and pulls later work with `make template-upda
 
 Check where you stand with `make template-status`. Releases are git tags, `v<version>`.
 
+## v1.03 — the package's generic modules propagate too
+
+MINOR. `1.02` held back `metrics.py` and `bench.py` with `dut.py`, which meant a design could never
+receive the scorecard-lifecycle and reduction work those files carry — the very thing `1.01` added.
+Only `dut.py` is now design-owned inside the package: the template's is a stub, so propagating its
+changes into a real topology is conflict noise and nothing else. Everything else merges three-way,
+and a conflict inside `metrics.py` (typically at `KEYMAP`) is a decision for the designer, not a
+failure of the update.
+
 ## v1.02 — template versioning
 
 MINOR. A design can now tell which template it came from and take later minor work.
