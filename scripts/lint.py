@@ -199,6 +199,8 @@ def artifact_home(L: Lint) -> None:
     — and a design with its own durable output directory adds one line to `ARTIFACT_HOMES` above.
     What it refuses is the undeclared case: an artefact somewhere nobody wrote down.
     """
+    import subprocess  # noqa: PLC0415 - local: a design's lint.py may not import it at module level
+
     root = L.h.root
     r = subprocess.run(["git", "ls-files", "-z"], cwd=root, capture_output=True, text=True)
     if r.returncode:
