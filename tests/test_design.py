@@ -178,6 +178,46 @@ def test_run_rejects_empty_label(scratch):
         sim.run(sim.PROBE, "")
 
 
+def test_resolve_substitutes_declared_names_only(monkeypatch):
+    """`$` opens a comment in some dialects, so only DECK_VARS names may ever be expanded."""
+    monkeypatch.setattr(sim, "DECK_VARS", ("MODEL_LIB",))
+    monkeypatch.setenv("MODEL_LIB", "/opt/site/models/lib.file")
+    deck = 'include "$MODEL_LIB" section=tt\n* $NOT_DECLARED stays verbatim\n'
+
+    out = sim.resolve(deck)
+    assert 'include "/opt/site/models/lib.file" section=tt' in out
+    assert "$NOT_DECLARED" in out and "$MODEL_LIB" not in out
+
+    monkeypatch.delenv("MODEL_LIB")
+    with pytest.raises(FileNotFoundError, match="MODEL_LIB"):
+        sim.resolve(deck)
+    assert sim.resolve("* no placeholder here\n") == "* no placeholder here\n"
+    assert sim.preflight()["ok"] is False, "a lane that cannot resolve a declared var is not alive"
+
+
+def test_run_resolves_the_deck_only_as_the_simulator_receives_it(scratch, monkeypatch):
+    """What is built, logged, frozen and diffed stays portable; the path exists for one call."""
+    seen = {}
+
+    class _R:
+        raws, measures, failed = ["sim.raw"], {"i_ma": 1.0}, []
+
+    monkeypatch.setattr(sim, "DECK_VARS", ("MODEL_LIB",))
+    monkeypatch.setenv("MODEL_LIB", "/opt/site/models/lib.file")
+    monkeypatch.setattr(sim, "spiceinit", lambda extra="": "set x\n")
+    monkeypatch.setattr(sim, "ngspice", lambda: "/bin/true")
+    def _fake_run_deck(deck, **kw):
+        seen["deck"] = deck
+        return _R()
+
+    monkeypatch.setattr(sim, "run_deck", _fake_run_deck)
+
+    portable = 'include "$MODEL_LIB"\n.end\n'
+    sim.run(portable, "t")
+    assert seen["deck"] == 'include "/opt/site/models/lib.file"\n.end\n'
+    assert portable == 'include "$MODEL_LIB"\n.end\n', "the caller's deck text is not mutated"
+
+
 def test_run_batch_keeps_order_and_errors():
     def score(d, tag):
         if d == 2:
@@ -295,6 +335,35 @@ def test_promote_scales_mapped_keys_and_namespaces_the_rest(monkeypatch):
     monkeypatch.setitem(metrics.KEYMAP, ("ac", "p"), ("power_uw", 1e6))
     got = metrics.promote("ac", {"gain": 61.0, "p": 5e-5, "stray": 2.0})
     assert got == {"gain_db": 61.0, "power_uw": pytest.approx(50.0), "ac.stray": 2.0}
+
+
+def test_keymap_promotes_every_key_the_package_reduction_produces(monkeypatch):
+    """The reduction's keys reach the scorecard un-namespaced — that is what `PRODUCES` declares."""
+    from design import bench
+
+    monkeypatch.setattr(bench, "PRODUCES", {"stb": ("pm_deg", "ugf_mhz")})
+    assert bench.keymap() == {("stb", "pm_deg"): ("pm_deg", 1.0),
+                              ("stb", "ugf_mhz"): ("ugf_mhz", 1.0)}
+    assert bench.reduce("stb", object()) == {}, "the bare template reduces nothing"
+
+
+def test_run_decks_records_the_package_reduction_beside_the_printed_scalars(monkeypatch):
+    """A post-processed number is certifiable ONLY because it is merged here, before `certify`
+    freezes the record — the same maths in an experiment's run.py would reach nothing."""
+    from design import metrics
+
+    class _R:
+        measures, failed, wall = {"i_supply": 5e-5}, [], 0.1
+
+    monkeypatch.setattr(metrics.sim, "run", lambda deck, tag: _R())
+    monkeypatch.setattr(metrics, "log_run", lambda *a, **k: None)
+    monkeypatch.setattr(metrics.bench_mod, "reduce", lambda b, r: {"pm_deg": 61.0})
+    monkeypatch.setitem(metrics.KEYMAP, ("stb", "pm_deg"), ("pm_deg", 1.0))
+
+    values, records = metrics.run_decks({"stb": "* stb\n.end\n"}, "t")
+    assert values["pm_deg"] == 61.0                      # promoted as a column
+    assert values["stb.i_supply"] == 5e-5                # printed scalar kept, namespaced
+    assert records["stb"]["measures"]["pm_deg"] == 61.0  # and it is in what certify freezes
 
 
 def test_table_reports_pass_and_fail():
@@ -423,7 +492,7 @@ def renamed_repo(tmp_path_factory):
     pkg = root / "ldo"
     pkg.mkdir()
     (pkg / "__init__.py").write_text("")
-    for f in ("sim.py", "metrics.py"):
+    for f in ("sim.py", "metrics.py", "bench.py"):   # metrics imports the reduction module
         shutil.copy(src / f, pkg / f)
     (pkg / "dut.py").write_text(_DUT_SRC)
     (root / "harness.yaml").write_text(_HARNESS_SRC)
@@ -502,6 +571,17 @@ def test_certify_refuses_to_write_a_reference_missing_a_bench(_certify_env, monk
     monkeypatch.setattr(metrics, "frozen_dir", lambda: tmp_path)
     assert metrics.main(["--certify"]) == 1                   # and the CLI exits non-zero
     assert metrics.main(["--certify", "--force"]) == 0        # deliberately partial, on request
+
+
+def test_deck_portable_spots_a_committed_absolute_include():
+    """Two designs froze a deck carrying a machine-specific library path; `$VAR` is the fix."""
+    mod = _load("scripts/lint.py")
+    assert mod.abs_includes('include "/opt/site/models/lib.file" section=tt\n') == [
+        "/opt/site/models/lib.file"]
+    assert mod.abs_includes('.include /opt/site/models/nmos.spice\n') == ["/opt/site/models/nmos.spice"]
+    assert mod.abs_includes('include "$MODEL_LIB" section=tt\n'
+                            '.include ../models/nmos.spice\n'
+                            '* /opt/site/models/lib.file named in a comment is not an include\n') == []
 
 
 def test_lint_extras_are_green_on_the_bare_template():
