@@ -78,8 +78,10 @@ def measure(deck: str, tag: str, bench: str = "") -> dict:
 def run_decks(decks: dict[str, str], tag: str, *, record: bool = True) -> tuple[dict, dict]:
     """Simulate `{bench: deck}` in parallel; return (scorecard values, per-bench records).
 
-    A bench that fails is a record with `status: sim_error`, not an exception: the other benches
-    still produce their columns and the scorecard says which ones are missing.
+    A bench that fails is a record, not an exception: the other benches still produce their columns
+    and the scorecard says which ones are missing. Three statuses — `ok` (it ran and every measure
+    came out), `meas_error` (it ran; at least one `.meas` did not, so its column is NaN) and
+    `sim_error` (it did not run). Only `ok` is a bench `certify()` will freeze.
     """
 
     def one(bench: str) -> tuple[str, dict]:
@@ -89,8 +91,15 @@ def run_decks(decks: dict[str, str], tag: str, *, record: bool = True) -> tuple[
             r = sim.run(decks[bench], f"{tag}__{bench}")
             # the package-level reduction is merged into the record BEFORE anything is promoted,
             # logged or frozen — that is what makes a post-processed number certifiable at all
-            rec.update(status="ok", measures={**r.measures, **bench_mod.reduce(bench, r)},
-                       failed=list(r.failed), wall=r.wall)
+            failed = list(r.failed)
+            # A deck that SIMULATED is not a deck that MEASURED. A failed `.meas` prints no number,
+            # so the column becomes NaN, `certify()` keeps only non-NaN floats and `drift()`
+            # iterates the CERTIFIED keys: an `ok` here is how a spec column leaves the frozen
+            # reference and is never missed again. `meas_error` keeps the numbers that DID come out
+            # (below) while refusing to pass as a complete bench.
+            rec.update(status="ok" if not failed else "meas_error",
+                       measures={**r.measures, **bench_mod.reduce(bench, r)},
+                       failed=failed, wall=r.wall)
         except sim.SimError as exc:
             rec.update(status="sim_error", error=str(exc)[:800], measures={}, failed=[],
                        wall=time.perf_counter() - t0)
@@ -99,7 +108,7 @@ def run_decks(decks: dict[str, str], tag: str, *, record: bool = True) -> tuple[
     records = dict(batch(list(decks), one, env=H.jobs_env, on_error="raise"))
     values: dict = {}
     for bench, rec in records.items():
-        if rec["status"] == "ok":
+        if rec["status"] != "sim_error":                    # a bench that ran: promote what it has
             values.update(promote(bench, rec["measures"]))
             values.update(promote(bench, {m: float("nan") for m in rec["failed"]}))
         if record:
@@ -168,8 +177,11 @@ def certify(design: Design = REFERENCE, tag: str = "reference_certify", out: Pat
     values, records = run_decks(decks, tag)
     bad = sorted(b for b, r in records.items() if r["status"] != "ok")
     if bad and not force:
+        why = "; ".join(
+            f"{b} ({records[b]['status']}" + (f": {', '.join(records[b]['failed'])}" if records[b].get("failed") else "") + ")"
+            for b in bad)
         raise CertifyRefused(
-            f"benches did not run: {bad} — nothing was written to {out}.\n"
+            f"benches did not produce every measure: {why} — nothing was written to {out}.\n"
             "    FIX: fix the bench (`make doctor`, then run it alone) and re-certify. A frozen "
             "reference missing a bench's columns silently drops them from every later drift check; "
             "pass force=True (CLI `--force`) only to certify a deliberately partial reference")
@@ -289,7 +301,8 @@ def main(argv=None) -> int:
     print(table({"reference (frozen decks)": values}))
     bad = [b for b, r in records.items() if r["status"] != "ok"]
     if bad:
-        print("\nbenches that did not run:", bad)
+        print("\nbenches that did not produce every measure:",
+              {b: records[b]["status"] for b in bad})
     if a.check:
         d = drift(values)
         if d or bad:
