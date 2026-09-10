@@ -280,6 +280,20 @@ def move_reference(plan: Plan, record: str | None) -> None:
         plan.note(f"{record} already lives under signoff/")
         return
     relocate(plan, record, "signoff/prelayout/decks")
+    # The ledger records the same paths, and it is NOT rewritten: "never hand-edit the ledger —
+    # an edited row is not evidence of a run" (doc/memory/README.md). A row naming the old path is
+    # a true record of where the file was when that run happened.
+    led = REPO / "runs" / "ledger.ndjson"
+    if led.is_file() and record.rstrip("/") in led.read_text(errors="replace"):
+        plan.note(
+            f"runs/ledger.ndjson has rows naming {record} — LEFT ALONE, deliberately. They are "
+            f"true records of where the file was at the time, and an edited row is not evidence "
+            f"of a run.\n"
+            f"      Consequence: `scorecard-recompute` reports 'raw {record}/decks.sha256 is "
+            f"missing' for those rows IN THIS CHECKOUT. The ledger is git-ignored and per "
+            f"checkout, so a fresh clone never sees it. It clears at the next certification, which "
+            f"logs a row at the new path.")
+
     rest = [e for e in entries if e != record]
     if rest:
         plan.note(f"left in place (not this design's result): {rest} — give each a role row in "
