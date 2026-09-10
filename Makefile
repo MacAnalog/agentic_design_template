@@ -21,6 +21,12 @@ init:  ## set up this checkout: .sx/platform -> $$SX_ROOT/spicexplorer-platform,
 	@uv sync
 	@echo "init OK: .sx/platform -> $$(readlink .sx/platform); $$(ls .claude/agents | wc -l) agents + $$(ls .claude/skills | wc -l) skills linked from .sx/skills; next: make doctor"
 
+template-status:  ## which template version this design was cut from (.sx/template-version) and what minor updates exist since
+	@$(PY) scripts/template_update.py status
+
+template-update:  ## propagate the template's MINOR updates into this design (three-way merge; nothing committed). VER=1.03 to pick one
+	@$(PY) scripts/template_update.py update $(VER)
+
 skills-update:  ## move .sx/skills (the shared agent/skill library) to its main, re-link, and stage the pin — then commit it
 	@git -C .sx/skills fetch -q origin main && git -C .sx/skills checkout -q origin/main
 	@.sx/skills/bin/sx-link . --set design
@@ -63,4 +69,4 @@ clean:  ## delete this checkout's work dir + experiment output (never the ledger
 	@d=$$($(PY) -c "from design.sim import work; print(work())" 2>/dev/null); \
 	  [ -n "$$d" ] && echo "rm -rf $$d" && rm -rf "$$d"; rm -rf experiments/*/out/
 
-.PHONY: help init skills-update lint check baseline certify pack runs freeze doctor test notebooks clean
+.PHONY: help init template-status template-update skills-update lint check baseline certify pack runs freeze doctor test notebooks clean

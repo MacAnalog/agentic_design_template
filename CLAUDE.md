@@ -34,6 +34,11 @@ spec of record is `doc/target-spec.md`, its machine twin `spec:` in `harness.yam
 - `make pack K="noise irn"` — **working memory** at task start; re-run with `S="<failure
   signature>"` before diagnosing anything new. `make runs ARGS="--fails | --best <metric> | --exp
   NNN"` reads the ledger every `metrics.evaluate()` appends to.
+- `make template-status` / `make template-update` — this repo was **copied** from the template, so
+  it records the release it was cut from in `.sx/template-version` (`#.##`) and takes later MINOR
+  work by three-way merge, never by overwrite (`CHANGELOG.md` says what each release changed; a
+  MAJOR release is refused and its migration note printed). Read every merged hunk, then
+  `make lint && make test`. The shared agent/skill library moves separately: `make skills-update`.
 - `make certify` / `make freeze` / `make baseline` / `make check` — write the reference and sha-lock
   it, print it, prove it still reproduces. `ARGS="--author X --verified-by Y"` signs it; unsigned
   deliberately carries no provenance block, and `--certify` writes nothing if a bench failed. Until
