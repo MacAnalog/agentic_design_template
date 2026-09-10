@@ -227,9 +227,11 @@ def update(target: str | None) -> int:
         print(f"\n.sx/template-version -> {want} (nothing is committed)")
     else:
         print(f"\n.sx/template-version stays at {cur}: {len(bad)} file(s) did not land "
-              f"({', '.join(r[0] for r in bad)}). Resolve them, then re-run `make template-update` "
-              f"— it records {want} once the release applies cleanly. If you DECLINE one of these "
-              f"changes deliberately, say so: `echo {want} > .sx/template-version`.")
+              f"({', '.join(r[0] for r in bad)}). Resolve them, `git add` them (`git apply --3way` "
+              f"reads the INDEX for its preimage, so a re-run rejects every file resolved but not "
+              f"staged), then re-run `make template-update` — it records {want} once the release "
+              f"applies cleanly. If you DECLINE one of these changes deliberately, say so: "
+              f"`echo {want} > .sx/template-version`.")
     print("NOW: read every merged file, resolve each CONFLICT (they are decisions: the template's "
           "generic change meeting your design's own lines), then `make lint && make test`.")
     print("A hunk whose TEXT names the template's `design.` package arrives spelled that way — fix "

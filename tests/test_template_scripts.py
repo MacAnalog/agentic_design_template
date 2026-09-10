@@ -24,7 +24,7 @@ SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
 
 def git(*args: str, cwd: Path) -> str:
     r = subprocess.run(["git", "-c", "user.email=t@t", "-c", "user.name=t", *args],
-                       cwd=cwd, capture_output=True, text=True)
+                       cwd=cwd, capture_output=True, text=True, check=False)
     assert r.returncode == 0, f"git {' '.join(args)}\n{r.stdout}{r.stderr}"
     return r.stdout
 
