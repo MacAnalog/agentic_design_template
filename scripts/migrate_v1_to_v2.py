@@ -197,7 +197,12 @@ def move_reference(plan: Plan) -> None:
     So: say what should move, say what it costs, and leave the bytes alone.
     """
     y = (REPO / "harness.yaml").read_text()
-    frozen = re.search(r"^frozen:\s*\[(.*?)\]", y, re.M)
+    # re.S on purpose: a real design wraps the list over two lines
+    #   frozen: [decks/reference, decks/control,
+    #            decks/candidate_014]
+    # and a single-line regex reports "nothing is frozen" for a repo with six frozen dirs — then
+    # advises certifying into a fresh path. A false negative here is worse than no check.
+    frozen = re.search(r"^frozen:\s*\[(.*?)\]", y, re.M | re.S)
     entries = [e.strip().strip("'\"") for e in frozen.group(1).split(",") if e.strip()] if frozen else []
     card = re.search(r'^reference_scorecard:\s*["\']?([^"\'\n#]*)', y, re.M)
     card = (card.group(1).strip() if card else "")
@@ -313,7 +318,19 @@ def propagate(plan: Plan, cur: str) -> list[tuple[str, str, str]]:
     the template's diff, and deleting a design's working module is not this script's business).
     """
     sys.path.insert(0, str(Path(__file__).resolve().parent))
-    import template_update as tu  # noqa: PLC0415
+    try:
+        import template_update as tu  # noqa: PLC0415
+    except ModuleNotFoundError:
+        raise SystemExit(
+            "scripts/template_update.py is missing, so there is no way to take 2.00's content "
+            "changes — and this repo was therefore never wired to the template's release "
+            "machinery at all.\n"
+            "    FIX: if this design IS template-derived, restore the file "
+            "(`git fetch --tags --force template && git show v2.00:scripts/template_update.py > "
+            "scripts/template_update.py`) and record the release it was cut from in "
+            "`.sx/template-version`, then re-run. If it predates the template, it is outside the "
+            "contract and this migration does not apply — adopt the template deliberately first."
+        ) from None
 
     if not hasattr(tu, "_apply"):
         raise SystemExit(

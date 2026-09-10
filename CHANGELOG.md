@@ -17,6 +17,21 @@ Versions are `MAJOR.MINOR`, written `#.##`:
 `make template-status` prints the recorded version and the latest release. Releases are git
 tags, `v<version>`.
 
+## v2.01 — three defects the first real migrations found
+
+Minor: propagatable into any design already on 2.00. All three were found by running the migration
+against live designs, and every one of them failed silently or confusingly rather than loudly.
+
+| defect | what happened | fix |
+|---|---|---|
+| `frozen:` read with a single-line regex | a design whose list wraps over two lines was told **"nothing is frozen yet"** — with six frozen directories — and advised to certify into a fresh path | `re.S`, and the comment says why a false negative here is worse than no check |
+| `artifact_home` used a module-level `subprocess` | the check crashed (`NameError`) on any design whose own `lint.py` does not import it | imports it locally, so it never depends on a design's import block |
+| a missing `scripts/template_update.py` | raw `ModuleNotFoundError` traceback mid-run | a refusal that says whether the repo is template-derived and how to restore the file |
+
+**The lesson worth keeping:** two of these produced confident wrong output rather than an error. A
+migration that reports is only useful if what it reports is true, so test it against the messiest
+real repo you have, not against the template.
+
 ## v2.00 — every artefact has a home (MAJOR: directories move)
 
 **Why this is a MAJOR.** A three-way merge can change a file's contents; it cannot move a file.
