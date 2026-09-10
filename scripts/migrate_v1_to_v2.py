@@ -22,6 +22,7 @@ What 2.00 changes, and what this script does about it:
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import subprocess
 import sys
@@ -182,51 +183,107 @@ def make_signoff(plan: Plan, template: Path | None) -> None:
                     lambda d=dst, b=body: (d.parent.mkdir(parents=True, exist_ok=True), d.write_text(b)))
 
 
-def move_reference(plan: Plan) -> None:
-    """Report where the design of record should end up — and never move it.
+PROV_PATH_KEYS = ("script", "raw")
 
-    This function used to `git mv` a single unambiguous `decks/<ref>` into
-    `signoff/prelayout/decks`. Measured on a live design, that is WRONG and it fails loudly:
-    a certified `scorecard.json` carries a provenance block naming its own artefacts by path
-    (`raw: decks/candidate/decks.sha256`), so moving the directory invalidates the certification
-    that makes it worth keeping. `scorecard-recompute` catches it, which is the good case; the bad
-    case is a design that ships a reference nobody can verify.
 
-    Regenerating that block means re-certifying — a live simulation and a second actor's signature.
-    That is a deliberate act at a moment of the owner's choosing, not a side effect of a rename.
-    So: say what should move, say what it costs, and leave the bytes alone.
-    """
+def _frozen_entries() -> tuple[list[str], str]:
     y = (REPO / "harness.yaml").read_text()
-    # re.S on purpose: a real design wraps the list over two lines
-    #   frozen: [decks/reference, decks/control,
-    #            decks/candidate_014]
-    # and a single-line regex reports "nothing is frozen" for a repo with six frozen dirs — then
-    # advises certifying into a fresh path. A false negative here is worse than no check.
-    frozen = re.search(r"^frozen:\s*\[(.*?)\]", y, re.M | re.S)
-    entries = [e.strip().strip("'\"") for e in frozen.group(1).split(",") if e.strip()] if frozen else []
-    card = re.search(r'^reference_scorecard:\s*["\']?([^"\'\n#]*)', y, re.M)
-    card = (card.group(1).strip() if card else "")
+    # re.S on purpose: a real design wraps the list over two lines, and a single-line regex
+    # reports "nothing is frozen" for a repo with six frozen dirs.
+    m = re.search(r"^frozen:\s*\[(.*?)\]", y, re.M | re.S)
+    entries = [e.strip().strip("'\"") for e in m.group(1).split(",") if e.strip()] if m else []
+    c = re.search(r'^reference_scorecard:\s*["\']?([^"\'\n#]*)', y, re.M)
+    return entries, (c.group(1).strip() if c else "")
+
+
+def _relocatable(src: str) -> tuple[bool, list[str], str]:
+    """Can `src` move, and which provenance path fields would have to follow it?
+
+    A scorecard's `provenance` block records `script` and `raw` as REPO-RELATIVE paths, each
+    beside a sha of that file's CONTENTS. So a path pointing inside the directory being moved
+    stops resolving — that is the breakage measured on a live design (`scorecard-recompute`:
+    "raw <path> is missing"). It is also the whole of the breakage: rewriting the pointer keeps
+    every hash valid, because no byte of the rawfile, the scorer or any number changes.
+
+    Returns (movable, keys-to-rewrite, why-not).
+    """
+    card = REPO / src / "scorecard.json"
+    if not card.is_file():
+        return True, [], ""
+    try:
+        prov = json.loads(card.read_text()).get("provenance")
+    except ValueError as exc:
+        return False, [], f"{src}/scorecard.json is not JSON ({exc})"
+    if not isinstance(prov, dict) or not prov:
+        return True, [], ""            # a scorecard with no provenance block records no paths
+    keys = [k for k in PROV_PATH_KEYS
+            if (prov.get(k) or "").startswith(src.rstrip("/") + "/")]
+    return True, keys, ""
+
+
+def relocate(plan: Plan, src: str, dst: str) -> None:
+    """Move one frozen dir to `dst`, carrying its provenance pointers with it."""
+    movable, keys, why = _relocatable(src)
+    if not movable:
+        plan.note(f"{src} NOT moved: {why}")
+        return
+    (REPO / dst).parent.mkdir(parents=True, exist_ok=True)
+    plan.do(f"git mv {src} {dst}", lambda: sh("git", "mv", src, dst))
+    if keys:
+        def rewrite(src=src, dst=dst, keys=keys):
+            f = REPO / dst / "scorecard.json"
+            doc = json.loads(f.read_text())
+            for k in keys:
+                doc["provenance"][k] = doc["provenance"][k].replace(src.rstrip("/") + "/",
+                                                                    dst.rstrip("/") + "/", 1)
+            f.write_text(json.dumps(doc, indent=1) + "\n")
+        plan.do(f"{dst}/scorecard.json: repoint provenance {'+'.join(keys)} at the new path "
+                f"(the sha of each file's CONTENTS is unchanged, so every hash still re-derives)",
+                rewrite)
+    y = REPO / "harness.yaml"
+    plan.do(f"harness.yaml: frozen/reference_scorecard {src} -> {dst}",
+            lambda: y.write_text(y.read_text().replace(src.rstrip("/"), dst.rstrip("/"))))
+
+
+def move_reference(plan: Plan, record: str | None) -> None:
+    """Move the design of record into `signoff/prelayout/decks` — when told which one it is.
+
+    Two things are deliberately NOT inferred:
+
+    * **Which frozen dir is the design of record.** `reference_scorecard` cannot tell you: it means
+      "the scorecard `make check` reproduces", which a design may legitimately point at a prior-art
+      YARDSTICK it is trying to beat. Measured on live designs: one had `reference` as the yardstick
+      and `candidate` as the result; another had six frozen dirs of which two were a control and a
+      reference. So it is an argument, `--design-of-record`, not a guess.
+    * **Whether to move a yardstick or a control.** They stay in `decks/`, which is a declared
+      artefact home. `signoff/` is for this design's own results.
+    """
+    entries, card = _frozen_entries()
     if not entries:
-        plan.note("nothing is frozen yet — certify straight into signoff/prelayout/decks when you do, "
-                  "and the provenance block will name the right path from the start")
+        plan.note("nothing is frozen yet — certify straight into signoff/prelayout/decks when you "
+                  "do, and the provenance block names the right path from the start")
         return
-    if any(e.startswith("signoff/") for e in entries):
-        plan.note("a frozen dir already lives under signoff/")
+    if not record:
+        plan.note(
+            f"frozen: {entries} — not moved, because nothing here says which is THIS DESIGN'S "
+            f"result.\n"
+            f"      Re-run with `--design-of-record <dir>` and it moves, provenance and all. Do "
+            f"not let `reference_scorecard: {card or '(unset)'}` decide: that key means 'the "
+            f"scorecard `make check` reproduces', which may legitimately be a prior-art yardstick.\n"
+            f"      A yardstick, a control or a withdrawn row STAYS in `decks/` — `signoff/` is "
+            f"for this design's own results. Name each one's role in signoff/README.md.")
         return
-    plan.note(
-        f"frozen: {entries} — NOT moved, on purpose.\n"
-        f"      A certified scorecard's provenance block names its own artefacts BY PATH, so "
-        f"`git mv`-ing a frozen dir invalidates the certification (`scorecard-recompute` turns "
-        f"red: 'raw <old path>/decks.sha256 is missing'). Regenerating it means re-certifying and "
-        f"re-signing.\n"
-        f"      So point `signoff/` AT them instead: name the design-of-record dir in "
-        f"`signoff/README.md` and in `signoff/prelayout/REPORT.md`. Physically move it the next "
-        f"time you re-certify anyway — then the new provenance is written at the new path, for free."
-        + (f"\n      And do not let `reference_scorecard: {card}` pick WHICH dir is the design of "
-           f"record. That key means 'the scorecard `make check` reproduces', which a design may "
-           f"legitimately point at a prior-art YARDSTICK. Measured on a live design: the dir named "
-           f"`reference` was the yardstick and `candidate` was the design of record."
-           if len(entries) > 1 else ""))
+    record = record.rstrip("/")
+    if record not in entries:
+        raise SystemExit(f"--design-of-record {record!r} is not in frozen: {entries}")
+    if record.startswith("signoff/"):
+        plan.note(f"{record} already lives under signoff/")
+        return
+    relocate(plan, record, "signoff/prelayout/decks")
+    rest = [e for e in entries if e != record]
+    if rest:
+        plan.note(f"left in place (not this design's result): {rest} — give each a role row in "
+                  f"signoff/README.md")
 
 
 def move_layout_artifacts(plan: Plan) -> None:
@@ -359,6 +416,9 @@ def propagate(plan: Plan, cur: str) -> list[tuple[str, str, str]]:
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="migrate_v1_to_v2")
     ap.add_argument("--dry-run", action="store_true", help="print the plan, change nothing")
+    ap.add_argument("--design-of-record", metavar="DIR", help="the frozen dir holding THIS "
+                    "design's own certified benches; it moves to signoff/prelayout/decks. Never "
+                    "inferred — a yardstick and a control are frozen too")
     ap.add_argument("--template", type=Path, help="a local checkout of agentic_design_template at "
                                                   "v2.00. Optional: without it the templates come "
                                                   "from the `template` git remote's v2.00 tag")
@@ -383,7 +443,7 @@ def main(argv=None) -> int:
     rows = propagate(plan, cur if cur != "(unrecorded)" else "1.00")
     rename_papers(plan)
     make_signoff(plan, a.template)
-    move_reference(plan)
+    move_reference(plan, a.design_of_record)
     move_layout_artifacts(plan)
     phase_rows(plan)
     artifact_survey(plan)

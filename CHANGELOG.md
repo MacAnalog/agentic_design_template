@@ -17,6 +17,36 @@ Versions are `MAJOR.MINOR`, written `#.##`:
 `make template-status` prints the recorded version and the latest release. Releases are git
 tags, `v<version>`.
 
+## v2.02 — a frozen directory CAN move; it just has to take its pointers with it
+
+Minor. This corrects an over-strong rule in 2.00/2.01, which refused to move any frozen directory
+on the strength of one design's breakage.
+
+**What was actually true.** A scorecard's `provenance` block records `script` and `raw` as
+repo-relative paths, each beside a sha of that file's **contents**. Move the directory and a path
+pointing inside it stops resolving — `scorecard-recompute` reports *"raw `<path>` is missing"*.
+
+**What was not true: that this makes the move impossible.** Rewriting the pointer keeps every hash
+valid, because no byte of the rawfile, the scorer, or any number changes. The move is a relocation
+record, not a re-measurement. And it does not apply at all to a scorecard with no `provenance`
+block — one design in the fleet has six frozen dirs and no provenance paths, and would never have
+been affected.
+
+**So `move_reference` now relocates.** It reads each scorecard, moves the directory, repoints only
+the provenance keys that pointed inside it, and updates `harness.yaml`. Run `make freeze`
+afterwards: `SHA256SUMS` covers `scorecard.json`.
+
+**Two things are still never inferred**, and both are arguments or refusals rather than guesses:
+
+- **Which frozen dir is the design of record** — `--design-of-record <dir>`. `reference_scorecard`
+  cannot answer it: that key means *the scorecard `make check` reproduces*, which a design may
+  legitimately point at a prior-art yardstick it is trying to beat.
+- **Whether a dir is a result at all.** A yardstick, a control and a withdrawn row are frozen too,
+  and they stay in `decks/`. `signoff/` is for this design's own results.
+
+**The lesson:** one design's failure is evidence about that design. Generalising it into a rule for
+every design cost two repos the structure they were entitled to.
+
 ## v2.01 — three defects the first real migrations found
 
 Minor: propagatable into any design already on 2.00. All three were found by running the migration

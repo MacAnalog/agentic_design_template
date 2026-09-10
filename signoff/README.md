@@ -72,16 +72,17 @@ frozen: [signoff/prelayout/decks]                       # sha-locked by `make fr
 reference_scorecard: signoff/prelayout/decks/scorecard.json   # what `make check` reproduces
 ```
 
-**A design that certified before 2.00 should NOT `git mv` its frozen directory here.** A certified
-`scorecard.json` carries a provenance block naming its own artefacts by path, so moving the
-directory invalidates the certification — `scorecard-recompute` goes red with *"raw
-`<old-path>/decks.sha256` is missing"*, and regenerating it means a live re-certification and a
-second actor's signature.
+**A design that certified before 2.00 can move its frozen directory here** — `make
+template-migrate ARGS="--design-of-record decks/<dir>"` does it, and `make freeze` afterwards.
 
-Point this tree at the directory instead: name it in the table above and in the fidelity's
-`REPORT.md`. Move it physically the next time you re-certify anyway — the new provenance is then
-written at the new path at no extra cost. **A sign-off tree that says where the design of record
-lives is worth more than one that holds a copy nobody can verify.**
+The one thing to know: a scorecard's `provenance` block records `script` and `raw` as
+repo-relative paths, each beside a sha of that file's **contents**. A path pointing inside the
+directory stops resolving when it moves, and `scorecard-recompute` says so. The migration repoints
+exactly those keys, which keeps every hash valid — no byte of the rawfile, the scorer or any
+number changes, so it is a relocation record and not a re-measurement.
+
+**What does not move: a yardstick, a control, or a withdrawn row.** They are frozen too, and they
+are not this design's results. They stay in `decks/` and get a role row in the table above.
 
 `make check` compares today's simulation against `reference_scorecard`, so it follows whichever
 fidelity that line names. Promoting post-layout to the reference is a deliberate act: change the
