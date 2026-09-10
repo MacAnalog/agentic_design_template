@@ -36,22 +36,27 @@ definitions and method notes under `.claude/`.
 9. For the layout lane, uncomment the `spicexplorer-gmid` / `-layout` / `-signoff` sources in
    `pyproject.toml` and `uv sync`.
 
-## Layout
+## Repository map
+
+Three kinds of directory, and the difference between them is the whole organizing idea:
+**`experiments/` is where work happens, `signoff/` is what survived it, and `doc/` is what was
+learned.** Everything else is plumbing.
 
 | path | what |
 |---|---|
 | `harness.yaml` | the design described to the harness: spec rows, frozen dirs, denylist, ledger columns |
-| `CLAUDE.md` | the entry map agents read first |
+| `CLAUDE.md` | the entry map agents read first — including "Where things go" |
 | `doc/` | target spec, design reference (constraints), benches, environment, experiment log, journal + index, `reviews/` (verifier reports), the memory model |
-| `design/` | generic wrappers over the platform, imported as-is: `sim` (this repo's where/which/what policy over `spicexplorer_core.spice_engine.run_deck`), `stimulus` and `eye` (re-exports of `spicexplorer_waveview.stimulus`/`.eye`: PRBS/PAM4/PWL, symbol-aware eye metrics + BT4 receiver), `exp` (labelled batches, markdown), `plot` (spec boxes). Written per design: `dut` (the sizing point → deck), `metrics` (measure, check, log). The `design/` → platform table is in `doc/journal/design-consolidated-from-three-lanes.md` |
+| `design/` | this design's own code. Yours to write: `dut` (sizing point → deck), `metrics` (measure, check, log), `bench` (the reductions). Generic, imported as-is: `sim` (this repo's where/which/what policy over `spicexplorer_core.spice_engine.run_deck`), `exp` (labelled batches, markdown, CSV), `plot` (spec boxes). Data stimulus and eye metrics are the platform's — `spicexplorer_waveview.stimulus` / `.eye` — imported directly by the designs that send symbols |
+| `experiments/NNN-*/` | one directory per hypothesis, tagged with its phase; `_template/` is the shape — `README.md`, `run.py` (simulates into git-ignored `out/`, committed `figs/` and `tables/`) and `mk_readme.py` (regenerates the README from `out/*.json`) |
+| `signoff/` | the design of record, one directory per simulation fidelity (`prelayout`, `postlayout-pex`, `postlayout-em`, and whatever physics a design adds) plus `schematic/` and `layout/`. `signoff/README.md` is the index: what is signed off, at which fidelity, by whom, when |
+| `layout/` | the layout **as code**: `gen_cell.py` (generator contract, `LayoutParams`, the per-net obstacle map) and `signoff.py` (build → render → DRC → current density → LVS → PEX → the cell's own benches). Its output lands in `signoff/layout/` |
+| `references/` | papers, datasheets and standards + `INDEX.md` (cite by handle, never by filename) |
 | `tests/` | `make test`: the generic `design/` modules (the live-lane test skips without ngspice) |
-| `scripts/lint.py` | repo-specific checks on top of the harness |
-| `layout/` | the layout of record as code: `gen_cell.py` (generator contract, `LayoutParams`, the per-net obstacle map) and `signoff.py` (build → render → DRC → current density → LVS → PEX → the cell's own benches) |
-| `experiments/NNN-*/` | one directory per hypothesis; `_template/` is the shape — `README.md`, `run.py` (simulates into git-ignored `out/` and committed `figs/`) and `mk_readme.py` (regenerates the README from `out/*.json`) |
+| `scripts/lint.py` | repo-specific checks on top of the harness — including `artifact-home`, which keeps the map above true |
 | `notebooks/` | executed in place by `make notebooks`, outputs committed |
-| `pdf/` | papers + `INDEX.md` (cite by handle) |
 | `.sx/` | the per-checkout plumbing `make init` sets up: `platform` (git-ignored link to `$SX_ROOT/spicexplorer-platform`) and `skills` (the `analog-skill-directory` submodule: shared agents, skills, guard hooks, `bin/sx-link`) |
 | `.claude/agents/` | links into `.sx/skills/agents/`: variant-runner, signoff-verifier, schematic-builder, paper-analyst, gardener + the layout chain (brief-author, designer, reviewer, schematic-codesign); design-specific agents are plain files beside them |
-| `.claude/skills/` | links into `.sx/skills/skills/`: the visual-evidence methods (schematic of record, testbench schematics, findings as plots, layout evidence), gm/ID sizing + LUTs, current mirrors, layout annotation, neutral naming, the remote-simulator learning journal and the bridge's two simulator skills |
-| `.claude/settings.json` | the one hook (`.sx/skills/hooks/cmc_ask_hook.py`): anything under `/CMC` asks for permission; nothing else is blocked (owner ruling 2026-09-07) |
-| `runs/` | `ledger.ndjson`, git-ignored; the numbers worth keeping move into experiment READMEs |
+| `.claude/skills/` | links into `.sx/skills/skills/`: the visual-evidence methods (schematic of record, testbench schematics, findings as plots, layout evidence), `design-writing` (every document this repo produces), gm/ID sizing + LUTs, current mirrors, layout annotation, neutral naming, the remote-simulator learning journal and the bridge's two simulator skills |
+| `.claude/settings.json` | the one hook (`.sx/skills/hooks/cmc_ask_hook.py`): anything under the NDA kit tree asks for permission; nothing else is blocked (owner ruling 2026-09-07) |
+| `runs/` | `ledger.ndjson`, git-ignored; the numbers worth keeping move into experiment READMEs and `signoff/` |

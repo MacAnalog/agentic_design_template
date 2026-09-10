@@ -3,7 +3,7 @@
 KIND: REFERENCE (curated semantic facts; the pack carries the constraints section in full)
 
 Every entry below names where it came from: an experiment directory, a ledger tag, or a paper
-handle from `pdf/INDEX.md`. When a later measurement contradicts an entry, supersede it here and
+handle from `references/INDEX.md`. When a later measurement contradicts an entry, supersede it here and
 cite the run that overturned it. Deleting it instead leaves the next agent to repeat the attempt
 that failed.
 

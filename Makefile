@@ -27,6 +27,9 @@ template-status:  ## which template version this design was cut from (.sx/templa
 template-update:  ## propagate the template's MINOR updates into this design (three-way merge; nothing committed). VER=1.03 to pick one
 	@$(PY) scripts/template_update.py update $(VER)
 
+template-migrate:  ## cross a MAJOR template release (1.xx -> 2.00): moves directories, repoints harness.yaml, commits nothing. ARGS="--dry-run" first
+	@$(PY) scripts/migrate_v1_to_v2.py $(ARGS)
+
 skills-update:  ## move .sx/skills (the shared agent/skill library) to its main, re-link, and stage the pin — then commit it
 	@git -C .sx/skills fetch -q origin main && git -C .sx/skills checkout -q origin/main
 	@.sx/skills/bin/sx-link . --set design
@@ -57,7 +60,7 @@ freeze:  ## write SHA256SUMS into the frozen dirs after a deliberate certificati
 doctor:  ## is the simulation lane alive? (a one-resistor deck through design.sim, per-run .spiceinit proven)
 	@$(PY) -m design.sim
 
-test:  ## the generic design modules (stimulus, eye, exp, plot, lane); live tests skip without ngspice
+test:  ## the generic design modules (lane, batches, plots, scorecard); live tests skip without ngspice
 	@OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 $(PY) -m pytest -q
 
 notebooks:  ## execute notebooks/*.ipynb in place (outputs committed, so a reader sees the numbers)
@@ -69,4 +72,4 @@ clean:  ## delete this checkout's work dir + experiment output (never the ledger
 	@d=$$($(PY) -c "from design.sim import work; print(work())" 2>/dev/null); \
 	  [ -n "$$d" ] && echo "rm -rf $$d" && rm -rf "$$d"; rm -rf experiments/*/out/
 
-.PHONY: help init template-status template-update skills-update lint check baseline certify pack runs freeze doctor test notebooks clean
+.PHONY: help init template-status template-update template-migrate skills-update lint check baseline certify pack runs freeze doctor test notebooks clean

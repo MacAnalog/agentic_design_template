@@ -1,4 +1,10 @@
-"""Figures with the spec boxes drawn (findings-as-plots): spec bands, an eye, metric-vs-x series."""
+"""Figures with the spec boxes drawn (findings-as-plots): spec bands, an eye, metric-vs-x series.
+
+`eye()` is for designs that carry data — a link, a driver, a serialiser. Every other function here
+is design-agnostic. The eye machinery itself is the platform's (`spicexplorer_waveview.eye` and
+`.stimulus`): this module only draws it, so a design that never sends a symbol imports nothing
+extra by ignoring one function.
+"""
 
 from __future__ import annotations
 
@@ -10,9 +16,10 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 
-from .eye import fold, rx_bandwidth  # noqa: E402
+from spicexplorer_waveview.eye import fold, rx_bandwidth  # noqa: E402
+from spicexplorer_waveview.stimulus import Data  # noqa: E402
+
 from .sim import H  # noqa: E402
-from .stimulus import Data  # noqa: E402
 
 plt.rcParams.update({"font.size": 9, "axes.grid": True, "grid.alpha": 0.3, "figure.dpi": 130})
 SPEC = {r.key: r for r in H.spec}

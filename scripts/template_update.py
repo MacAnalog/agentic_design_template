@@ -9,8 +9,9 @@ and says in `CHANGELOG.md` what changed:
 
 * **minor** (`1.00 -> 1.01`): generic work — a new module in the package, a lint check, a hook in
   the lane, docs. Propagatable into a design that is already under way: that is what `update` does.
-* **major** (`1.x -> 2.0`): the scaffold's shape changed. `update` refuses to cross it and prints
-  the changelog instead; crossing one is a deliberate, human-reviewed migration.
+* **major** (`1.x -> 2.0`): the scaffold's shape changed — directories MOVED, and a three-way
+  merge cannot move a file. `update` refuses to cross it and prints the changelog instead. The
+  crossing is a separate, deliberate script: `scripts/migrate_v1_to_v2.py`.
 
 How `update` propagates without clobbering the design: it fetches the template as a remote (so the
 preimage blobs exist locally), builds the diff between the recorded tag and the target tag, and
@@ -48,7 +49,8 @@ EXCLUDE = (
     ":!harness.yaml",          # this design's spec, benches, denylist
     ":!README.md",
     ":!doc",                   # the design's own reference/journal/spec prose
-    ":!pdf",
+    ":!references",
+    ":!signoff",       # the design of record: this design's own measurements
     ":!uv.lock",
     ":!pyproject.toml",        # its dependency set (the template's is a starting point)
     ":!.sx/skills",            # the library pin: `make skills-update` owns it

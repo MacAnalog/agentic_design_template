@@ -1,4 +1,4 @@
-"""The generic design modules: stimulus determinism, eye metrics on ideal and closed eyes, the lane."""
+"""The generic design modules: the simulator lane, batches, plots and the scorecard lifecycle."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from design import exp, eye, sim, stimulus
+from design import exp, sim
 
 
 def _have_ngspice() -> bool:
@@ -39,93 +39,6 @@ def scratch(tmp_path, monkeypatch):
     monkeypatch.setenv("SX_SCRATCH", str(tmp_path))
     monkeypatch.delenv(sim.WORK_ENV, raising=False)
     return tmp_path
-
-
-# ------------------------------------------------------------------ stimulus ----------
-
-def test_prbs_is_deterministic_and_periodic():
-    a, b = stimulus.prbs(7, 300), stimulus.prbs(7, 300)
-    assert (a == b).all() and set(a.tolist()) == {0, 1}
-    assert (a[:127] == a[127:254]).all()
-    assert not (stimulus.prbs(7, 300, seed=2) == a).all()
-
-
-def test_symbol_levels():
-    assert set(stimulus.symbols("nrz", 7, 200).tolist()) == {-1.0, 1.0}
-    assert set(np.round(stimulus.symbols("pam4", 7, 200), 6).tolist()) == {-1.0, -0.333333, 0.333333, 1.0}
-    with pytest.raises(ValueError):
-        stimulus.symbols("pam8", 7, 10)
-
-
-def test_pwl_tap_delay_is_exact():
-    d = stimulus.Data("nrz", 10.0)
-    line = stimulus.pwl("Vt1", "in", "0", d, vcm=0.5, swing=0.2, delay_ui=1.0)
-    assert line.startswith("Vt1 in 0 PWL(")
-    pts = re.findall(r"([-+0-9.e]+) ([-+0-9.e]+)", line.split("PWL(")[1])
-    first_edge = next(float(t) for t, v in pts if float(v) != 0.5)
-    assert math.isclose(first_edge, d.t0 + d.ui + d.tr_ui * d.ui, rel_tol=1e-6)
-
-
-# ------------------------------------------------------------------ eye ---------------
-
-def _synthetic(fmt: str, closed: bool = False, bipolar: bool = False):
-    d = stimulus.Data(fmt, 10.0, order=7, n_warm=8)
-    t = np.arange(0, d.t_end + 2e-9, d.ui / 50)
-    x = stimulus.ideal_waveform(t, d) if bipolar else 0.5 + 0.5 * stimulus.ideal_waveform(t, d)
-    if closed:
-        x = 0.5 + 0.02 * np.random.default_rng(0).standard_normal(t.size)
-    return t, x, d
-
-
-@pytest.mark.parametrize("fmt,h_min", [("nrz", 0.4), ("pam4", 0.1)])
-def test_eye_ideal_is_open(fmt, h_min):
-    m = eye.eye_metrics(*_synthetic(fmt))
-    assert m["ok"] == 1 and m["eye_h_norm"] > h_min and m["eye_w_ui"] > 0.5 and m["vecp_db"] < 6
-    assert m["er_db"] > 10 and m["polarity"] == 1
-    assert all(math.isfinite(v) for v in m.values() if isinstance(v, float))
-    json.dumps(m)  # plain floats only, so rows land in the ledger
-
-
-@pytest.mark.parametrize("fmt", ["nrz", "pam4"])
-def test_eye_closed_is_finite(fmt):
-    m = eye.eye_metrics(*_synthetic(fmt, closed=True))
-    assert m["eye_h_norm"] <= 0 and m["eye_w_ui"] == 0 and m["vecp_db"] == eye.VECP_CAP_DB
-    assert all(math.isfinite(v) for v in m.values() if isinstance(v, float))
-
-
-def test_eye_bipolar_electrical_signal():
-    """Levels -1/+1: OMA and VECP come from the level difference, ER is undefined (nan), not 57 dB."""
-    m = eye.eye_metrics(*_synthetic("nrz", bipolar=True), full_scale=2.0)
-    assert m["ok"] == 1 and 0 <= m["vecp_db"] < 3 and m["eye_h_norm"] > 0.4
-    assert math.isnan(m["er_db"]) and abs(m["oma_norm"] - 2.0) < 0.2
-
-
-def test_latency_is_exact_and_matches_a_direct_correlation():
-    """Exact to the sample, polarity included; on a short sequence the FFT correlation picks the
-    same lag as a direct bounded-lag dot product (no wall-clock assertion: shared server)."""
-    d = stimulus.Data("nrz", 20.0, order=15, n_warm=8)
-    dt = d.ui / eye.OVERSAMPLE
-    t = np.arange(0, d.t_end + 3e-9, dt)
-    delay = 37 * dt
-    y = 0.3 * stimulus.ideal_waveform(t - delay, d)
-    lag, sign = eye.latency(t, -y, d)
-    assert sign == -1 and abs(lag - delay) < dt / 2
-
-    d = stimulus.Data("nrz", 20.0, order=7, n_warm=2)
-    dt = d.ui / 20
-    t = np.arange(0, d.t_end + 3e-9, dt)
-    y = 0.3 * stimulus.ideal_waveform(t - 11 * dt, d)
-    ideal, yy = stimulus.ideal_waveform(t, d), y - y.mean()
-    n_max = int(max(3 * d.ui, 2e-9) / dt) + 1
-    direct = [float(np.dot(yy[k:], ideal[: len(ideal) - k])) for k in range(n_max)]
-    assert eye.latency(t, y, d) == (int(np.argmax(np.abs(direct))) * dt, 1)
-
-
-def test_unknown_format_raises():
-    with pytest.raises(ValueError):
-        eye.levels("pam8")
-    with pytest.raises(ValueError):
-        eye.rx_bandwidth("pam8", 10.0)
 
 
 # ------------------------------------------------------------------ lane: the log -----
@@ -230,11 +143,29 @@ def test_run_batch_keeps_order_and_errors():
     assert exp.md(rows, ["label", "v"]).splitlines()[2] == "| a | 10.00 |"
 
 
+def test_csv_columns_are_the_union_in_first_seen_order(scratch):
+    """An arm that measured one extra key must not silently lose it (template 2.00, `tables/`)."""
+    out = exp.csv([{"label": "a", "g": 1.0}, {"label": "b", "g": 2.0, "x": 3}], scratch / "t.csv")
+    head, *body = out.read_text().splitlines()
+    assert head == "label,g,x"
+    assert body == ["a,1.0,", "b,2.0,3"]
+
+
 def test_plot_smoke(scratch):
+    """`plot.series` for any design; `plot.eye` for the ones that carry data.
+
+    The eye machinery is the platform's — this proves the drawing code still talks to it after the
+    template stopped shimming `stimulus`/`eye` into the design package (template 2.00).
+    """
+    from spicexplorer_waveview import eye as wv_eye
+    from spicexplorer_waveview import stimulus as wv_stim
+
     from design import plot
 
-    t, x, d = _synthetic("pam4")
-    m = eye.eye_metrics(t, x, d)
+    d = wv_stim.Data("pam4", 10.0, order=7, n_warm=8)
+    t = np.arange(0, d.t_end + 2e-9, d.ui / 50)
+    x = 0.5 + 0.5 * wv_stim.ideal_waveform(t, d)
+    m = wv_eye.eye_metrics(t, x, d)
     p = plot.eye(t, x, d, scratch / "fig" / "eye.png", title="t", metrics={**m, "gain_db": 61},
                  keys=("gain_db", "er_db"))
     rows = [{"label": "a", "rate_gbd": r, "gain_db": 60 + r / 10, "pm_deg": 70 - r} for r in (10, 20, 40)]
@@ -582,6 +513,82 @@ def test_deck_portable_spots_a_committed_absolute_include():
     assert mod.abs_includes('include "$MODEL_LIB" section=tt\n'
                             '.include ../models/nmos.spice\n'
                             '* /opt/site/models/lib.file named in a comment is not an include\n') == []
+
+
+def _staged_repo(tmp_path, files: dict[str, str]):
+    """A minimal git checkout with `files` staged. `artifact_home` reads `git ls-files`."""
+    import subprocess as sp
+
+    root = tmp_path / "r"
+    root.mkdir()
+    (root / "harness.yaml").write_text(_HARNESS_SRC)
+    for rel, body in files.items():
+        p = root / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(body)
+    sp.run(["git", "init", "-q"], cwd=root, check=True)
+    sp.run(["git", "add", "-A"], cwd=root, check=True)
+    return root
+
+
+def _lint_on(root):
+    from spicexplorer_harness import load
+    from spicexplorer_harness.lint import Lint
+
+    return _load("scripts/lint.py"), Lint(load(root))
+
+
+def test_artifact_home_refuses_an_undeclared_directory_and_accepts_the_declared_ones(tmp_path):
+    """A figure nobody can find is a claim nobody can check (template 2.00)."""
+    root = _staged_repo(tmp_path, {
+        "experiments/003-sizing/figs/sweep.png": "x",     # the working space: fine
+        "experiments/003-sizing/scratch/look.png": "x",   # still inside experiments/: fine
+        "signoff/prelayout/figs/pm.png": "x",             # the design of record: fine
+        "doc/figs/block.svg": "x",
+        "layout/cell/iterations/it3.png": "x",            # the generator's own output: fine
+        "report/round4/eye.png": "x",                     # nobody declared `report/`
+    })
+    mod, L = _lint_on(root)
+    mod.artifact_home(L)
+    assert len(L.fails) == 1, L.fails
+    assert "report/" in str(L.fails[0]) and "report/round4/eye.png" in str(L.fails[0])
+    assert "ARTIFACT_HOMES" in str(L.fails[0])            # the fix names the escape hatch
+
+
+def test_artifact_home_reports_one_failure_per_directory_not_per_file(tmp_path):
+    """A design with a physics lane has hundreds; 248 failure blocks is a lint nobody reads."""
+    root = _staged_repo(tmp_path, {f"physics/out/s{i}.csv": "x" for i in range(40)})
+    mod, L = _lint_on(root)
+    mod.artifact_home(L)
+    assert len(L.fails) == 1, L.fails
+    assert "40 files" in str(L.fails[0]) and "physics/" in str(L.fails[0])
+
+
+def test_artifact_home_declares_a_designs_own_home(tmp_path, monkeypatch):
+    """The escape hatch is a declaration, not an exemption: one line, and the check passes."""
+    root = _staged_repo(tmp_path, {"physics/out/sweep.csv": "x"})
+    mod, L = _lint_on(root)
+    monkeypatch.setattr(mod, "ARTIFACT_HOMES", (*mod.ARTIFACT_HOMES, "physics/"))
+    mod.artifact_home(L)
+    assert L.fails == []
+
+
+def test_signoff_index_refuses_an_undescribed_fidelity(tmp_path):
+    """An unlisted directory in the trusted tree looks certified and says nothing."""
+    root = _staged_repo(tmp_path, {
+        "signoff/README.md": "| `prelayout` | schematic netlist | ... |\n",
+        "signoff/prelayout/REPORT.md": "x",
+        "signoff/postlayout-em/REPORT.md": "x",
+    })
+    mod, L = _lint_on(root)
+    mod.signoff_index(L)
+    assert len(L.fails) == 1 and "postlayout-em" in str(L.fails[0])
+
+
+def test_signoff_index_is_a_noop_before_anything_is_signed_off(tmp_path):
+    mod, L = _lint_on(_staged_repo(tmp_path, {"doc/target-spec.md": "x"}))
+    mod.signoff_index(L)
+    assert L.fails == []
 
 
 def test_lint_extras_are_green_on_the_bare_template():

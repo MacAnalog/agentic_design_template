@@ -20,7 +20,7 @@ goal: "<the metric to beat, its bound, and what may not be given back>"
 spec:
   - {key: gain_db, label: gain, op: ">=", bound: 60, unit: dB,
      id: S1, verification_method: simulation, tolerance: {kind: abs, delta: 0.5}, certify: true,
-     source: {note: "<pdf/INDEX.md handle, standard, or the system row this was allocated from>"}}
+     source: {note: "<references/INDEX.md handle, standard, or the system row this was allocated from>"}}
   - {key: pm_deg, label: PM, op: ">=", bound: 60, unit: deg, id: S2}
   - {key: power_uw, label: power, op: "<=", bound: 100, unit: uW, id: S3}
 # Extra spec-frame lines for the pack: report-only columns, expensive sign-off definitions, gates.
@@ -30,9 +30,19 @@ spec:
 #   - "<what the reference is NOT: the conditions it was certified at, if they are not the target's>"
 spec_notes: []
 
-# Certified artefacts, sha-locked with SHA256SUMS (`make freeze` after certification).
-frozen: []                       # e.g. [decks/reference]
-reference_scorecard: ""          # e.g. decks/reference/scorecard.json ({"scorecard": {...}})
+# Reference material: papers, datasheets, standards. Cited by the handle in its index, never by
+# filename, so a renamed file never orphans a citation.
+papers_dir: references
+papers_index: references/INDEX.md
+
+# The experiments index. `Phase` names which of the five design phases the experiment belongs to
+# (system | topology | sizing | improve | layout) — see CLAUDE.md, "How the work is organized".
+experiments_rows: [Phase, Paper, Hypothesis, Verdict]
+
+# Certified artefacts, sha-locked with SHA256SUMS (`make freeze` after certification). Both point
+# into `signoff/` — the design of record, one directory per simulation fidelity (`signoff/README.md`).
+frozen: []                       # e.g. [signoff/prelayout/decks]
+reference_scorecard: ""          # e.g. signoff/prelayout/decks/scorecard.json ({"scorecard": {...}})
 
 # Who may sign a ledger row (`evidence: signed`). Uncomment with real ids: without a roster the
 # alias heuristic stands in, and a name that folds onto the author's is refused as a self-sign.
