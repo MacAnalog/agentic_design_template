@@ -174,7 +174,7 @@ def _apply(a: str, b: str, paths: list[str], directory: str | None = None,
         # A release that ADDS a file has nothing for the design to be missing: if that apply fails
         # (something else in the way, an unwritable path) it is a real failure, and reporting it as
         # "you do not carry this file" is how a new module silently never arrives.
-        creates = bool(re.search(r"^new file mode ", diff, re.M))
+        creates = bool(re.search(r"^new file mode ", diff, re.MULTILINE))
         ok, msg = _apply_one(diff, directory)
         if ok:
             out.append((str(target), "merged" if exists else "added", ""))
