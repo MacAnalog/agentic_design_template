@@ -168,8 +168,94 @@ def sx_links(L: Lint) -> None:
                "nested submodule needs the --recursive it does)")
 
 
+# Where a committed artefact is allowed to live (template 2.00, "every artefact has a home").
+# A figure or a table is evidence: it belongs beside the claim it supports, in a directory a reader
+# can find without being told. Raw simulator output is the opposite — it stays in the scratch root
+# and is never committed at all.
+ARTIFACT_SUFFIXES = (".png", ".svg", ".pdf", ".csv", ".gds", ".gds.gz")
+# ADD THIS DESIGN'S OWN HOMES HERE, deliberately, one line each with why. That is the whole
+# escape hatch and it is on purpose: a home nobody wrote down is a directory the next reader has
+# to guess at, and a one-line declaration in a reviewed file costs nothing.
+ARTIFACT_HOMES = (
+    "signoff/",        # the design of record, by fidelity — what a reader is entitled to trust
+    "experiments/",    # the working space: agents organize inside it freely (figs/ + tables/ is the habit)
+    "layout/",         # the generator's own working output; what is SIGNED OFF moves to signoff/layout/
+    "decks/",          # candidate and control deck dirs (the CERTIFIED ones live in signoff/)
+    "references/",     # papers, datasheets, standards
+    "doc/",            # figures that belong to a document
+    "notebooks/",      # executed in place, outputs committed
+    ".claude/", ".sx/", ".github/",
+)
+
+
+def artifact_home(L: Lint) -> None:
+    """Every committed figure, table or layout sits in a home this repo has declared.
+
+    An agent that leaves a plot in whichever directory it was standing in produces a repo nobody
+    can read six weeks later, and a reviewer who cannot find the evidence treats the claim as
+    unsupported. The check is not about tidiness: it is about whether the evidence is findable.
+
+    It is deliberately not a straitjacket. `experiments/` is wide open — that IS the working space
+    — and a design with its own durable output directory adds one line to `ARTIFACT_HOMES` above.
+    What it refuses is the undeclared case: an artefact somewhere nobody wrote down.
+    """
+    root = L.h.root
+    r = subprocess.run(["git", "ls-files", "-z"], cwd=root, capture_output=True, text=True)
+    if r.returncode:
+        return  # not a git checkout (a template copied by hand): nothing to check
+    # Grouped by top-level directory, because that is the unit you DECLARE. Reporting one failure
+    # per file would print 248 blocks on a design with a physics lane, and a lint nobody can read
+    # is a lint that gets switched off. `dict` keeps first-seen order; it also dedupes the stages
+    # `git ls-files` emits for an unmerged path mid-merge.
+    stray: dict[str, list[str]] = {}
+    for rel in dict.fromkeys(r.stdout.split("\0")):
+        if not rel or not rel.endswith(ARTIFACT_SUFFIXES) or (root / rel).is_symlink():
+            continue
+        if rel.startswith(ARTIFACT_HOMES):
+            continue
+        stray.setdefault(rel.split("/")[0] + "/" if "/" in rel else "(repo root)", []).append(rel)
+    for where, files in stray.items():
+        eg = files[0] if len(files) == 1 else f"{len(files)} files, e.g. {files[0]}"
+        L.fail("artifact-home", f"{where} holds committed artefacts outside every declared home "
+                                f"({eg})",
+               f"either MOVE them — an experiment's evidence to `experiments/NNN-*/figs|tables/`, "
+               f"a measured result to `signoff/<fidelity>/`, a document's figure to `doc/`, a "
+               f"paper to `references/` — or DECLARE `{where}` in `ARTIFACT_HOMES` in this file, "
+               f"with one line saying what lives there. Raw simulator output is neither: it is "
+               f"never committed, and stays in the scratch root ($SX_SCRATCH)")
+
+
+def signoff_index(L: Lint) -> None:
+    """Every directory under `signoff/` is named in `signoff/README.md`.
+
+    `signoff/` is the tree a reader trusts, so an unlisted directory in it is worse than no
+    directory: it looks certified and says nothing about the conditions it was measured under.
+    The README's table is the index — one row per fidelity, with its scorecard and its status.
+    """
+    d = L.h.root / "signoff"
+    if not d.is_dir():
+        return  # a design that has not started signing anything off
+    idx = d / "README.md"
+    if not idx.is_file():
+        L.fail("signoff-index", "signoff/ exists but signoff/README.md does not",
+               "copy it from the template (`make template-update`): it is the index of what is "
+               "signed off, at which fidelity, by whom and when")
+        return
+    text = idx.read_text()
+    # `__pycache__` and dot-dirs are tooling debris, not fidelities: they are not sign-offs and
+    # demanding a README row for them would teach people to ignore this check.
+    subs = (p.name for p in d.iterdir()
+            if p.is_dir() and not p.name.startswith(".") and p.name != "__pycache__")
+    for sub in sorted(subs):
+        if f"`{sub}`" not in text and f"`{sub}/" not in text:
+            L.fail("signoff-index", f"signoff/{sub}/ is not named in signoff/README.md",
+                   f"add a row for `{sub}` to the table — what the number includes, its scorecard "
+                   f"path, its status, who signed it and when. A fidelity nobody described is not "
+                   f"a sign-off")
+
+
 # `package-importable` is NOT here: the platform ships it (driven by `package:` in harness.yaml).
-EXTRA = (deck_rebuild, deck_portable, spec_quotes, sx_links)
+EXTRA = (deck_rebuild, deck_portable, spec_quotes, sx_links, artifact_home, signoff_index)
 
 if __name__ == "__main__":
     sys.exit(lint.main(load(REPO), extra=EXTRA))

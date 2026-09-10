@@ -18,12 +18,55 @@ spec of record is `doc/target-spec.md`, its machine twin `spec:` in `harness.yam
 | anything | `doc/target-spec.md` — the acceptance box, pass/fail definitions |
 | measure something | `doc/benches.md` — reference-first, and the measure → spec-key map |
 | touch the DUT / model it | `doc/design-reference.md` — device map, validated model, the constraints every candidate respects |
-| pick a paper / technique | `pdf/INDEX.md` (cite by handle) |
+| pick a paper / technique | `references/INDEX.md` (cite by handle) |
 | run simulations | `design/` module docstrings + `doc/environment.md` (lanes, gotchas) |
-| draw or sign off a layout | `layout/` + `.claude/skills/layout-evidence/SKILL.md` |
-| start an experiment | copy `experiments/_template/`; add one row to `doc/experiment-log.md` |
+| draw a layout | `layout/` (the generator) + `.claude/skills/layout-evidence/SKILL.md` |
+| report a result you want believed | `signoff/README.md` — the design of record, one directory per simulation fidelity |
+| start an experiment | copy `experiments/_template/`; name its phase; add one row to `doc/experiment-log.md` |
 | verify someone's claims | `doc/reviews/README.md` — the verifier's report shape |
 | learn from / add a lesson | `doc/journal.md` (index) + one file per entry in `doc/journal/`; `doc/memory/README.md` has the four tiers, the write-risk ordering and supersede-never-delete |
+
+## How the work is organized
+
+**Five phases, and every experiment names the one it belongs to.** They are not gates — a topology
+question reopens at sizing often enough — but the name tells the next agent what kind of evidence
+it is reading, and it is the first column of `doc/experiment-log.md`.
+
+| phase | the question it answers | what it usually produces |
+|---|---|---|
+| `system` | what must this block do, and how will we know? | the spec table, the budgets, a behavioural model |
+| `topology` | which circuit can do it at all? | candidates ranked, and the measurement that ranked them |
+| `sizing` | which device sizes meet the box? | a sizing point, corners, mismatch |
+| `improve` | can the topology itself do better? | a variant that beat the incumbent, and by how much |
+| `layout` | does it survive being drawn? | the generator, GDS, DRC/LVS, post-extraction numbers |
+
+## Where things go
+
+**Work freely inside the repo, never beside it.** Open as many experiment directories as the work
+needs — that is what they are for. What is not free is where the output lands: every derived
+artefact has one home, and raw simulator output has none, because it is not committed at all.
+
+| what you just made | where it goes |
+|---|---|
+| an exploration, a sweep, an A/B | `experiments/NNN-<slug>/` — `run.py` simulates, `README.md` states the verdict |
+| the figure or table carrying its claim | `experiments/NNN-*/figs/`, `.../tables/` |
+| a measured result, with its conditions, that you want believed | `signoff/<fidelity>/` — `signoff/README.md` lists the fidelities |
+| the netlist and schematic of record | `signoff/schematic/` |
+| GDS, DRC and LVS reports, the extracted netlist | `signoff/layout/` — the generator itself stays in `layout/` |
+| a lesson worth reusing | one file in `doc/journal/`, one line in `doc/journal.md` |
+| a paper, datasheet or standard | `references/` + a row in `references/INDEX.md` (cite by handle) |
+| working notes, throwaway scripts, a plot you just want to look at | `experiments/NNN-*/out/` — inside the repo and git-ignored. **Not** `/tmp`, and not the agent tool's own scratchpad |
+| rawfiles, work directories, simulator logs | the scratch root (`$SX_SCRATCH`) — never the repo |
+
+`artifact-home` in `scripts/lint.py` enforces the table: a committed `.png`, `.csv`, `.pdf` or
+`.gds` outside a declared home fails `make lint` with the fix. **The reason is not tidiness.** A
+reviewer who cannot find the evidence treats the claim as unsupported, and six weeks later so does
+the agent that wrote it.
+
+**It is not a straitjacket either.** `experiments/` is wide open — organize inside it however the
+work wants — and a design with its own durable output directory (a physics lane, a report tree)
+adds one line to `ARTIFACT_HOMES` saying what lives there. What the check refuses is the
+undeclared case: an artefact somewhere nobody wrote down.
 
 ## Harness commands (`make help`; the generic work is `spicexplorer-harness`, driven by `harness.yaml`)
 
@@ -153,6 +196,6 @@ One experiment = one session = one worktree on `feat/NNN-<technique>`; `EXP=NNN`
 A worktree is a new checkout: run `make init` in it (`.sx/platform` is git-ignored and `.sx/skills`
 needs its submodule update) before `uv sync` can resolve the platform packages.
 Ledger and work dirs are per checkout; shared docs (`doc/journal.md`, `doc/experiment-log.md`,
-`pdf/INDEX.md`) are written at close-out only — until then write into your own
+`references/INDEX.md`) are written at close-out only — until then write into your own
 `experiments/NNN-*/README.md`. Branch `feat/<name>` off `main`, PR, squash. **Ask before pushing.**
 Never commit `runs/`, work dirs, rawfiles or PDK content.

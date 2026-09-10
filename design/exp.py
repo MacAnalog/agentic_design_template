@@ -1,12 +1,13 @@
 """Experiment helpers: a labelled batch through one scorer, markdown tables, `out/` files.
 
 An experiment's `run.py` builds `{label: Design}`, calls `run_batch(designs, metrics.evaluate)`,
-saves `out/rows.json`, draws its figures with `design.plot` and prints the markdown that graduates
-into its README.
+saves `out/rows.json` and its committed twin `tables/rows.csv`, draws its figures with
+`design.plot` and prints the markdown that graduates into its README.
 """
 
 from __future__ import annotations
 
+import csv as _csv
 import json
 import os
 from collections.abc import Callable
@@ -76,6 +77,25 @@ def save(rows: list[dict], out_dir: Path, name: str = "rows.json") -> Path:
     p = out_dir / name
     p.write_text(json.dumps(rows, indent=1, default=str) + "\n")
     return p
+
+
+def csv(rows: list[dict], out: Path) -> Path:
+    """The same rows as a committed CSV, so a later run can diff numbers instead of eyeballing plots.
+
+    `out/rows.json` is working data and git-ignored; this is its committed twin under `tables/`.
+    Columns are the union of every row's keys, in first-seen order, so an arm that measured one
+    extra key does not silently drop it.
+    """
+    out = Path(out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    cols: list[str] = []
+    for r in rows:
+        cols += [k for k in r if k not in cols]
+    with out.open("w", newline="") as fh:
+        w = _csv.DictWriter(fh, fieldnames=cols, extrasaction="ignore")
+        w.writeheader()
+        w.writerows(rows)
+    return out
 
 
 def load(out_dir: Path, name: str = "rows.json") -> list[dict]:

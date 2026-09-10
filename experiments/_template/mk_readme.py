@@ -24,7 +24,8 @@ def main() -> int:
     rows = exp.load(EXP / "out")
     md = f"""# {EXP.name.split('-')[0]} — <technique>
 
-**Paper(s):** <handles from pdf/INDEX.md, or none>
+**Phase:** <system | topology | sizing | improve | layout>
+**Paper(s):** <handles from references/INDEX.md, or none>
 **Hypothesis:** <falsifiable: what moves, by how much, measured how>
 **Control:** <what is held or re-allocated so the effect is attributable>
 **Verdict:** <CONFIRMED | FALSIFIED | PARTLY … — the sentence, with the numbers interpolated>
@@ -39,6 +40,13 @@ then `mk_readme.py`. Every row below is a ledger row (`make runs ARGS="--exp {EX
 {exp.verdicts(rows)}
 
 ![sweep](figs/sweep.png)
+
+## Evidence
+
+| claim | figure or table |
+|---|---|
+| <the claim this experiment settles> | `figs/sweep.png` |
+| <the numbers behind it> | `tables/rows.csv` |
 
 ## Lessons to graduate
 
