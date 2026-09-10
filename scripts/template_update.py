@@ -142,14 +142,41 @@ def status() -> int:
     return 0
 
 
-def _apply(diff: str, directory: str | None = None) -> tuple[bool, str]:
-    if not diff.strip():
-        return True, ""
+def _apply_one(diff: str, directory: str | None) -> tuple[bool, str]:
     cmd = ["git", "apply", "--3way", "--whitespace=nowarn"]
     if directory:
         cmd += [f"--directory={directory}"]
     r = subprocess.run(cmd, cwd=REPO, input=diff, capture_output=True, text=True)
     return r.returncode == 0, (r.stdout + r.stderr).strip()
+
+
+def _apply(a: str, b: str, paths: list[str], directory: str | None = None,
+           relative: str | None = None) -> list[tuple[str, str, str]]:
+    """Apply the diff FILE BY FILE and report each one.
+
+    `git apply` is atomic: one file the design does not have (a test module it dropped, a script it
+    never received) aborts the whole patch and silently rolls back every file that HAD merged. So
+    each file is applied on its own — a design gets everything that can land, and the report says
+    exactly what did not.
+    """
+    base = ["git", "diff", "--full-index", f"v{a}", f"v{b}"]
+    base += [f"--relative={relative}"] if relative else []
+    names = sh(*base, "--name-only", "--", *paths).split()
+    out: list[tuple[str, str, str]] = []
+    for name in names:
+        target = (Path(directory) / name) if directory else Path(name)
+        diff = sh(*base, "--", (f"{relative}{name}" if relative else name))
+        if not diff.strip():
+            continue
+        exists = (REPO / target).exists()
+        ok, msg = _apply_one(diff, directory)
+        if ok:
+            out.append((str(target), "merged" if exists else "added", ""))
+        elif not exists:
+            out.append((str(target), "skipped", "this design does not carry the file the change edits"))
+        else:
+            out.append((str(target), "CONFLICT" if "conflict" in msg.lower() else "REJECTED", msg))
+    return out
 
 
 def update(target: str | None) -> int:
@@ -173,23 +200,26 @@ def update(target: str | None) -> int:
     print(f"template {cur} -> {want}   package: {pkg}\n{changelog(cur, want) or '(no changelog entries)'}\n")
 
     # 1) the package, re-rooted from the template's `design/` onto this design's package dir
-    pkg_diff = sh("git", "diff", "--full-index", f"v{cur}", f"v{want}", "--relative=design/",
-                  "--", "design/", *PKG_EXCLUDE)
-    ok_pkg, msg_pkg = _apply(pkg_diff, directory=pkg)
+    rows = _apply(cur, want, ["design/", *PKG_EXCLUDE], directory=pkg, relative="design/")
     # 2) everything else, path for path
-    rest_diff = sh("git", "diff", "--full-index", f"v{cur}", f"v{want}", "--", ".", ":!design", *EXCLUDE)
-    ok_rest, msg_rest = _apply(rest_diff)
+    rows += _apply(cur, want, [".", ":!design", *EXCLUDE])
 
-    for label, ok, msg in (("package", ok_pkg, msg_pkg), ("the rest", ok_rest, msg_rest)):
-        print(f"  {label}: {'applied' if ok else 'CONFLICTS / REJECTED'}")
+    width = max((len(r[0]) for r in rows), default=1)
+    for name, verdict, msg in rows:
+        print(f"  {name:<{width}}  {verdict}")
         if msg:
-            print("   " + msg.replace("\n", "\n   "))
+            print("      " + msg.replace("\n", "\n      "))
+    if not rows:
+        print("  (no files changed between these releases outside what this design owns)")
+    VERSION_FILE.parent.mkdir(parents=True, exist_ok=True)
     VERSION_FILE.write_text(want + "\n")
-    print(f"\n.sx/template-version -> {want} (not committed)")
-    print("NOW: `git status` and read every merge; then `make lint && make test`.")
-    print("Hunks that name the template's `design.` package arrive spelled that way — fix those by "
-          "hand; they are why this prints instead of committing.")
-    return 0 if (ok_pkg and ok_rest) else 1
+    bad = [r for r in rows if r[1] in ("CONFLICT", "REJECTED")]
+    print(f"\n.sx/template-version -> {want} (nothing is committed)")
+    print("NOW: read every merged file, resolve each CONFLICT (they are decisions: the template's "
+          "generic change meeting your design's own lines), then `make lint && make test`.")
+    print("A hunk whose TEXT names the template's `design.` package arrives spelled that way — fix "
+          "those by hand; that is why this prints a report instead of committing.")
+    return 1 if bad else 0
 
 
 def main(argv=None) -> int:

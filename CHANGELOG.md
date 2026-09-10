@@ -16,6 +16,14 @@ cut from in `.sx/template-version` and pulls later work with `make template-upda
 
 Check where you stand with `make template-status`. Releases are git tags, `v<version>`.
 
+## v1.04 — apply file by file, and say what each file did
+
+MINOR. `git apply` is atomic: on the first real propagation, one file the design had never carried
+(a test module it dropped) aborted the whole patch and silently rolled back every file that had
+already merged. Each file is now applied on its own, and the run prints one line per file — `added`,
+`merged`, `skipped` (the design does not carry the file the change edits) or `CONFLICT`. A design
+therefore receives everything that can land, and the report names exactly what did not.
+
 ## v1.03 — the package's generic modules propagate too
 
 MINOR. `1.02` held back `metrics.py` and `bench.py` with `dut.py`, which meant a design could never
