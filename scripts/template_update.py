@@ -57,8 +57,13 @@ EXCLUDE = (
     ":!decks",
     ":!layout",
 )
-# Inside the package, these are the design itself; the generic modules beside them do propagate.
-PKG_EXCLUDE = (":!dut.py", ":!bench.py", ":!metrics.py")
+# Inside the package, only the topology is purely the design's: the template's `dut.py` is a stub, so
+# propagating its changes into a real one is conflict noise and nothing else. Everything else in the
+# package — `metrics.py` (the scorecard lifecycle around a design-specific KEYMAP), `bench.py` (the
+# reduction hook), `sim.py` (the lane wrapper around a design-specific policy), `exp.py`, `plot.py`,
+# `stimulus.py` — is generic work the design SHOULD receive; the three-way merge is what protects
+# the design-specific lines inside them, and a conflict there is a decision, not a failure.
+PKG_EXCLUDE = (":!dut.py",)
 
 
 def sh(*args: str, cwd: Path = REPO, check: bool = True) -> str:
