@@ -4,12 +4,13 @@ KIND: journal entry | type: procedural | status: live
 
 [2026-09-04 — this repo's package was called `lab/` when this entry was written and is
 now `design/` (see `template-revised-from-the-ldo-instance.md`). The module column below
-reads with the new name; the `lab/…` paths in the per-repo switch-over diffs are those
-repos' own files and are left exactly as they are.]
+uses the new name. The `lab/…` paths in the per-repo switch-over diffs name files in those
+repos, so they stand unchanged.]
 
-Three design repos had each rewritten the same simulation lane. The generic parts were first
-consolidated into this repo's package, then (same day) moved into the platform; it now imports them and a
-new repo copies the thin wrappers. The rest stays where the design is.
+Three design repos had each rewritten the same simulation lane. This pass consolidated the generic
+parts into this repo's package and moved them into the platform the same day; the package now
+imports them, and a new repo copies only the wrappers around them. What is specific to one design
+stays in that design's repo.
 
 | module | from | what it is |
 |---|---|---|
@@ -26,10 +27,11 @@ Stays repo-specific: the PDK-device preflight deck (LV NMOS / HBT + diode / HV N
 transmitter's `eo_s21`/`dc_transfer` figures and the `parallel.py` job cap.
 
 Conventions carried over: `exp_env: FOO_EXP` names `FOO_NGSPICE` and `FOO_WORK`, so a repo that
-switches keeps its environment variables — now the `sim_env`/`work_env` keys of `harness.yaml`,
-defaulted by that prefix rule (`spicexplorer_harness.config`). New host requirement: `SPICE_USERINIT_DIR` must point
-at the PDK's ngspice directory (its `.spiceinit` is copied into every run dir); `~/.spiceinit`
-and a hard-coded binary path are no longer fallbacks.
+switches keeps its environment variables. Those two names are now the `sim_env`/`work_env` keys of
+`harness.yaml`, defaulted by that prefix rule (`spicexplorer_harness.config`). New host
+requirement: `SPICE_USERINIT_DIR` must point at the PDK's ngspice directory, because its
+`.spiceinit` is copied into every run dir; `~/.spiceinit` and a hard-coded binary path are no
+longer fallbacks.
 
 ## Switch-over per repo (proposed diffs, not applied)
 
@@ -63,7 +65,7 @@ and a hard-coded binary path are no longer fallbacks.
   `plot.frontier(..., series="series")` → `by="series"`, `ys=` is required.
 - `lab/parallel.py`: keep (its cap of 24) or drop for `exp.run_batch(workers=)`.
 
-**LPF** — a shim, not a delete (19 importers of `lab.ngspice`: `run/plots/simulate/wall_time/preflight/SimError`)
+**LPF** — `lab/ngspice.py` is kept as a compatibility module, not deleted (19 importers of `lab.ngspice`: `run/plots/simulate/wall_time/preflight/SimError`)
 - Add this `lab/sim.py`; `lab/ngspice.py` becomes: `SimError`, `deck_hash`, `preflight`, `wall_time`
   re-exported from `lab.sim` (`SimError` is the platform's `DeckRunError`; `deck_hash` stays the
   harness's — the same sha256 prefix `run_deck` names its directories by); `run()` delegates to
@@ -87,7 +89,7 @@ Four of the five gaps landed in the platform and `lab/` now imports them:
 | `eye.*` (`eye_metrics`, `fold`, `latency`, `levels`, `rx_bandwidth`, `bessel_lowpass`, `resample`, the constants) | `spicexplorer_waveview.eye` | also registers the `eye` measurement kind (`{meas: vecp_db, out, fmt, rate_gbd, …}` on `sim.dataset(run)`) |
 | `exp.*`, `plot.*` | stay here | the ledger/batch/spec half is already the harness; the figures are this repo's spec boxes |
 
-Still open: a docker ngspice lane so the LPF's can retire.
+Still open: a docker ngspice lane, so the LPF's own can retire.
 
 Procedural write (`lab/`, `Makefile`, `pyproject.toml`) — proposed for owner review per
 CLAUDE.md rule 10.

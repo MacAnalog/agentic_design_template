@@ -1,8 +1,8 @@
 # NNN — <technique>
 
-<!-- The four bolded labels below are matched by `make lint` as BOLD ROW LABELS; a heading
-     of the same name does not count. `run.py` simulates into out/ + figs/, `mk_readme.py`
-     regenerates this file from out/*.json — edit the generator, not the generated prose. -->
+<!-- `make lint` matches the four bold row labels below; a heading of the same name does not
+     count. `run.py` simulates into out/ and figs/; `mk_readme.py` regenerates this file from
+     out/*.json. Edit the generator, not the generated prose. -->
 
 **Paper(s):** <handles from pdf/INDEX.md, or none>
 **Hypothesis:** <falsifiable: what moves, by how much, measured how>

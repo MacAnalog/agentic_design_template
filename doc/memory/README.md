@@ -2,14 +2,14 @@
 
 KIND: REFERENCE
 
-Four memory tiers (CoALA, arXiv:2309.02427, as distilled in the workspace plan
-`plan_harness_engineering.md` §4e), each with a physical home in this repo, a declared writer,
-and a declared write risk. The governing constraint:
+This repo carries four memory tiers (CoALA, arXiv:2309.02427, as distilled in the workspace plan
+`plan_harness_engineering.md` §4e). Each tier has a home in the repo, a declared writer and a
+declared write risk. The governing constraint:
 
 > **No memory surface may grow past what fits comfortably in an agent context.**
 
-One file per entry, a small lint-enforced index, a size cap per surface, and the overflow
-dirs below all exist to satisfy that rule. A memory you cannot load is not a memory.
+One file per entry, a small lint-enforced index, a size cap per surface and the overflow
+directories below all serve that rule. An entry that does not fit in the context is of no use.
 
 ## 1. The tiers
 
@@ -22,8 +22,8 @@ dirs below all exist to satisfy that rule. A memory you cannot load is not a mem
 
 ## 2. Learning actions
 
-1. **experience → episodic.** Automatic. Never hand-edit the ledger; a hand-edited flight
-   recorder is not evidence. A later contradicting row revokes an earlier sign-off.
+1. **experience → episodic.** Automatic. Never hand-edit the ledger: an edited row is not
+   evidence of a run. A later contradicting row revokes an earlier sign-off.
 2. **distillation → semantic.** Read the episodes, write the entry with provenance: ledger
    tags, experiment dir, deck hash, paper equation. A claim with no pointer back is an opinion.
 3. **new code → procedural.** A trap that recurs becomes a lint (`scripts/lint.py` EXTRA), a
@@ -37,25 +37,33 @@ dirs below all exist to satisfy that rule. A memory you cannot load is not a mem
 ## 4. Entry format and supersession
 
 Entry file: `# YYYY-MM-DD — title`, blank line, `KIND: journal entry | type: semantic|procedural
-| status: live`, body. Filenames are slugs (code may cite them), the date lives in the title.
-Retiring an entry is a three-place edit: `status: superseded` in the header, a
+| status: live`, body. Filenames are slugs (code may cite them); the date lives in the
+title. Retiring an entry is a three-place edit: `status: superseded` in the header, a
 `[superseded <date> — see …]` note as the first body line, and `**superseded**` in the index
-row. The pack serves only live entries. Retire the claim that died, not the whole entry.
+row. The pack serves only live entries. Retire the claim that no longer holds, not the
+whole entry.
 
 ## 5. Blast radius
 
-One experiment = one worktree; the ledger and work dirs are per checkout; `EXP=NNN` stamps
-rows. Shared docs are written at close-out, from the experiment's own README.
+One experiment = one worktree. The ledger and work dirs are per checkout, and `EXP=NNN` stamps
+the rows. The session writes the shared docs at close-out, from the experiment's own README.
 
 ## 6. Enforcement
 
-`make lint` (`spicexplorer_harness.lint`): every entry indexed, typed, dated, under the size
-cap, supersession complete; every experiment dir logged with Paper/Hypothesis/Verdict rows;
-every PDF indexed; spec numbers present in `doc/target-spec.md`; frozen dirs match their
-`SHA256SUMS`; the denylist is clean; the pack retrieves at least one constraint and one lesson;
-the design package imports; a frozen deck still rebuilds; a signed scorecard still recomputes.
+`make lint` (`spicexplorer_harness.lint`) checks that:
+
+- every entry is indexed, typed, dated, under the size cap, and its supersession is complete;
+- every experiment dir is logged, with Paper/Hypothesis/Verdict rows;
+- every PDF is indexed;
+- the spec numbers are present in `doc/target-spec.md`;
+- frozen dirs match their `SHA256SUMS`;
+- the denylist is clean;
+- the pack retrieves at least one constraint and one lesson;
+- the design package imports;
+- a frozen deck still rebuilds;
+- a signed scorecard still recomputes.
 
 **A gate is only a gate once you have watched it go green.** Before recording a red check as
 "waiting on someone to do X", do X once and look. A failure whose passing condition has never
-been demonstrated may be unsatisfiable by anything a reader can do, and it will absorb effort
-every time it is re-read.
+been demonstrated may be unsatisfiable by anything a reader can do. It absorbs effort every time
+it is re-read.
