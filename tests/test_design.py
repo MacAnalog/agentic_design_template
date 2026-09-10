@@ -521,6 +521,39 @@ def test_spec_quotes_needs_the_certified_precision_not_a_substring(renamed_repo)
         assert quoted or L.fails[0].startswith("[spec-quotes]")      # not the platform's spec-sync
 
 
+def test_spec_quotes_matches_the_rows_own_line_not_the_whole_document(renamed_repo):
+    """AT-04: every number in the doc went into ONE set, so a baseline column holding the WRONG
+    value passed whenever the certified number happened to appear anywhere else in the file."""
+    from spicexplorer_harness import load
+    from spicexplorer_harness.lint import Lint
+
+    mod = _load("scripts/lint.py")
+    (renamed_repo / "decks/reference/scorecard.json").write_text(
+        json.dumps({"scorecard": {"gain_db": 62.4}}))
+    doc = renamed_repo / "doc/target-spec.md"
+    doc.write_text("| gain | >= 60 dB | 58.1 |\n\n"
+                   "An earlier build measured 62.4 dB; the table above is the one that counts.\n")
+    L = Lint(load(renamed_repo))
+    mod.spec_quotes(L)
+    assert L.fails and L.fails[0].startswith("[spec-quotes]"), \
+        "62.4 appears only in prose; the gain row quotes 58.1"
+
+
+def test_spec_quotes_says_so_when_no_row_names_the_key(renamed_repo):
+    """A row the doc never names cannot be checked — and silence there is what let the
+    document-wide match stand in for a per-row one."""
+    from spicexplorer_harness import load
+    from spicexplorer_harness.lint import Lint
+
+    mod = _load("scripts/lint.py")
+    (renamed_repo / "decks/reference/scorecard.json").write_text(
+        json.dumps({"scorecard": {"gain_db": 62.4}}))
+    (renamed_repo / "doc/target-spec.md").write_text("| S9 | slew rate | >= 1 V/us | 62.4 |\n")
+    L = Lint(load(renamed_repo))
+    mod.spec_quotes(L)
+    assert L.fails and "names" in L.fails[0]
+
+
 def test_certify_refuses_to_write_a_reference_missing_a_bench(_certify_env, monkeypatch, tmp_path):
     """A frozen dir born without a bench is one `make freeze` from being sha-locked, and `drift()`
     iterates the CERTIFIED keys — so the missing column can never be noticed again."""
