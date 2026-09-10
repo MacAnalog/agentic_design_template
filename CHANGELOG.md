@@ -17,6 +17,19 @@ Versions are `MAJOR.MINOR`, written `#.##`:
 `make template-status` prints the recorded version and the latest release. Releases are git
 tags, `v<version>`.
 
+## v2.03 — say what the relocation does to the ledger
+
+Minor. 2.02 moved a frozen directory and repointed its scorecard. The **ledger** records the same
+paths, and it is deliberately not rewritten — *"never hand-edit the ledger: an edited row is not
+evidence of a run"*. A row naming the old path is a true record of where the file was when that run
+happened.
+
+The consequence is a `scorecard-recompute` failure for those rows **in the checkout that holds
+them**. `runs/` is git-ignored and per checkout, so a fresh clone never sees it, and it clears at
+the next certification. That is now said in the migration's own output rather than discovered
+afterwards — a lint going red for a reason nobody can act on is the failure mode the harness
+already avoids for fresh clones.
+
 ## v2.02 — a frozen directory CAN move; it just has to take its pointers with it
 
 Minor. This corrects an over-strong rule in 2.00/2.01, which refused to move any frozen directory
