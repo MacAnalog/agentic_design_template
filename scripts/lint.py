@@ -4,7 +4,9 @@
 Both template instantiations independently wrote the same two extra checks, so they ship here:
 `deck_rebuild` (a frozen deck must still be reproducible from `design/` + its `design.json`) and
 `spec_quotes` (the reference column of `doc/target-spec.md` must quote the certified scorecard).
-Both no-op until something is certified, so `make lint` is green on a bare template.
+`deck_portable` joins them on the same evidence — two designs froze a deck carrying a
+machine-specific absolute library path. All three no-op until something is certified, so
+`make lint` is green on a bare template.
 
 Add this design's own `def check(L: Lint) -> None` and name it in EXTRA. A check earns its place
 when a trap has bitten twice (`doc/journal/gap-as-signal.md`); its message carries the fix.
@@ -35,6 +37,9 @@ QUOTE_FORMATS = ("{:.4g}", "{:.3g}", "{:g}")
 # 0.001234 is `0.00`), and the unit-scaled-keys rule keeps scorecard values off that range anyway.
 QUOTE_FIXED = ("{:.3f}", "{:.2f}")
 NUMBER = re.compile(r"-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?")
+# An include/library line naming an ABSOLUTE path: what `deck_portable` refuses in a frozen deck.
+# `$VAR` and repo-relative spellings are the portable forms and never match.
+_ABS_INCLUDE = re.compile(r'^\s*\.?(?:include|lib)\b[^\n]*?["\'\s](/[^"\'\s]+)', re.I | re.M)
 
 
 def _frozen_dirs(L: Lint) -> list[Path]:
@@ -78,6 +83,33 @@ def deck_rebuild(L: Lint) -> None:
                 L.fail("deck-rebuild", f"{rel}/{b}.spice is missing", fix)
             elif p.read_text() != text:
                 L.fail("deck-rebuild", f"design.dut.Design.deck({b!r}) no longer reproduces {rel}/{b}.spice", fix)
+
+
+def abs_includes(text: str) -> list[str]:
+    """Absolute paths named on a deck's include/library lines (`include`, `.include`, `.lib`)."""
+    return [m.group(1) for m in _ABS_INCLUDE.finditer(text)]
+
+
+def deck_portable(L: Lint) -> None:
+    """A frozen deck may not carry an absolute path from the machine that certified it.
+
+    Bitten twice, in two designs: a deck built with the model library's absolute path in its
+    include line was frozen and committed, which makes the certified reference unusable on any
+    other machine and hard-codes a path that may not be publishable at all. Redaction on write
+    with restoration on read does not fix it — `deck_rebuild` above compares bytes, so every
+    redacted bench stops reproducing. The pattern that works lives in `design/sim.py`: the deck
+    text names `$VAR`, `sim.DECK_VARS` declares it, `sim.run` resolves it at the moment of
+    simulating, and the committed bytes stay portable.
+    """
+    for d in _frozen_dirs(L):
+        for p in sorted(d.glob("*.spice")):
+            rel = p.relative_to(L.h.root).as_posix()
+            for path in abs_includes(p.read_text(errors="replace")):
+                L.fail("deck-portable", f"{rel} includes the absolute path {path}",
+                       f"a frozen deck is committed, hashed and rebuilt byte for byte, so the "
+                       f"path may not be in it: name it `$VAR` in the deck, declare VAR in "
+                       f"`{L.h.package}.sim.DECK_VARS` (resolved in `sim.run`), re-certify "
+                       f"(`make certify && make freeze`)")
 
 
 def spec_quotes(L: Lint) -> None:
@@ -137,7 +169,7 @@ def sx_links(L: Lint) -> None:
 
 
 # `package-importable` is NOT here: the platform ships it (driven by `package:` in harness.yaml).
-EXTRA = (deck_rebuild, spec_quotes, sx_links)
+EXTRA = (deck_rebuild, deck_portable, spec_quotes, sx_links)
 
 if __name__ == "__main__":
     sys.exit(lint.main(load(REPO), extra=EXTRA))

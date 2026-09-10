@@ -6,6 +6,12 @@ the box, log the row. Plus the three lifecycle commands both instantiations had 
 Fill `KEYMAP`: the benches print whatever their template calls a measure, the spec speaks in
 unit-scaled keys, and that mapping is the only design-specific thing in this file. Document it
 in `doc/benches.md` — a reader must be able to follow one number from the deck to the box.
+
+A bench whose answer is post-processing rather than a printed scalar reduces in `design/bench.py`
+(`PRODUCES` + `reduce()`), and this module builds `KEYMAP` from it, so the reduction the harness
+certifies and the reduction an experiment reports are the same function. **A reduction that lives
+only in an `experiments/NNN-*/run.py` cannot be certified** — `--certify` freezes what `run_decks`
+produced, so a number computed after that lands in a report and nowhere else.
 """
 
 from __future__ import annotations
@@ -19,13 +25,17 @@ from pathlib import Path
 
 from spicexplorer_harness import batch, hashes, log_run, provenance, tolerance_band, violations
 
+from . import bench as bench_mod
 from . import sim
 from .dut import REFERENCE, Design
 from .sim import H
 
-# (bench, printed measure) -> (spec/report key, scale). Anything unlisted is kept raw under
+# (bench, measure) -> (spec/report key, scale). Anything unlisted is kept raw under
 # "<bench>.<measure>": visible in the record, never promoted to a scorecard column.
-KEYMAP: dict[tuple[str, str], tuple[str, float]] = {}
+# The package-level reduction's keys (`design/bench.py` `PRODUCES`) are promoted under their own
+# names; add a row here for every PRINTED measure whose name or unit differs from its spec key,
+# e.g. `{("op", "i_supply"): ("power_uw", 1e6)}`.
+KEYMAP: dict[tuple[str, str], tuple[str, float]] = {**bench_mod.keymap()}
 
 # Scorecard columns, in report order: the spec keys, then the report-only ones.
 COLS: tuple[str, ...] = tuple(r.key for r in H.spec)
@@ -52,14 +62,17 @@ def promote(bench: str, measures: dict) -> dict:
     return out
 
 
-def measure(deck: str, tag: str) -> dict:
-    """One deck: its own `print`/`meas` scalars (failed measures as NaN).
+def measure(deck: str, tag: str, bench: str = "") -> dict:
+    """One deck: its own `print`/`meas` scalars, plus what `design.bench.reduce` makes of the run.
 
-    A design whose decks write waves instead measures them off `sim.dataset(run)` with the
-    platform registry (`spicexplorer_waveview.measure.measure_dataset`) or `sim.raw(run)`.
+    A design whose decks write waves instead of printing their answer reduces them in
+    `design/bench.py` — off `sim.dataset(run)` with the platform registry
+    (`spicexplorer_waveview.measure.measure_dataset`) or `sim.raw(run)` — and passes `bench=` so
+    this call goes through the same reduction the certified reference is built from. The same
+    maths written into an experiment instead is invisible to `--certify` and reproduces nowhere.
     """
     r = sim.run(deck, tag)
-    return {**r.measures, **{k: float("nan") for k in r.failed}}
+    return {**r.measures, **bench_mod.reduce(bench, r), **{k: float("nan") for k in r.failed}}
 
 
 def run_decks(decks: dict[str, str], tag: str, *, record: bool = True) -> tuple[dict, dict]:
@@ -74,7 +87,10 @@ def run_decks(decks: dict[str, str], tag: str, *, record: bool = True) -> tuple[
         rec: dict = {"bench": bench, "deck": decks[bench]}
         try:
             r = sim.run(decks[bench], f"{tag}__{bench}")
-            rec.update(status="ok", measures=r.measures, failed=list(r.failed), wall=r.wall)
+            # the package-level reduction is merged into the record BEFORE anything is promoted,
+            # logged or frozen — that is what makes a post-processed number certifiable at all
+            rec.update(status="ok", measures={**r.measures, **bench_mod.reduce(bench, r)},
+                       failed=list(r.failed), wall=r.wall)
         except sim.SimError as exc:
             rec.update(status="sim_error", error=str(exc)[:800], measures={}, failed=[],
                        wall=time.perf_counter() - t0)

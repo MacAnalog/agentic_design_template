@@ -33,6 +33,11 @@ LANE_ENV = H.sim_env      # the native binary; else `ngspice` on PATH
 WORK_ENV = H.work_env     # the work root; else $SX_SCRATCH/<design>-<checkout>
 SPICEINIT_EXTRA = ""      # lines every run appends to the PDK init (a compatibility `set`, an `osdi` load)
 
+# Machine-specific paths a deck must NOT carry, named in the deck text as `$NAME` and resolved by
+# `run()` (see `resolve()`), e.g. `("PDK_LIB",)` for a model library installed only on the machines
+# licensed to hold it. Empty here: the open lane's model paths come from the PDK's `.spiceinit`.
+DECK_VARS: tuple[str, ...] = ()
+
 PROBE = """* lane preflight: one resistor
 v1 a 0 1
 r1 a 0 1k
@@ -49,9 +54,9 @@ quit
 # Platform names, kept under the names this repo's tests, docs and ledger rows use.
 SimError = DeckRunError
 Run = RunResult
-__all__ = ["H", "REPO", "CHECKOUT", "LANE_ENV", "WORK_ENV", "SPICEINIT_EXTRA", "PROBE", "SimError",
-           "Run", "work", "ngspice", "userinit_dir", "spiceinit", "fatal_lines", "parse_measures",
-           "run", "raw", "dataset", "wall_time", "preflight"]
+__all__ = ["H", "REPO", "CHECKOUT", "LANE_ENV", "WORK_ENV", "SPICEINIT_EXTRA", "DECK_VARS", "PROBE",
+           "SimError", "Run", "work", "ngspice", "userinit_dir", "spiceinit", "resolve",
+           "fatal_lines", "parse_measures", "run", "raw", "dataset", "wall_time", "preflight"]
 
 
 # ------------------------------------------------------------------ where and what ----
@@ -105,15 +110,49 @@ def _tail(s: str, n: int = 30) -> str:
     return "\n".join([ln for ln in s.splitlines() if ln.strip()][-n:])
 
 
+# ------------------------------------------------------------------ portable decks ----
+
+def resolve(deck: str) -> str:
+    """`$NAME` -> `os.environ[NAME]`, for the names declared in `DECK_VARS` and no others.
+
+    A deck is a DOCUMENT before it is a simulator input: `--certify` writes it into the frozen dir,
+    `make freeze` sha-locks it, `git diff` reads it, and the `deck-rebuild` lint rebuilds it byte
+    for byte. A path that exists only on some machines — a site-licensed model library, a shared
+    model root — therefore may never be written into deck text: the deck names the variable, this
+    function substitutes the value in the last moment before the simulator sees it, and every
+    other consumer keeps seeing portable text. Redaction on write with restoration on read is NOT
+    an alternative: the rebuild lint compares bytes and every redacted bench fails to reproduce.
+
+    Declared names only, never `os.path.expandvars`: `$` opens a comment in some netlist dialects,
+    so a blanket expansion silently rewrites lines this repo never meant to touch.
+    """
+    for name in DECK_VARS:
+        token = f"${name}"
+        if token not in deck:
+            continue
+        value = (os.environ.get(name) or "").strip()
+        if not value:
+            raise FileNotFoundError(
+                f"the deck names {token} but {name} is unset — export it to the path it stands "
+                f"for (per machine, never committed; `doc/environment.md` pins WHICH library by "
+                f"revision name, and `design.sim.DECK_VARS` declares the variable)")
+        deck = deck.replace(token, value)
+    return deck
+
+
 # ------------------------------------------------------------------ run ---------------
 
 def run(deck: str, label: str, *, timeout: int = 3600, extra_files: dict[str, str] | None = None,
         spiceinit_extra: str | None = None) -> Run:
-    """Simulate `deck` (its own `.control`: `write <x>.raw` and/or `print`/`meas`) in `work()/runs/<label>-<hash>/`."""
+    """Simulate `deck` (its own `.control`: `write <x>.raw` and/or `print`/`meas`) in `work()/runs/<label>-<hash>/`.
+
+    THE one place a machine-specific path enters a deck: `resolve()` runs here and nowhere else,
+    so what is built, logged, frozen and diffed stays portable.
+    """
     if not _slug(label.strip()):
         raise ValueError("run label must not be empty")
     extra = SPICEINIT_EXTRA if spiceinit_extra is None else spiceinit_extra
-    r = run_deck(deck, label=label, workdir=work() / "runs", spiceinit=spiceinit(extra),
+    r = run_deck(resolve(deck), label=label, workdir=work() / "runs", spiceinit=spiceinit(extra),
                  ngspice=ngspice(), timeout=timeout, extra_files=extra_files, env=_env())
     if not r.raws and not r.measures and not r.failed:
         raise SimError(f"{r.dir.name}: no rawfile and no scalar\n{_tail(r.text())}", r)
@@ -157,7 +196,13 @@ def wall_time(run: Run | Path) -> float:
 def preflight(deck: str = PROBE, expect: tuple[str, float, float] = ("i_ma", 1.0, 1e-6)) -> dict:
     """Simulate `deck` and check `expect` = (scalar, value, tol); a design passes its own PDK-device probe."""
     info = {"lane": "native ngspice", "ngspice": "", "userinit": str(userinit_dir() or ""),
-            "work": "", "ok": False, "note": ""}
+            "work": "", "ok": False, "note": "", "deck_vars": list(DECK_VARS)}
+    unset = [n for n in DECK_VARS if not (os.environ.get(n) or "").strip()]
+    if unset:
+        # a declared variable is what every real bench's deck names; a lane that cannot resolve it
+        # is not alive, however well the probe simulates
+        info["note"] = f"deck vars unset: {unset} — export them (design.sim.DECK_VARS)"
+        return info
     try:
         info["work"] = str(work())
         info["ngspice"] = ngspice()

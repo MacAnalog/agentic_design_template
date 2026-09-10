@@ -15,8 +15,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from design import exp, metrics, plot  # noqa: E402
+from design import bench, exp, metrics, plot  # noqa: E402
 from design.dut import Design  # noqa: E402
+
+# `bench` is imported on purpose: an experiment that post-processes a run reports through
+# `bench.reduce` — the SAME reduction `metrics.run_decks` certifies — so this report and the
+# frozen scorecard cannot disagree. The same maths written here instead is uncertifiable.
 
 EXP = Path(__file__).resolve().parent
 OUT, FIGS = EXP / "out", EXP / "figs"
