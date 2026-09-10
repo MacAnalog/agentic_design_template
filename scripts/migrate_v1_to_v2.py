@@ -165,8 +165,14 @@ def make_signoff(plan: Plan, template: Path | None) -> None:
     root = REPO / "signoff"
     for sub in ("schematic", "layout", *[f"{f}/{d}" for f in FIDELITIES for d in ("figs", "tables")]):
         d = root / sub
-        if not d.is_dir():
-            plan.do(f"mkdir signoff/{sub}", lambda d=d: d.mkdir(parents=True, exist_ok=True))
+        if d.is_dir():
+            continue
+        # `.gitkeep`, not a bare mkdir: git does not track an empty directory, so a plain mkdir
+        # produces a tree that `signoff/README.md` describes and the repo does not actually have.
+        # Measured on two migrated designs, which ended up with no `figs/` or `tables/` at all.
+        keep = d / ".gitkeep"
+        plan.do(f"mkdir signoff/{sub} (+ .gitkeep, so git keeps it)",
+                lambda d=d, k=keep: (d.mkdir(parents=True, exist_ok=True), k.touch()))
     for rel in ["README.md", "schematic/README.md", "layout/README.md",
                 *[f"{f}/REPORT.md" for f in FIDELITIES]]:
         dst = root / rel

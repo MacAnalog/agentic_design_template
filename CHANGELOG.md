@@ -17,6 +17,18 @@ Versions are `MAJOR.MINOR`, written `#.##`:
 `make template-status` prints the recorded version and the latest release. Releases are git
 tags, `v<version>`.
 
+## v2.04 — the sign-off tree's `figs/` and `tables/` actually survive
+
+Minor. The migration created them with `mkdir` and git does not track an empty directory, so a
+migrated design ended up with a `signoff/` tree that its own `README.md` describes and the repo
+does not have — no `figs/`, no `tables/`, at any fidelity. Measured on two designs.
+
+They are now created with a `.gitkeep`, the same way the template ships them.
+
+**Why this one is worth a release rather than a shrug:** those two directories are where the
+evidence for a claim goes. A structure that documents a home which does not exist teaches the next
+agent that the home is optional.
+
 ## v2.03 — say what the relocation does to the ledger
 
 Minor. 2.02 moved a frozen directory and repointed its scorecard. The **ledger** records the same
