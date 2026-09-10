@@ -1,4 +1,10 @@
-"""One bench's raw result -> the numbers the scorecard is written in. THE single reduction.
+"""One bench's raw result -> the numbers the scorecard is written in.
+
+A bench either PRINTS its answer (`print`, `.meas`) or it does not. When it does not — a
+phase margin off an AC sweep, a unity-gain crossover, a 1 % settling time off a step, a band
+edge from a device's operating region — some code has to turn the simulated waveform into the
+number the spec is written in. That code is what this file holds, and what the rest of the
+repo calls the bench's **reduction**: raw result in, scorecard numbers out.
 
 **A reduction that lives in an experiment cannot be certified.** `metrics.measure()` reads a deck's
 own printed scalars, which is right for a bench that `print`s or `.meas`ures its answer. A bench

@@ -90,9 +90,10 @@ spec of record is `doc/target-spec.md`, its machine twin `spec:` in `harness.yam
 
 ## Rules (mechanically enforced where possible; the rest is contract)
 
-1. **Reference first.** A number that has not passed the frozen definitions is a claim. A number's
-   reduction lives in the PACKAGE (`<package>/bench.py`: `PRODUCES` + `reduce()`), never only in an
-   experiment: `make certify` freezes what `metrics.run_decks` produced, so a phase margin, a
+1. **Reference first.** A number that has not passed the frozen definitions is a claim. The code
+   that turns a simulated waveform into that number — phase margin from an AC sweep, settling time
+   from a step; the bench's **reduction** — lives in the PACKAGE (`<package>/bench.py`: `PRODUCES` +
+   `reduce()`), never only in an experiment: `make certify` freezes what `metrics.run_decks` produced, so a phase margin, a
    crossover or a settling time computed inside an `experiments/NNN-*/run.py` is a report, not a
    reference — nothing to freeze, nothing for `make check` to reproduce. One function, both callers.
 2. **Decks are built, never text-edited, and portable.** A sizing point is a `<package>.dut.Design`

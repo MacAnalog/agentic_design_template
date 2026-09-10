@@ -1,11 +1,11 @@
 # Experiment log
 
-**KIND: TODO/log.** One row per `experiments/NNN-*` directory, newest last. Details live in
-each experiment's README; keep the verdict column honest the moment one lands.
+**KIND: TODO/log.** One row per `experiments/NNN-*` directory, newest last. Each experiment's
+README holds the detail; fill the verdict cell honestly the moment that experiment closes.
 
-The `#` cell must contain the **directory name verbatim** — `001-reference`, not `001`: the lint
-matches the literal name, and a row written with the bare number fails as "not listed" although
-it is visibly there.
+The `#` cell must contain the **directory name verbatim** — `001-reference`, not `001`. The lint
+matches the literal name, so a row written with the bare number fails as "not listed" even though
+the row is visibly there.
 
 | # | technique | paper(s) | verdict | headline metric |
 |---|---|---|---|---|

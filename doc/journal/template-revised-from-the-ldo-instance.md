@@ -3,13 +3,13 @@
 KIND: journal entry | type: procedural | status: live
 
 Two designs were cut from this template on the same day: an LDO and an optoelectronic
-transmitter. Everything each of them had to add, work around, or discover is listed below with
-the source that recorded it, and a decision: **absorb** (it ships here), **doc** (it ships as
-guidance, not code), or **reject** (design-specific). The rule applied throughout: *if BOTH
-instances independently added the same thing, it belongs in the template.*
+transmitter. The tables below list everything each of them had to add, work around or discover,
+with the source that recorded it and one decision per item: **absorb** (it ships here), **doc**
+(it ships as guidance, not code), or **reject** (design-specific). The rule applied throughout:
+*if BOTH instances independently added the same thing, it belongs in the template.*
 
-Sources: the LDO repo `feat/001-reference` (`doc/journal/template-gaps-t8.md` — nine gaps recorded
-at instantiation — plus its other 23 journal entries and `doc/reviews/review-002-capless-ldo.md`),
+Sources: the LDO repo `feat/001-reference` (`doc/journal/template-gaps-t8.md`, nine gaps recorded
+at instantiation, plus its other 23 journal entries and `doc/reviews/review-002-capless-ldo.md`),
 the transmitter repo `feat/003-integrate` (`doc/journal/`, `doc/reviews/review-003-resimulation.md`),
 and the meta review `doc/reviews/overnight_build_2026-09-04.md`.
 
@@ -64,14 +64,14 @@ objective; only one instance has one).
 
 ## What the independent review then found
 
-The revised template was reviewed adversarially before merge (probes in a scratch instantiation,
-plus a copy renamed to `ldo/`). Two blockers and five majors, all fixed in this branch — and every
-one of them shares a shape worth naming: **a guard that only runs on the unhappy path is a guard
-nobody has watched work.**
+An independent reviewer probed the revised template adversarially before merge, in a scratch
+instantiation and in a copy renamed to `ldo/`. That review raised two blockers and five majors;
+this branch fixes all of them. They share one shape: **a guard that only runs on the unhappy path
+is a guard nobody has watched work.**
 
 | id | what the review found | why nothing caught it |
 |---|---|---|
-| B1 | `gds_python()` never returned its path, so the generator ran in the repo venv — the very default the function exists to forbid | the test exercised only the `SystemExit` branch |
+| B1 | `gds_python()` never returned its path, so the generator ran in the repo venv — the default the function exists to forbid | the test exercised only the `SystemExit` branch |
 | B2 | `SCRIPT` was a literal `design/metrics.py`; after the rename this file prescribes, a SIGNED certify died on `sha256_file` | unsigned certify never reads it, and the template ships unsigned |
 | M1 | `violation_counts()` counted objects, but a `DrcViolation` is already one row per rule carrying `count`: 20 violations recorded as 2 | the test's fake violation had no `count` field |
 | M2 | the env prefix came from `sim_env`, which `harness.yaml` invites an instance to set explicitly | on the bare template both derivations give `SIM` |
@@ -79,15 +79,16 @@ nobody has watched work.**
 | M4 | `deck_rebuild` hardcoded `from design.dut import …`, so the rename broke the check that exists to catch a half-finished rename | the bare template's stub short-circuits it |
 | M6 | no sign-off stage passed `pdk=`; each runner fell back to its own process | a wrong-but-known PDK passes every stage |
 
-The rule this pass adds, then: **every fix ships a test that fails without it.** All eleven do
-(verified by reverting the four source files: 11 failed, 30 passed).
+The rule this pass adds: **every fix ships a test that fails without it.** All eleven do;
+reverting the four source files left 11 tests failing and 30 passing.
 
 ## Two gaps this pass could not close
 
 1. **The template still needs its platform PR.** `package:` lands with platform
    `feat/harness-spec-v2`; until that merges, a fresh clone against platform `main` fails `load()`.
 2. **The template ships no worked reference.** `make check` SKIPs and `deck_rebuild` returns early
-   until a design fills `Design.deck` (the `deck_rebuild` skip is now a `continue`, so later dirs are still checked). Both are honest, but neither is exercised on the bare
-   template by anything except `tests/test_design.py`, which builds its artefacts in a scratch
-   repo. A tiny committed reference (one resistor divider, two benches) would exercise the whole
-   certify → freeze → check → lint chain on arrival.
+   until a design fills `Design.deck`; the `deck_rebuild` skip is now a `continue`, so later dirs
+   are still checked. Both are honest, but on the bare template nothing exercises them except
+   `tests/test_design.py`, which builds its artefacts in a scratch repo. A tiny committed
+   reference — one resistor divider, two benches — would exercise the whole certify → freeze →
+   check → lint chain on arrival.
