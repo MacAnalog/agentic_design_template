@@ -17,6 +17,34 @@ Versions are `MAJOR.MINOR`, written `#.##`:
 `make template-status` prints the recorded version and the latest release. Releases are git
 tags, `v<version>`.
 
+## v2.05 — four ways the harness reported work it had not done
+
+Minor. Every one of these was reproduced before it was fixed (codex review 2026-09-10, items
+AT-01…AT-04); each carries a test that fails on the old code.
+
+- **A bench whose `.meas` failed was recorded `ok`** (`design/metrics.py`). The deck simulated, the
+  measure did not, `promote` made the column NaN, `certify()` keeps only non-NaN floats — so the
+  metric left the card, and `drift()` iterates the CERTIFIED keys, so it could never be missed
+  again. A `make certify && make freeze` sha-locked a reference one spec column short. There are
+  three bench statuses now: `ok`, `meas_error` (it ran; a measure did not) and `sim_error` (it did
+  not run). Only `ok` certifies; a partial bench still contributes the numbers it produced.
+- **`spec-quotes` matched the whole document** (`scripts/lint.py`). Every numeric token in
+  `doc/target-spec.md` went into one set, so a baseline column holding the wrong value passed
+  whenever the certified number appeared anywhere else in the file. Matched per row now, against
+  the line that names the row (its `id:`, the `S3` at the front of its label, its key or its
+  label); a row no line names is a failure of its own.
+- **`template-update` recorded a release that did not land** (`scripts/template_update.py`).
+  `.sx/template-version` was written before the CONFLICT scan, so a conflicted update still
+  advanced the version and the next update never offered the rejected change again. Written only
+  on a clean apply. A file the release ADDS whose apply failed is REJECTED, not "skipped".
+- **`template-migrate --dry-run` wrote to the repository** (`scripts/migrate_v1_to_v2.py`). It
+  added the `template` remote and ran `git fetch --tags --force` — which can move a tag the design
+  already had — before it looked at the flag. A dry run now answers read-only and says so.
+
+**Taking it:** `make template-update`. `metrics.py` is the file a design is most likely to have
+edited, so expect the merge to want a decision there; the change is the three-status `one()` and
+the `!= "sim_error"` promotion condition.
+
 ## v2.04 — the sign-off tree's `figs/` and `tables/` actually survive
 
 Minor. The migration created them with `mkdir` and git does not track an empty directory, so a
