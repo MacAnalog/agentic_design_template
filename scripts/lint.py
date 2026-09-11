@@ -112,11 +112,38 @@ def deck_portable(L: Lint) -> None:
                        f"(`make certify && make freeze`)")
 
 
+_ID_LIKE = re.compile(r"\s*([A-Z]{1,3}\d{1,3})\b")   # `S3`, `A12`: how a spec table numbers its rows
+
+
+def _row_lines(doc: str, row) -> list[str]:
+    """The line(s) of the spec doc that name this row.
+
+    Four spellings, most specific first: the row's `id:`, the `S3`-style id at the front of its
+    label (how a pre-v2 design carries the same thing — `label: "S1 regulated output, no load"`),
+    its key, its whole label. Whole tokens only, so `S1` does not match `S10` and `gain` does not
+    match `gain_db_max`. The first spelling that hits anywhere wins.
+    """
+    label = getattr(row, "label", "") or ""
+    m = _ID_LIKE.match(label)
+    for token in (getattr(row, "id", "") or "", m.group(1) if m else "", row.key, label):
+        if not token:
+            continue
+        pat = re.compile(rf"(?<![0-9A-Za-z_]){re.escape(token)}(?![0-9A-Za-z_])")
+        hits = [ln for ln in doc.splitlines() if pat.search(ln)]
+        if hits:
+            return hits
+    return []
+
+
 def spec_quotes(L: Lint) -> None:
     """The reference-baseline column of `doc/target-spec.md` quotes the certified scorecard.
 
     A spec doc whose baseline column drifted from `reference_scorecard` invites every later
     comparison to be made against a number nobody measured.
+
+    Matched PER ROW, against the doc line that names the row: a document-wide match passes a wrong
+    baseline whenever the certified number appears anywhere else in the file, which in a spec doc
+    (bounds, sample counts, dates, prose about earlier builds) is most of the time.
     """
     h = L.h
     if not h.reference_scorecard:
@@ -126,18 +153,28 @@ def spec_quotes(L: Lint) -> None:
     except (ValueError, KeyError, TypeError):
         return
     doc = h.text(h.spec_doc).replace("**", "").replace("−", "-")
-    # whole tokens, never a substring: `62` inside `1620` is not a quotation of 62, and a doc
-    # that says `62` is not quoting a certified 62.4
-    tokens = set(NUMBER.findall(doc))
     for row in h.spec:
         v = card.get(row.key)
         if not isinstance(v, (int, float)) or isinstance(v, bool) or v != v:
             continue
         written = [f.format(v) for f in QUOTE_FORMATS]
         written += [f.format(v) for f in QUOTE_FIXED] if abs(v) >= 1 else []
+        named = _row_lines(doc, row)
+        if not named:
+            L.fail("spec-quotes",
+                   f"no line of {h.spec_doc} names {row.id or row.key} — certified "
+                   f"{row.key} = {v:.4g} cannot be matched against its own row",
+                   f"give the row an `id:` in harness.yaml and write that id (or the key "
+                   f"`{row.key}`, or the label `{row.label}`) in its line of {h.spec_doc}")
+            continue
+        # ONLY the row's own line(s): a document-wide set of numbers passes any certified value
+        # that coincides with any number anywhere in the file — a bound, a sample count, a date.
+        # And whole tokens, never a substring: `62` inside `1620` is not a quotation of 62, and a
+        # doc that says `62` is not quoting a certified 62.4.
+        tokens = {t for ln in named for t in NUMBER.findall(ln)}
         if not tokens.intersection(written):
             L.fail("spec-quotes",
-                   f"certified {row.key} = {v:.4g} is not quoted in {h.spec_doc}",
+                   f"certified {row.key} = {v:.4g} is not quoted in the {row.id or row.key} row of {h.spec_doc}",
                    f"the spec table's reference-baseline column quotes {h.reference_scorecard}; "
                    f"copy the certified number across (e.g. `{written[0]}`), or re-certify")
 

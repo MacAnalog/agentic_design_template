@@ -132,30 +132,39 @@ REMOTE = "template"
 URL = "https://github.com/MacAnalog/agentic_design_template.git"
 
 
-def have_target(template: Path | None) -> bool:
+def have_target(template: Path | None, dry: bool = False) -> bool:
     """Is template v2.00 reachable? Nothing may move until it is.
 
     A half-migration is the worst outcome: directories moved, the templates and the content
     changes missing, and `.sx/template-version` claiming 2.00. So this is checked before the first
     file moves, not discovered in the middle.
+
+    `dry=True` answers READ-ONLY — no remote added, no fetch. Adding a remote and running
+    `git fetch --tags --force` are writes to the repository (the `--force` can even move a tag the
+    design already had), and `--dry-run` promises to change nothing at all. A dry run that cannot
+    see the tag says so instead; the real run fetches it.
     """
     if template is not None:
         return (template / "signoff" / "README.md").is_file()
-    if REMOTE not in sh("git", "remote").split():
-        sh("git", "remote", "add", REMOTE, URL)
-    # --force: a design that fetched an earlier v2.00 (a moved tag, a retagged release) would
-    # otherwise fail with "would clobber existing tag" and take the migration down with it.
-    sh("git", "fetch", "--quiet", "--tags", "--force", REMOTE, check=False)
+    if not dry:
+        if REMOTE not in sh("git", "remote").split():
+            sh("git", "remote", "add", REMOTE, URL)
+        # --force: a design that fetched an earlier v2.00 (a moved tag, a retagged release) would
+        # otherwise fail with "would clobber existing tag" and take the migration down with it.
+        sh("git", "fetch", "--quiet", "--tags", "--force", REMOTE, check=False)
     return bool(sh("git", "tag", "--list", f"v{TARGET}").strip())
 
 
-def template_file(rel: str) -> str | None:
+def template_file(rel: str, dry: bool = False) -> str | None:
     """`signoff/<rel>` as the v2.00 tag holds it, fetched from the template remote.
 
     The same remote `template_update.py` uses. A design that has never fetched it gets it here, so
-    the migration needs no second checkout on disk and no `--template` flag.
+    the migration needs no second checkout on disk and no `--template` flag. Under `dry` the remote
+    is never added — an absent tag reads as "not available", which is what the plan then says.
     """
     if REMOTE not in sh("git", "remote").split():
+        if dry:
+            return None
         sh("git", "remote", "add", REMOTE, URL)
     out = sh("git", "show", f"v{TARGET}:signoff/{rel}", check=False)
     return out or None
@@ -180,7 +189,7 @@ def make_signoff(plan: Plan, template: Path | None) -> None:
             plan.note(f"signoff/{rel} already exists")
             continue
         src = (template / "signoff" / rel) if template else None
-        body = src.read_text() if (src and src.is_file()) else template_file(rel)
+        body = src.read_text() if (src and src.is_file()) else template_file(rel, plan.dry)
         if body is None:
             plan.note(f"signoff/{rel} could not be fetched from the template — copy it by hand "
                       f"from a v{TARGET} checkout")
@@ -450,12 +459,18 @@ def main(argv=None) -> int:
     require_harness()
     cur = VERSION_FILE.read_text().strip() if VERSION_FILE.is_file() else "(unrecorded)"
     print(f"template {cur} -> {TARGET}   package: {package()}\n")
-    if not have_target(a.template):
-        raise SystemExit(
-            f"template v{TARGET} is not reachable, so this migration would move directories and "
-            f"then have nothing to fill them with.\n"
-            f"    FIX: `git fetch --tags {REMOTE}` (the remote is added automatically; it is "
-            f"{URL}), or pass --template <a v{TARGET} checkout>.")
+    if not have_target(a.template, dry=a.dry_run):
+        if not a.dry_run:
+            raise SystemExit(
+                f"template v{TARGET} is not reachable, so this migration would move directories and "
+                f"then have nothing to fill them with.\n"
+                f"    FIX: `git fetch --tags {REMOTE}` (the remote is added automatically; it is "
+                f"{URL}), or pass --template <a v{TARGET} checkout>.")
+        # a dry run adds no remote and fetches nothing, so it cannot answer "is it reachable" —
+        # only "is it already here". It reports the plan anyway; the real run does the fetch.
+        print(f"note: template v{TARGET} is not in this checkout (a --dry-run neither adds the "
+              f"`{REMOTE}` remote nor fetches). The real run fetches it and refuses if it cannot; "
+              f"the content-merge and template-file rows below are unknown until then.\n")
 
     plan = Plan(a.dry_run)
     # Content FIRST, on a clean tree: `git apply --3way` reads the index for its preimage, so a

@@ -297,6 +297,39 @@ def test_run_decks_records_the_package_reduction_beside_the_printed_scalars(monk
     assert records["stb"]["measures"]["pm_deg"] == 61.0  # and it is in what certify freezes
 
 
+def test_a_deck_that_simulated_but_did_not_measure_is_not_an_ok_bench(monkeypatch):
+    """A `.meas` that failed prints no number: `promote` makes it NaN, `certify()` drops NaNs from
+    the card and `drift()` iterates the CERTIFIED keys — so an `ok` bench here is exactly how a
+    spec column disappears from the frozen reference and is never missed again."""
+    from design import metrics
+
+    class _R:
+        measures, failed, wall = {"gain_db": 61.0}, ["pm_deg"], 0.1
+
+    monkeypatch.setattr(metrics.sim, "run", lambda deck, tag: _R())
+    monkeypatch.setattr(metrics, "log_run", lambda *a, **k: None)
+    values, records = metrics.run_decks({"ac": "* ac\n.end\n"}, "t")
+    assert records["ac"]["status"] != "ok", "the deck ran; its measure did not"
+    assert records["ac"]["failed"] == ["pm_deg"]
+    # the measures that DID come out are still promoted, and the failed one is still NaN
+    assert values["ac.gain_db"] == 61.0 and math.isnan(values["ac.pm_deg"])
+
+
+def test_certify_refuses_a_reference_whose_measure_failed(monkeypatch, tmp_path):
+    """The end of the same path: the deck simulates, one measure fails, and the certification used
+    to be written with that column simply absent."""
+    from design import metrics
+
+    class _R:
+        measures, failed, wall = {"gain_db": 61.0}, ["pm_deg"], 0.1
+
+    monkeypatch.setattr(metrics.sim, "run", lambda deck, tag: _R())
+    monkeypatch.setattr(metrics, "log_run", lambda *a, **k: None)
+    with pytest.raises(metrics.CertifyRefused, match="pm_deg"):
+        metrics.certify(_D(), tag="t", out=tmp_path)
+    assert not list(tmp_path.iterdir()), "nothing may be written, not even the decks"
+
+
 def test_table_reports_pass_and_fail():
     from design import metrics
 
@@ -486,6 +519,39 @@ def test_spec_quotes_needs_the_certified_precision_not_a_substring(renamed_repo)
         mod.spec_quotes(L)
         assert (L.fails == []) is quoted, text
         assert quoted or L.fails[0].startswith("[spec-quotes]")      # not the platform's spec-sync
+
+
+def test_spec_quotes_matches_the_rows_own_line_not_the_whole_document(renamed_repo):
+    """AT-04: every number in the doc went into ONE set, so a baseline column holding the WRONG
+    value passed whenever the certified number happened to appear anywhere else in the file."""
+    from spicexplorer_harness import load
+    from spicexplorer_harness.lint import Lint
+
+    mod = _load("scripts/lint.py")
+    (renamed_repo / "decks/reference/scorecard.json").write_text(
+        json.dumps({"scorecard": {"gain_db": 62.4}}))
+    doc = renamed_repo / "doc/target-spec.md"
+    doc.write_text("| gain | >= 60 dB | 58.1 |\n\n"
+                   "An earlier build measured 62.4 dB; the table above is the one that counts.\n")
+    L = Lint(load(renamed_repo))
+    mod.spec_quotes(L)
+    assert L.fails and L.fails[0].startswith("[spec-quotes]"), \
+        "62.4 appears only in prose; the gain row quotes 58.1"
+
+
+def test_spec_quotes_says_so_when_no_row_names_the_key(renamed_repo):
+    """A row the doc never names cannot be checked — and silence there is what let the
+    document-wide match stand in for a per-row one."""
+    from spicexplorer_harness import load
+    from spicexplorer_harness.lint import Lint
+
+    mod = _load("scripts/lint.py")
+    (renamed_repo / "decks/reference/scorecard.json").write_text(
+        json.dumps({"scorecard": {"gain_db": 62.4}}))
+    (renamed_repo / "doc/target-spec.md").write_text("| S9 | slew rate | >= 1 V/us | 62.4 |\n")
+    L = Lint(load(renamed_repo))
+    mod.spec_quotes(L)
+    assert L.fails and "names" in L.fails[0]
 
 
 def test_certify_refuses_to_write_a_reference_missing_a_bench(_certify_env, monkeypatch, tmp_path):

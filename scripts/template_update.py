@@ -171,10 +171,14 @@ def _apply(a: str, b: str, paths: list[str], directory: str | None = None,
         if not diff.strip():
             continue
         exists = (REPO / target).exists()
+        # A release that ADDS a file has nothing for the design to be missing: if that apply fails
+        # (something else in the way, an unwritable path) it is a real failure, and reporting it as
+        # "you do not carry this file" is how a new module silently never arrives.
+        creates = bool(re.search(r"^new file mode ", diff, re.MULTILINE))
         ok, msg = _apply_one(diff, directory)
         if ok:
             out.append((str(target), "merged" if exists else "added", ""))
-        elif not exists:
+        elif not exists and not creates:
             out.append((str(target), "skipped", "this design does not carry the file the change edits"))
         else:
             out.append((str(target), "CONFLICT" if "conflict" in msg.lower() else "REJECTED", msg))
@@ -213,10 +217,31 @@ def update(target: str | None) -> int:
             print("      " + msg.replace("\n", "\n      "))
     if not rows:
         print("  (no files changed between these releases outside what this design owns)")
-    VERSION_FILE.parent.mkdir(parents=True, exist_ok=True)
-    VERSION_FILE.write_text(want + "\n")
     bad = [r for r in rows if r[1] in ("CONFLICT", "REJECTED")]
-    print(f"\n.sx/template-version -> {want} (nothing is committed)")
+    # The version is the record of what this design HAS, so it is written only when the release
+    # actually landed. Recorded on a conflicted run, it makes the next `update` start from `want`
+    # — and the change the design never took is never offered again.
+    if not bad:
+        VERSION_FILE.parent.mkdir(parents=True, exist_ok=True)
+        VERSION_FILE.write_text(want + "\n")
+        print(f"\n.sx/template-version -> {want} (nothing is committed)")
+    else:
+        conf = [r[0] for r in bad if r[1] == "CONFLICT"]
+        rej = [r[0] for r in bad if r[1] == "REJECTED"]
+        print(f"\n.sx/template-version stays at {cur}: {len(bad)} file(s) did not land.")
+        if conf:
+            print(f"  CONFLICT ({', '.join(conf)}): resolve in place, `make lint && make test`, "
+                  f"commit, then record the release yourself — `echo {want} > "
+                  f".sx/template-version` (the same line records a deliberate DECLINE). Do NOT "
+                  f"re-run: `git apply --3way` reads the INDEX, so a resolved hunk conflicts again "
+                  f"and your resolution comes back wrapped in fresh markers.")
+        if rej:
+            print(f"  REJECTED ({', '.join(rej)}): fix the reason git printed above, `git add` "
+                  f"anything you hand-edited (a merged file edited but not staged is rejected "
+                  f"too), then re-run — it records {want} once the release applies cleanly.")
+        if conf and rej:
+            print("  Both in one run: take the CONFLICT path and apply the REJECTED change by "
+                  "hand; a re-run would clobber the resolution.")
     print("NOW: read every merged file, resolve each CONFLICT (they are decisions: the template's "
           "generic change meeting your design's own lines), then `make lint && make test`.")
     print("A hunk whose TEXT names the template's `design.` package arrives spelled that way — fix "
