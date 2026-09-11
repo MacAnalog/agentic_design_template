@@ -226,12 +226,22 @@ def update(target: str | None) -> int:
         VERSION_FILE.write_text(want + "\n")
         print(f"\n.sx/template-version -> {want} (nothing is committed)")
     else:
-        print(f"\n.sx/template-version stays at {cur}: {len(bad)} file(s) did not land "
-              f"({', '.join(r[0] for r in bad)}). Resolve them, `git add` them (`git apply --3way` "
-              f"reads the INDEX for its preimage, so a re-run rejects every file resolved but not "
-              f"staged), then re-run `make template-update` — it records {want} once the release "
-              f"applies cleanly. If you DECLINE one of these changes deliberately, say so: "
-              f"`echo {want} > .sx/template-version`.")
+        conf = [r[0] for r in bad if r[1] == "CONFLICT"]
+        rej = [r[0] for r in bad if r[1] == "REJECTED"]
+        print(f"\n.sx/template-version stays at {cur}: {len(bad)} file(s) did not land.")
+        if conf:
+            print(f"  CONFLICT ({', '.join(conf)}): resolve in place, `make lint && make test`, "
+                  f"commit, then record the release yourself — `echo {want} > "
+                  f".sx/template-version` (the same line records a deliberate DECLINE). Do NOT "
+                  f"re-run: `git apply --3way` reads the INDEX, so a resolved hunk conflicts again "
+                  f"and your resolution comes back wrapped in fresh markers.")
+        if rej:
+            print(f"  REJECTED ({', '.join(rej)}): fix the reason git printed above, `git add` "
+                  f"anything you hand-edited (a merged file edited but not staged is rejected "
+                  f"too), then re-run — it records {want} once the release applies cleanly.")
+        if conf and rej:
+            print("  Both in one run: take the CONFLICT path and apply the REJECTED change by "
+                  "hand; a re-run would clobber the resolution.")
     print("NOW: read every merged file, resolve each CONFLICT (they are decisions: the template's "
           "generic change meeting your design's own lines), then `make lint && make test`.")
     print("A hunk whose TEXT names the template's `design.` package arrives spelled that way — fix "
