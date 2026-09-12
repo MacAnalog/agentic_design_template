@@ -17,6 +17,46 @@ Versions are `MAJOR.MINOR`, written `#.##`:
 `make template-status` prints the recorded version and the latest release. Releases are git
 tags, `v<version>`.
 
+## v2.07 — the lifecycle is the harness's, not a copy in every design
+
+Minor, and the largest single change to `design/metrics.py` since v1: **321 lines become 151.**
+
+`promote`, `evaluate`, `frozen_dir`, `frozen_decks`, `certified_card`, `certify`, `drift_limit`,
+`drift`, `table` and `main` now come from `spicexplorer_harness.lifecycle.Lifecycle`. They had
+byte-identical ASTs in four design repos, and the argument for extracting them is not the 183
+lines: **this** is the block that spread AT-01 — a bench that never ran certifying as passing — so
+fixing it meant four commits on four branches with four reviews (platform #176). What stays here
+is what a lifecycle cannot know: the reference point, how a design becomes deck files, how decks
+become scored values (`run_decks`), how a `design.json` loads, and `KEYMAP`.
+
+Every name is re-exported, so `layout/signoff.py`, an experiment or a doc that calls
+`metrics.promote` / `metrics.evaluate` / `metrics.certify` keeps working. **Four behaviours
+differ**, and a design adopting this must know them:
+
+- **`certify()` returns a `CertifyResult`**, not a dict. `result.doc` is the old dict;
+  `result.scorecard`, `result.violations`, `result.decks`, `result.written` are the parts.
+- **`drift()` returns `Drift` records**, not `(key, got, certified, why)` tuples. `d.key`, `d.got`,
+  `d.certified`, `d.why`, `d.missing`, `d.line()`.
+- **The provenance block is always written**, backed by an `evidence: awaiting` ledger row, and
+  signing adds a second `evidence: signed` row. The copies wrote the block only when signed, which
+  is how the LDO instantiation ended up with a `scorecard-recompute` no signature could green.
+- **The scorecard keeps INTEGER metrics.** The copies filtered on `isinstance(v, float)`, so a
+  spec'd integer never reached the card while `violations()` still judged the design on it
+  (HAR-03). The certified card of a design with an integer spec key will therefore GAIN a column;
+  re-certify deliberately.
+
+`run_decks` now accepts a deck key that is either the bench name or the deck's file name
+(`op` or `op.spice`) — the lifecycle hands over file names, because those are the bytes it freezes.
+
+**Taking it:** `make template-update`. A design that edited `design/metrics.py` — most will have,
+at least in `KEYMAP` — gets a three-way merge there; keep your `KEYMAP`, `measure()` and
+`run_decks`, and take the `Lifecycle` wiring at the bottom. A design whose tests patch
+`metrics.run_decks`, `metrics.certified_card` or `metrics.frozen_dir` must patch the lifecycle's
+own inputs instead (`dataclasses.replace(metrics.L, score=…)`): the shared implementation holds
+its inputs and never reads those module attributes. **This needs a platform new enough to carry
+`spicexplorer_harness.lifecycle`** — platform `8dfa0f2` or later; run `make shared-update` on the
+shared root before a design takes this release.
+
 ## v2.06 — a deck variable is checked, and scoped to the design
 
 Minor. One defect, reproduced in three designs before it was fixed

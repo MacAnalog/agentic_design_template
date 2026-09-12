@@ -360,6 +360,19 @@ def test_a_deck_that_simulated_but_did_not_measure_is_not_an_ok_bench(monkeypatc
     assert values["ac.gain_db"] == 61.0 and math.isnan(values["ac.pm_deg"])
 
 
+def _scored(values: dict):
+    """A `score` for the lifecycle: these values, every bench `ok`.
+
+    Keyed by the deck's stem, because the lifecycle hands over FILE names — those are the bytes it
+    freezes — while a record and the KEYMAP speak bench names.
+    """
+
+    def score(decks, tag, record=True):
+        return dict(values), {Path(b).stem: {"status": "ok", "measures": {}} for b in decks}
+
+    return score
+
+
 def test_certify_refuses_a_reference_whose_measure_failed(monkeypatch, tmp_path):
     """The end of the same path: the deck simulates, one measure fails, and the certification used
     to be written with that column simply absent."""
@@ -368,11 +381,15 @@ def test_certify_refuses_a_reference_whose_measure_failed(monkeypatch, tmp_path)
     class _R:
         measures, failed, wall = {"gain_db": 61.0}, ["pm_deg"], 0.1
 
+    from spicexplorer_harness import lifecycle as LC
+
     monkeypatch.setattr(metrics.sim, "run", lambda deck, tag: _R())
+    monkeypatch.setattr(metrics.bench_mod, "reduce", lambda bench, r: {})
     monkeypatch.setattr(metrics, "log_run", lambda *a, **k: None)
+    monkeypatch.setattr(LC, "log_run", lambda *a, **k: None)
     with pytest.raises(metrics.CertifyRefused, match="pm_deg"):
         metrics.certify(_D(), tag="t", out=tmp_path)
-    assert not list(tmp_path.iterdir()), "nothing may be written, not even the decks"
+    assert not list(tmp_path.glob("scorecard.json")), "no scorecard may be written"
 
 
 def test_table_reports_pass_and_fail():
@@ -392,37 +409,64 @@ def test_drift_limit_prefers_the_spec_tolerance_band():
 
 
 def test_drift_flags_moved_and_missing_columns(monkeypatch):
+    """A column that did not come back is `NOT MEASURED`, never skipped — the second half of
+    AT-01. `drift()` returns `Drift` records now (the lifecycle's), not tuples."""
     from design import metrics
 
-    monkeypatch.setattr(metrics, "certified_card",
-                        lambda: {"scorecard": {"gain_db": 60.0, "pm_deg": 70.0}})
-    got = dict(sorted((k, why) for k, _g, _w, why in
-                      metrics.drift({"gain_db": 60.4, "pm_deg": float("nan")})))
+    monkeypatch.setattr(type(metrics.L), "certified_card",
+                        lambda self: {"scorecard": {"gain_db": 60.0, "pm_deg": 70.0}})
+    got = {d.key: d.why for d in metrics.drift({"gain_db": 60.4, "pm_deg": float("nan")})}
     assert "gain_db" not in got                       # inside the 0.5 band
     assert got["pm_deg"] == "NOT MEASURED"
-    assert [k for k, *_ in metrics.drift({"gain_db": 61.0, "pm_deg": 70.0})] == ["gain_db"]
+    assert [d.key for d in metrics.drift({"gain_db": 61.0, "pm_deg": 70.0})] == ["gain_db"]
 
 
 @pytest.fixture
 def _certify_env(monkeypatch):
+    """A certification over fake simulation.
+
+    The lifecycle is the harness's now, so the fixture patches what this design supplies — the
+    SIMULATOR — and not `run_decks`: `Lifecycle` holds a reference to the real function and would
+    never see a module-level replacement. The ledger is patched in both places a row is written
+    from (`metrics.run_decks` writes the bench rows, `lifecycle` the evaluate/signed ones), so a
+    test never appends to the repo's own ledger.
+    """
+    from spicexplorer_harness import lifecycle as LC
+
     from design import metrics
 
+    class _R:
+        measures = {"gain_db": 61.0, "pm_deg": 70.0, "power_uw": 9.0, "dead": float("nan")}
+        failed: list[str] = []
+        wall = 0.1
+
     rows: list[dict] = []
-    monkeypatch.setattr(metrics, "run_decks",
-                        lambda decks, tag, record=True: ({"gain_db": 61.0, "pm_deg": 70.0,
-                                                          "power_uw": 9.0, "dead": float("nan")},
-                                                         {b: {"status": "ok", "measures": {}} for b in decks}))
-    monkeypatch.setattr(metrics, "log_run", lambda h, tag, values, **kw: rows.append({"tag": tag, **kw}))
+
+    def _log(h, tag, values, **kw):
+        rows.append({"tag": tag, **kw})
+        return dict(values)
+
+    monkeypatch.setattr(metrics.sim, "run", lambda deck, tag: _R())
+    monkeypatch.setattr(metrics.bench_mod, "reduce", lambda bench, r: {})
+    monkeypatch.setattr(metrics, "log_run", lambda *a, **k: None)   # the per-bench rows
+    monkeypatch.setattr(LC, "log_run", _log)
     return metrics, rows
 
 
 def test_certify_unsigned_writes_no_provenance_block(_certify_env, tmp_path):
     metrics, rows = _certify_env
-    doc = metrics.certify(_D(), tag="t", out=tmp_path)
-    # a provenance block with no signed row behind it is a lint failure nobody can green
-    assert "provenance" not in doc and "tag" not in doc
-    assert rows[0].get("evidence", "scratch") == "scratch"
-    assert set(doc["scorecard"]) == {"gain_db", "pm_deg", "power_uw"}   # NaN dropped
+    doc = metrics.certify(_D(), tag="t", out=tmp_path).doc     # a CertifyResult now, not a dict
+    # The shared lifecycle ALWAYS writes the provenance block, and always logs the row that backs
+    # it — `evidence: awaiting`, the delivery claim. That is the difference from the copy this
+    # replaced, and it is the fix for the trap the LDO hit: a block with no row behind it was a
+    # `scorecard-recompute` failure no reader could ever green. Signing adds a second row; it does
+    # not create the block.
+    assert doc["provenance"]["script_sha"] and doc["tag"] == "t"
+    assert "verified_by" not in doc["provenance"]
+    # unlisted measures keep their `<bench>.<measure>` name (the template ships an empty KEYMAP),
+    # and the NaN column — a measure that failed — never reaches the card
+    assert set(doc["scorecard"]) == {f"{b}.{m}" for b in ("b1", "b2")
+                                     for m in ("gain_db", "pm_deg", "power_uw")}
     assert (tmp_path / "b1.spice").exists() and (tmp_path / "decks.sha256").exists()
 
 
@@ -430,7 +474,8 @@ def test_certify_signed_block_recomputes_and_matches_its_row(_certify_env, tmp_p
     from spicexplorer_harness import hashes
 
     metrics, rows = _certify_env
-    doc = metrics.certify(_D(), tag="t", out=tmp_path, author="designer", verified_by="verifier")
+    doc = metrics.certify(_D(), tag="t", out=tmp_path,
+                          author="designer", verified_by="verifier").doc
     prov = doc["provenance"]
     assert doc["tag"] == "t" and doc["corner"] == "tt"           # the keys _backing_rows matches on
     assert hashes.recompute(metrics.H.root, prov, values=doc["scorecard"]) == []
@@ -525,13 +570,17 @@ def test_signed_certify_survives_the_rename(renamed_repo, monkeypatch, tmp_path)
 
     metrics = importlib.import_module("ldo.metrics")
     assert metrics.SCRIPT == "ldo/metrics.py" and (renamed_repo / metrics.SCRIPT).is_file()
-    monkeypatch.setattr(metrics, "run_decks",
-                        lambda decks, tag, record=True: ({"gain_db": 62.4},
-                                                         {b: {"status": "ok", "measures": {}} for b in decks}))
-    monkeypatch.setattr(metrics, "log_run", lambda h, tag, values, **kw: None)
+    import dataclasses
+
+    from spicexplorer_harness import lifecycle as LC
+    monkeypatch.setattr(LC, "log_run", lambda h, tag, values, **kw: dict(values))
     from ldo.dut import Design
 
-    doc = metrics.certify(Design(), tag="t", out=tmp_path, author="owner", verified_by="signoff-verifier")
+    # the lifecycle holds its inputs, so a test swaps THEM — patching `metrics.run_decks` would
+    # replace a module attribute the shared implementation never reads
+    lc = dataclasses.replace(metrics.L, score=_scored({"gain_db": 62.4}))
+    doc = lc.certify(Design(), tag="t", out=tmp_path,
+                     author="owner", verified_by="signoff-verifier").doc
     assert doc["provenance"]["script_sha"]
 
 
@@ -602,17 +651,22 @@ def test_spec_quotes_says_so_when_no_row_names_the_key(renamed_repo):
 def test_certify_refuses_to_write_a_reference_missing_a_bench(_certify_env, monkeypatch, tmp_path):
     """A frozen dir born without a bench is one `make freeze` from being sha-locked, and `drift()`
     iterates the CERTIFIED keys — so the missing column can never be noticed again."""
+    import dataclasses
+
     metrics, _rows = _certify_env
-    monkeypatch.setattr(metrics, "run_decks", lambda decks, tag, record=True: (
-        {"gain_db": 61.0}, {b: {"status": "ok" if b == "b1" else "sim_error", "measures": {}}
-                            for b in decks}))
+
+    def score(decks, tag, record=True):
+        return ({"gain_db": 61.0},
+                {Path(b).stem: {"status": "ok" if Path(b).stem == "b1" else "sim_error",
+                                "measures": {}} for b in decks})
+
+    lc = dataclasses.replace(metrics.L, score=score, reference=_D())
     with pytest.raises(metrics.CertifyRefused, match="b2"):
-        metrics.certify(_D(), tag="t", out=tmp_path)
-    assert not list(tmp_path.iterdir())                       # nothing written, not even the decks
-    monkeypatch.setattr(metrics, "REFERENCE", _D())
-    monkeypatch.setattr(metrics, "frozen_dir", lambda: tmp_path)
-    assert metrics.main(["--certify"]) == 1                   # and the CLI exits non-zero
-    assert metrics.main(["--certify", "--force"]) == 0        # deliberately partial, on request
+        lc.certify(_D(), tag="t", out=tmp_path)
+    assert not list(tmp_path.glob("scorecard.json"))          # the card a drift check reads
+    monkeypatch.setattr(type(lc), "frozen_dir", lambda self: tmp_path)
+    assert lc.main(["--certify"]) == 1                        # and the CLI exits non-zero
+    assert lc.main(["--certify", "--force"]) == 0             # deliberately partial, on request
 
 
 def test_deck_portable_spots_a_committed_absolute_include():
@@ -905,13 +959,12 @@ def test_a_signed_certification_greens_scorecard_recompute(monkeypatch, tmp_path
         "reference_scorecard: decks/reference/scorecard.json\n"
         "verifiers: [verifier]\n"
         'spec:\n  - {key: gain_db, label: gain, op: ">=", bound: 60, unit: dB}\n')
+    import dataclasses
+
     h = load(tmp_path)
-    monkeypatch.setattr(metrics, "H", h)
-    monkeypatch.setattr(metrics, "run_decks",
-                        lambda decks, tag, record=True: ({"gain_db": 61.0},
-                                                         {b: {"status": "ok", "measures": {}} for b in decks}))
-    metrics.certify(_D(), tag="ref", out=tmp_path / "decks" / "reference",
-                    author="designer", verified_by="verifier")
+    lc = dataclasses.replace(metrics.L, h=h, score=_scored({"gain_db": 61.0}))
+    lc.certify(_D(), tag="ref", out=tmp_path / "decks" / "reference",
+               author="designer", verified_by="verifier")
 
     L = Lint(h)
     scorecard_recompute(L)
