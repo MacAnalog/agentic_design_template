@@ -38,6 +38,22 @@ SPICEINIT_EXTRA = ""      # lines every run appends to the PDK init (a compatibi
 # licensed to hold it. Empty here: the open lane's model paths come from the PDK's `.spiceinit`.
 DECK_VARS: tuple[str, ...] = ()
 
+# A short tag for THIS design, e.g. `"DN006"`. When set, `resolve()` reads `<SCOPE>_<NAME>` before
+# the bare `<NAME>`, and that is the variable a person should export. The bare name is shared: it is
+# the text inside every frozen deck, and a name chosen from the env prefix is not unique either
+# (two designs in this lab's directory share `OTA_`), so ONE export in ONE shell profile can feed
+# two repos pinned to different library revisions. A scoped export reaches this design only.
+DECK_VAR_SCOPE: str = ""
+
+# What each variable's value must CONTAIN — usually the model-library revision name that
+# `doc/environment.md` pins, e.g. `{"PDK_LIB": "crn65gplus_2d5_lk_v1d0"}`. The revision is the one
+# input to reproducing a certified scorecard that a design deliberately does not commit, so a value
+# that does not carry it is refused: an unchecked export otherwise produces a full green `make check`
+# against a different process, recorded nowhere but the shell that ran it. A deliberate
+# cross-revision run is still possible — it has to be typed (`<NAME>_ALLOW_MISMATCH=1`), so it is
+# visible in that shell and in any recorded command.
+DECK_VAR_PINS: dict[str, str] = {}
+
 PROBE = """* lane preflight: one resistor
 v1 a 0 1
 r1 a 0 1k
@@ -54,8 +70,10 @@ quit
 # Platform names, kept under the names this repo's tests, docs and ledger rows use.
 SimError = DeckRunError
 Run = RunResult
-__all__ = ["H", "REPO", "CHECKOUT", "LANE_ENV", "WORK_ENV", "SPICEINIT_EXTRA", "DECK_VARS", "PROBE",
+__all__ = ["H", "REPO", "CHECKOUT", "LANE_ENV", "WORK_ENV", "SPICEINIT_EXTRA", "DECK_VARS",
+           "DECK_VAR_SCOPE", "DECK_VAR_PINS", "DeckVarError", "PROBE",
            "SimError", "Run", "work", "ngspice", "userinit_dir", "spiceinit", "resolve",
+           "deck_var_names",
            "fatal_lines", "parse_measures", "run", "raw", "dataset", "wall_time", "preflight"]
 
 
@@ -112,8 +130,24 @@ def _tail(s: str, n: int = 30) -> str:
 
 # ------------------------------------------------------------------ portable decks ----
 
+class DeckVarError(RuntimeError):
+    """A deck variable is set, but to a value this design may not silently simulate against."""
+
+
+def deck_var_names(name: str) -> tuple[str, ...]:
+    """The environment variables `resolve()` reads for one deck name, in order.
+
+    The design-scoped name first (`DECK_VAR_SCOPE`), then the bare name the deck text carries. Two
+    names rather than a rename, because the bare one IS the text inside every already-frozen deck:
+    renaming it would force a re-certify of every reference.
+    """
+    scoped = f"{DECK_VAR_SCOPE}_{name}" if DECK_VAR_SCOPE and not name.startswith(
+        f"{DECK_VAR_SCOPE}_") else ""
+    return (scoped, name) if scoped else (name,)
+
+
 def resolve(deck: str) -> str:
-    """`$NAME` -> `os.environ[NAME]`, for the names declared in `DECK_VARS` and no others.
+    """`$NAME` -> the environment value, for the names declared in `DECK_VARS` and no others.
 
     A deck is a DOCUMENT before it is a simulator input: `--certify` writes it into the frozen dir,
     `make freeze` sha-locks it, `git diff` reads it, and the `deck-rebuild` lint rebuilds it byte
@@ -125,17 +159,38 @@ def resolve(deck: str) -> str:
 
     Declared names only, never `os.path.expandvars`: `$` opens a comment in some netlist dialects,
     so a blanket expansion silently rewrites lines this repo never meant to touch.
+
+    Two rules beyond substitution, both paid for elsewhere
+    (MacAnalog/macanalog-design-directory#38): the DESIGN-SCOPED variable is read first, because a
+    shared name means one export can feed two repos; and a value declared in `DECK_VAR_PINS` must
+    carry its pin, on every route rather than on a fallback nobody uses. Neither message ever
+    echoes the value — a machine-specific path is not printed, only the variable that supplies it.
     """
     for name in DECK_VARS:
         token = f"${name}"
         if token not in deck:
             continue
-        value = (os.environ.get(name) or "").strip()
-        if not value:
+        names = deck_var_names(name)
+        used, value = "", ""
+        for candidate in names:                       # every candidate is tried before failing
+            value = (os.environ.get(candidate) or "").strip()
+            if value:
+                used = candidate
+                break
+        if not used:
             raise FileNotFoundError(
-                f"the deck names {token} but {name} is unset — export it to the path it stands "
+                f"the deck names {token} but {' / '.join(names)} "
+                f"{'are' if len(names) > 1 else 'is'} unset — export it to the path it stands "
                 f"for (per machine, never committed; `doc/environment.md` pins WHICH library by "
                 f"revision name, and `design.sim.DECK_VARS` declares the variable)")
+        pin = DECK_VAR_PINS.get(name, "")
+        if pin and pin not in value and not any(
+                os.environ.get(f"{n}_ALLOW_MISMATCH") for n in names):
+            raise DeckVarError(
+                f"{used} points at something that does not carry this design's pin ({pin}). "
+                f"Re-pin `design.sim.DECK_VAR_PINS` and doc/environment.md together, or set "
+                f"{used}_ALLOW_MISMATCH=1 for a deliberate one-off — a silent change of model "
+                f"library invalidates every certified number.")
         deck = deck.replace(token, value)
     return deck
 
@@ -197,7 +252,8 @@ def preflight(deck: str = PROBE, expect: tuple[str, float, float] = ("i_ma", 1.0
     """Simulate `deck` and check `expect` = (scalar, value, tol); a design passes its own PDK-device probe."""
     info = {"lane": "native ngspice", "ngspice": "", "userinit": str(userinit_dir() or ""),
             "work": "", "ok": False, "note": "", "deck_vars": list(DECK_VARS)}
-    unset = [n for n in DECK_VARS if not (os.environ.get(n) or "").strip()]
+    unset = [n for n in DECK_VARS
+             if not any((os.environ.get(c) or "").strip() for c in deck_var_names(n))]
     if unset:
         # a declared variable is what every real bench's deck names; a lane that cannot resolve it
         # is not alive, however well the probe simulates

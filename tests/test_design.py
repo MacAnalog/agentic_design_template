@@ -108,6 +108,51 @@ def test_resolve_substitutes_declared_names_only(monkeypatch):
     assert sim.preflight()["ok"] is False, "a lane that cannot resolve a declared var is not alive"
 
 
+def test_the_design_scoped_variable_is_read_before_the_shared_one(monkeypatch):
+    """The bare name is the text inside every frozen deck, so it is shared by construction; one
+    export of it in one shell profile can feed two repos (macanalog-design-directory#38)."""
+    monkeypatch.setattr(sim, "DECK_VARS", ("MODEL_LIB",))
+    monkeypatch.setattr(sim, "DECK_VAR_SCOPE", "DN999")
+    monkeypatch.setenv("MODEL_LIB", "/opt/site/models/other.file")
+    monkeypatch.setenv("DN999_MODEL_LIB", "/opt/site/models/mine.file")
+    assert sim.deck_var_names("MODEL_LIB") == ("DN999_MODEL_LIB", "MODEL_LIB")
+    assert "mine.file" in sim.resolve('include "$MODEL_LIB"\n')
+
+    monkeypatch.delenv("DN999_MODEL_LIB")          # every candidate is tried before failing
+    assert "other.file" in sim.resolve('include "$MODEL_LIB"\n')
+
+    monkeypatch.delenv("MODEL_LIB")
+    with pytest.raises(FileNotFoundError, match="DN999_MODEL_LIB"):
+        sim.resolve('include "$MODEL_LIB"\n')
+
+
+def test_a_pinned_variable_may_not_point_at_another_revision(monkeypatch):
+    """The revision is the one input to reproducing a certified scorecard that is NOT committed,
+    so an unchecked export turns a wrong path into a full green `make check`."""
+    monkeypatch.setattr(sim, "DECK_VARS", ("MODEL_LIB",))
+    monkeypatch.setattr(sim, "DECK_VAR_PINS", {"MODEL_LIB": "rev_v1d0"})
+    deck = 'include "$MODEL_LIB"\n'
+
+    monkeypatch.setenv("MODEL_LIB", "/opt/site/models/rev_v9d9.file")
+    with pytest.raises(sim.DeckVarError) as e:
+        sim.resolve(deck)
+    assert "rev_v1d0" in str(e.value) and "rev_v9d9" not in str(e.value)  # never echo the value
+
+    monkeypatch.setenv("MODEL_LIB_ALLOW_MISMATCH", "1")   # deliberate, and it has to be typed
+    assert "rev_v9d9" in sim.resolve(deck)
+
+    monkeypatch.delenv("MODEL_LIB_ALLOW_MISMATCH")
+    monkeypatch.setenv("MODEL_LIB", "/opt/site/models/rev_v1d0.file")
+    assert "rev_v1d0" in sim.resolve(deck)
+
+
+def test_an_unpinned_variable_keeps_substituting_whatever_it_is_given(monkeypatch):
+    """`DECK_VAR_PINS` is opt-in: a design that declared only `DECK_VARS` is unaffected."""
+    monkeypatch.setattr(sim, "DECK_VARS", ("MODEL_LIB",))
+    monkeypatch.setenv("MODEL_LIB", "/opt/site/models/anything.file")
+    assert "anything.file" in sim.resolve('include "$MODEL_LIB"\n')
+
+
 def test_run_resolves_the_deck_only_as_the_simulator_receives_it(scratch, monkeypatch):
     """What is built, logged, frozen and diffed stays portable; the path exists for one call."""
     seen = {}

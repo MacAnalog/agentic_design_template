@@ -109,7 +109,8 @@ undeclared case: an artefact somewhere nobody wrote down.
 - **A model library that lives only on some machines is named in a deck by variable, never by path.**
   The deck text writes `$VAR`, `<package>.sim.DECK_VARS` declares it, `sim.run` resolves it against
   this machine as the deck is handed to the simulator, and `doc/environment.md` pins WHICH library by
-  its revision name. Everything else — the builder, the ledger row, the frozen reference, `git diff`,
+  its revision name — named again in `DECK_VAR_PINS`, so `resolve()` REFUSES a variable pointing at
+  another revision, and in `DECK_VAR_SCOPE`, so the exported name reaches this design only. Everything else — the builder, the ledger row, the frozen reference, `git diff`,
   the `deck-rebuild` and `deck-portable` lints — sees portable text, which is the only reason a
   certified deck can be committed at all. Redacting on write and restoring on read does not work:
   the rebuild check compares bytes.
