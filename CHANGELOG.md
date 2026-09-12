@@ -17,6 +17,33 @@ Versions are `MAJOR.MINOR`, written `#.##`:
 `make template-status` prints the recorded version and the latest release. Releases are git
 tags, `v<version>`.
 
+## v2.06 — a deck variable is checked, and scoped to the design
+
+Minor. One defect, reproduced in three designs before it was fixed
+(MacAnalog/macanalog-design-directory#38).
+
+- **A deck variable could point anywhere** (`design/sim.py`). `resolve()` substituted whatever the
+  environment held. The designs that carry a model-library revision therefore checked it in their
+  own `pdk.library()`, and two of the three put the check on the *derived fallback* — the route
+  nobody uses — so one wrong export produced a full green `make check` against a different process
+  revision, recorded nowhere but the shell that ran it. `DECK_VAR_PINS` (name -> the substring the
+  value must carry, usually the revision `doc/environment.md` pins) is now enforced by `resolve()`,
+  i.e. on the one route every deck takes. `<NAME>_ALLOW_MISMATCH=1` keeps a deliberate
+  cross-revision run possible and makes it visible: it has to be typed.
+- **The variable was shared by construction** (`design/sim.py`). The bare name is the text inside
+  every frozen deck, so two designs can read one export — and a name taken from the env prefix is
+  not unique either (two designs in this lab share `OTA_`). `DECK_VAR_SCOPE` adds a design-scoped
+  name, read FIRST, without renaming what the frozen decks carry; `deck_var_names()` is the one
+  place the order is defined, and `preflight()` reports against the same candidates.
+- Neither message echoes the value: they name the variable and the pin. A machine-specific path
+  stays out of logs.
+
+**Taking it:** both knobs default to empty, so a design that declared only `DECK_VARS` is
+unaffected. To adopt, set `DECK_VAR_SCOPE = "<short design tag>"` and
+`DECK_VAR_PINS = {"<NAME>": "<revision>"}` in `design/sim.py`. A design that hand-edited `resolve()`
+will get a three-way conflict there from `make template-update`; the merged result should keep the
+candidate loop and the pin check.
+
 ## v2.05 — four ways the harness reported work it had not done
 
 Minor. Every one of these was reproduced before it was fixed (codex review 2026-09-10, items
