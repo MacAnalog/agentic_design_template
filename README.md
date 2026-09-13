@@ -35,9 +35,28 @@ definitions and method notes under `.claude/`.
    lifecycle.
 7. `make certify` (add `ARGS="--author X --verified-by Y"` once a second actor has re-measured it),
    add the dir to `frozen:` and the scorecard to `reference_scorecard:`, then `make freeze`.
-8. `make lint` must pass before the first experiment.
+8. `make lint` must pass before the first experiment. `make guard` is the one command that runs it
+   with `make test` and a clean-tree check before a push; `make hook-install` is the recommended
+   per-clone step that attaches it to `git push` (see below).
 9. For the layout lane, uncomment the `spicexplorer-gmid` / `-layout` / `-signoff` sources in
    `pyproject.toml` and `uv sync`.
+
+## Before you push
+
+The workflow is `feat/<name>` branch → PR → squash (CLAUDE.md, "Parallel sessions, blast radius,
+git"). `make guard` is what makes it safe to automate: it refuses unless the tree is clean — both
+`git diff` and `git diff --cached`, because staged-but-uncommitted is exactly the window a
+`&&` chain slips through — and `make lint` and `make test` are green, printing one `REFUSING:` line
+naming the clause that failed. `GUARD_SKIP_TEST=1 make guard` drops only the test clause and says
+so, for a design whose suite is too slow to sit in front of every push.
+
+`make hook-install` installs a `pre-push` hook that runs it (`make hook-remove` uninstalls). It is
+**opt-in — `make init` does not install it** — because a hook that blocks ordinary work gets
+removed, and the only hook this repo ships by default is the NDA kit-tree ask-hook, which asks
+rather than blocks. The hook honours `core.hooksPath`, never overwrites a `pre-push` you wrote,
+and its refusal names both deliberate bypasses (`git push --no-verify`, `GUARD_SKIP_TEST=1 git
+push`). Linked worktrees share the hooks directory, so one install covers every worktree of the
+clone. `make lint` reports whether the hook is there as an INFO line; it is never a failure.
 
 ## Repository map
 
@@ -57,6 +76,7 @@ learned.** Everything else is plumbing.
 | `references/` | papers, datasheets and standards + `INDEX.md` (cite by handle, never by filename) |
 | `tests/` | `make test`: the generic `design/` modules (the live-lane test skips without ngspice) |
 | `scripts/lint.py` | repo-specific checks on top of the harness — including `artifact-home`, which keeps the map above true |
+| `scripts/githook.py` | `make hook-install` / `make hook-remove`: the opt-in `pre-push` hook that runs `make guard` |
 | `notebooks/` | executed in place by `make notebooks`, outputs committed |
 | `.sx/` | the per-checkout plumbing `make init` sets up: `platform` (git-ignored link to `$SX_ROOT/spicexplorer-platform`) and `skills` (the `analog-skill-directory` submodule: shared agents, skills, guard hooks, `bin/sx-link`) |
 | `.claude/agents/` | links into `.sx/skills/agents/`: variant-runner, signoff-verifier, schematic-builder, paper-analyst, gardener + the layout chain (brief-author, designer, reviewer, schematic-codesign); design-specific agents are plain files beside them |

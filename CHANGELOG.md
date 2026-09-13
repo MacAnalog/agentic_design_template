@@ -17,6 +17,55 @@ Versions are `MAJOR.MINOR`, written `#.##`:
 `make template-status` prints the recorded version and the latest release. Releases are git
 tags, `v<version>`.
 
+## v2.09 — the gates get something to be attached to: `make guard`, and an opt-in pre-push hook
+
+Minor, and **nothing changes for a design that does not run `make hook-install`**: no hook is
+installed by `make init` or by anything else, `make lint` and `make test` behave exactly as
+before, and the only visible difference in a checkout that ignores this release is one extra INFO
+line at the end of `make lint`.
+
+`make lint && make test && git commit && git push` READS as conditional. Twice in one design it
+was not (#31): the lint had been typed as a separate earlier command, was watched failing, and the
+later chain committed and pushed anyway; the same shape later swallowed an entire experiment arm
+whose launch sat behind a `&&` whose left side failed, so its absence read as a completed null for
+hours. Both are one defect — a condition that is not attached to the consequential command. Every
+design cut from this template carried it, so the fix ships here.
+
+- **`make guard`** — one command that cannot be half-typed. It refuses unless: this is a git
+  checkout; `git diff --quiet` AND `git diff --cached --quiet` both pass; `make lint` is green;
+  `make test` is green. Each refusal prints exactly one `REFUSING: …` line naming the clause.
+  `--cached` is checked separately on purpose — `git diff --quiet` alone passes on
+  staged-but-uncommitted changes, which is precisely the window the guard exists to cover.
+- **Clause order is tree, then lint, then test**, not the order the issue proposed. Lint and test
+  judge the WORKING TREE, not the commit being pushed, so their verdict means nothing while edits
+  are still loose; it is also the cheapest clause first. The lint/test output is NOT swallowed:
+  a guard that hides which check failed forces a re-run to learn it.
+- **`GUARD_SKIP_TEST=1`** drops only the test clause, for a design whose suite is too slow to sit
+  in front of every push. It is not silent — the run prints that the clause was skipped
+  deliberately, and the tree and lint clauses still apply.
+- **`make hook-install` / `make hook-remove`** (`scripts/githook.py`) install and remove a
+  `pre-push` hook that runs `make guard`. **`make init` does NOT install it, and this is the
+  decision, not an oversight**: a hook that blocks ordinary work gets removed, so the hook that
+  survives is the one its owner chose per clone. The hook is written to
+  `git rev-parse --git-path hooks`, so `core.hooksPath` is honoured; it never overwrites a
+  `pre-push` somebody else wrote (it reports and changes nothing); re-installing is idempotent.
+- **The hook's refusal names its bypasses**, because a bypass that is hard to find gets replaced by
+  deleting the hook: `git push --no-verify` skips it entirely, `GUARD_SKIP_TEST=1 git push` drops
+  the test clause (git hands its environment to the hook, so the variable reaches `make guard`).
+- **`make lint` reports the hook as INFO, never as a failure**, and `hook_info` is deliberately not
+  a check in `EXTRA` — neither `fail` (it would block a repo over a per-clone convenience) nor
+  `warn` (the run would still count it among the invariants it reports holding). Hook installation
+  is a choice, not an invariant of the design, so the invariant list and the exit code are
+  untouched.
+- **Linked worktrees share the hooks directory**, so installing from one worktree guards every
+  worktree of that clone — including a fresh one where `make init` has not run and `make lint` is
+  therefore red. Documented in CLAUDE.md beside the one-experiment-one-worktree convention; it is
+  the concrete case `--no-verify` is for.
+- `tests/test_guard.py` drives the real recipe: a throwaway git repo gets this repo's own
+  `Makefile` with stub `lint:`/`test:` recipes appended (make takes the last recipe), so every
+  clause, the escape, install/remove/non-clobber, `core.hooksPath`, and a live
+  `git push --dry-run` refusal are tested without rewriting the guard in the test.
+
 ## v2.08 — the commercial-PDK lane ships here, instead of being copied between designs
 
 Minor. **A design with no `lane:` key is unaffected** — same lane, same behaviour, same
