@@ -74,6 +74,9 @@ undeclared case: an artefact somewhere nobody wrote down.
   parsed scalar + rawfile + the per-run `.spiceinit` (`doc/environment.md`). `make test` covers the
   generic modules and the scorecard lifecycle (live tests skip without ngspice); `make lint` the
   repo invariants `harness.yaml` drives — every failure message carries its fix.
+- `make guard` — the two gates above in ONE command, plus a clean tree: run it before you push
+  (see "Parallel sessions, blast radius, git"). `make hook-install` / `make hook-remove` attach it
+  to `git push` as an opt-in `pre-push` hook.
 - `make pack K="noise irn"` — **working memory** at task start; re-run with `S="<failure
   signature>"` before diagnosing anything new. `make runs ARGS="--fails | --best <metric> | --exp
   NNN"` reads the ledger every `metrics.evaluate()` appends to.
@@ -212,3 +215,23 @@ Ledger and work dirs are per checkout; shared docs (`doc/journal.md`, `doc/exper
 `references/INDEX.md`) are written at close-out only — until then write into your own
 `experiments/NNN-*/README.md`. Branch `feat/<name>` off `main`, PR, squash. **Ask before pushing.**
 Never commit `runs/`, work dirs, rawfiles or PDK content.
+
+**`make guard` before you push.** It refuses unless the tree is clean (`git diff` AND
+`git diff --cached` — staged-but-uncommitted is the window that bites) and `make lint` and
+`make test` are green, printing one `REFUSING:` line saying which. It exists because
+`make lint && make test && git commit && git push` READS as conditional and twice was not: the
+lint ran as an earlier separate command, was watched failing, and the chain pushed red anyway.
+One command cannot be half-typed. `GUARD_SKIP_TEST=1 make guard` drops only the test clause, for a
+suite too slow to sit in front of every push; it says so when used.
+
+**`make hook-install` is the recommended per-clone step** — it writes a `pre-push` hook that runs
+`make guard`, so the gate cannot be forgotten rather than merely remembered. It is **opt-in, and
+`make init` never installs it**: this repo's standing stance is that a hook which blocks ordinary
+work gets removed, and the only hook a session runs by default is the NDA kit-tree ask-hook, which
+asks rather than blocks. The hook names both deliberate bypasses in its refusal —
+`git push --no-verify` (skip it entirely) and `GUARD_SKIP_TEST=1 git push` (skip the test clause).
+It honours `core.hooksPath`, it never overwrites a `pre-push` somebody else wrote, `make hook-remove`
+undoes it, and `make lint` reports its presence as an INFO line — never a failure. One caveat for
+the one-experiment-one-worktree convention above: **linked worktrees share the hooks directory**, so
+installing from one guards them all, including a fresh worktree where `make init` has not run yet
+(there `make lint` is red until it does — that is what `--no-verify` is for).

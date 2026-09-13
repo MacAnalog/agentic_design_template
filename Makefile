@@ -63,6 +63,32 @@ doctor:  ## is the simulation lane alive? (a one-resistor deck through design.si
 test:  ## the generic design modules (lane, batches, plots, scorecard); live tests skip without ngspice
 	@OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 $(PY) -m pytest -q
 
+# The gate, attached to something. `make lint && make test && git commit && git push` READS as
+# conditional, and twice it was not: the lint ran as a separate earlier command, watched failing,
+# and the chain committed and pushed red anyway (#31). `make guard` is one command that cannot be
+# half-typed; `make hook-install` is the version that cannot be forgotten.
+# Clause order is deliberate: the tree comes FIRST because lint and test judge the WORKING TREE,
+# not the commit being pushed — their verdict means nothing while edits are still loose — and
+# `--cached` is checked separately because `git diff --quiet` alone passes on staged-but-
+# uncommitted changes, which is exactly the window this guards.
+guard:  ## refuse unless the tree is clean and lint + tests are green (GUARD_SKIP_TEST=1 drops the test clause)
+	@git rev-parse --git-dir >/dev/null 2>&1 || { echo "REFUSING: not a git checkout, so there is no tree to judge"; exit 1; }
+	@git diff --quiet || { echo "REFUSING: unstaged changes in the tree (git status; commit or stash them)"; exit 1; }
+	@git diff --cached --quiet || { echo "REFUSING: staged but uncommitted changes (git status; commit them)"; exit 1; }
+	@$(MAKE) --no-print-directory lint || { echo "REFUSING: make lint is red"; exit 1; }
+	@if [ -n "$(GUARD_SKIP_TEST)" ]; then \
+	   echo "guard: GUARD_SKIP_TEST=$(GUARD_SKIP_TEST) — the test clause was SKIPPED deliberately"; \
+	 else \
+	   $(MAKE) --no-print-directory test || { echo "REFUSING: make test is red"; exit 1; }; \
+	 fi
+	@echo "guard: tree clean, lint green, tests $(if $(GUARD_SKIP_TEST),SKIPPED,green)"
+
+hook-install:  ## opt-in, per clone: install the pre-push hook that runs `make guard` (honours core.hooksPath; linked worktrees share it)
+	@$(PY) scripts/githook.py install
+
+hook-remove:  ## remove the pre-push guard hook (a hook this repo did not write is left alone)
+	@$(PY) scripts/githook.py remove
+
 notebooks:  ## execute notebooks/*.ipynb in place (outputs committed, so a reader sees the numbers)
 	@for nb in notebooks/*.ipynb; do [ -e "$$nb" ] || continue; \
 	  PATH="$(CURDIR)/.venv/bin:$$PATH" $(PY) -m jupyter nbconvert --to notebook --execute \
@@ -72,4 +98,4 @@ clean:  ## delete this checkout's work dir + experiment output (never the ledger
 	@d=$$($(PY) -c "from design.sim import work; print(work())" 2>/dev/null); \
 	  [ -n "$$d" ] && echo "rm -rf $$d" && rm -rf "$$d"; rm -rf experiments/*/out/
 
-.PHONY: help init template-status template-update template-migrate skills-update lint check baseline certify pack runs freeze doctor test notebooks clean
+.PHONY: help init template-status template-update template-migrate skills-update lint check baseline certify pack runs freeze doctor test guard hook-install hook-remove notebooks clean

@@ -25,6 +25,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
+from scripts import githook  # noqa: E402
 from spicexplorer_harness import lint, load  # noqa: E402
 from spicexplorer_harness.lint import Lint  # noqa: E402
 
@@ -296,5 +297,30 @@ def signoff_index(L: Lint) -> None:
 # `package-importable` is NOT here: the platform ships it (driven by `package:` in harness.yaml).
 EXTRA = (deck_rebuild, deck_portable, spec_quotes, sx_links, artifact_home, signoff_index)
 
+
+def hook_info(repo: Path = REPO) -> str:
+    """One INFO line: is the opt-in pre-push guard hook installed in this checkout?
+
+    Deliberately NOT a check in `EXTRA`, and deliberately not `L.warn` either. `fail` would make
+    a per-clone convenience block the repo; `warn` does not block, but the run still ends with
+    "all invariants hold (… hook …)", and hook installation is not an invariant of this design —
+    it is a choice its owner makes per checkout, on a repo whose standing stance is that a hook
+    which blocks ordinary work gets removed. So it prints, the invariant list is untouched, and
+    the exit code never depends on it.
+    """
+    try:
+        where = githook.state(repo)
+    except SystemExit:
+        return "INFO: not a git checkout, so there is no pre-push guard hook to report on"
+    if where == "ours":
+        return "INFO: pre-push guard hook installed — `make guard` runs before every push"
+    if where == "foreign":
+        return (f"INFO: {githook.hook_path(repo)} exists but is not the guard hook — "
+                f"left alone; `make guard` before pushing, by hand")
+    return "INFO: pre-push guard hook not installed — `make hook-install` (optional, per clone)"
+
+
 if __name__ == "__main__":
-    sys.exit(lint.main(load(REPO), extra=EXTRA))
+    rc = lint.main(load(REPO), extra=EXTRA)
+    print(hook_info())
+    sys.exit(rc)
