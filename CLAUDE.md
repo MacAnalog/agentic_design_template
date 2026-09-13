@@ -92,16 +92,20 @@ undeclared case: an artefact somewhere nobody wrote down.
 
 ## Simulation lanes and reuse (contract for every agent in this repo)
 
+- **`lane:` in `harness.yaml` names the lane, and `design/sim.py` re-exports it.** Two modules ship: `sim_ngspice.py`
+  (`lane:` absent, the default) and `sim_bridge.py` (`lane: bridge`). `design/sim.py` itself implements nothing — it
+  reads the key and replaces itself with the module it names, so `from design import sim` is the lane. Everything
+  below is which of the two a bench belongs on; that question is settled by the PDK, never by convenience.
 - **Open-source PDK (IHP SG13G2, sky130, gf180 …) → the open lane.** ngspice (with OSDI/openvaf models) through this repo's lane
-  module (`design/sim.py`), KLayout / magic / netgen / kpex for layout and sign-off, xschem for schematics — natively
+  module (`design/sim_ngspice.py`), KLayout / magic / netgen / kpex for layout and sign-off, xschem for schematics — natively
   on the workstation; `make doctor` proves the lane. An open-PDK bench is never routed through the commercial tools.
 - **Commercial PDK under NDA → the bridge lane only, through the platform's bridge-lane package.** Those simulations
   run on the EDA server through the lab's remote-simulator bridge; the reusable half of that lane is a platform leaf
   package whose name is `spicexplorer-` plus the simulator's name (`lane.run_deck` for deck text, `lane.run_dir` for a
   whole netlist directory, `results`, the `doctor` probe, and a launcher callable exactly like the simulator binary).
-  This repo's `design/sim.py` WRAPS it — the repo's policy only: where runs go, which env vars, the mode, the doctor's
-  expected keys — and never carries a private bridge driver, so a lane bug is fixed once, in the platform, for every
-  design. Depend on that package (see `pyproject.toml`); do not name the bridge yourself — the platform pins it. The
+  This repo's `design/sim_bridge.py` WRAPS it — the repo's policy only: where runs go, which env vars, the mode, the
+  doctor's expected keys — and never carries a private bridge driver, so a lane bug is fixed once, in the platform, for
+  every design. Depend on that package (see `pyproject.toml`); do not name the bridge yourself — the platform pins it. The
   skill library's opt-in `<simulator>-lane` skill has the API table and a wiring snippet. Decks are built here,
   uploaded by basename with *relative* `include`s, simulated there, and only results come back. Kit bytes never reach
   the workstation or the model — anything under `/CMC` asks for the person's permission (the one hook); every
@@ -113,7 +117,15 @@ undeclared case: an artefact somewhere nobody wrote down.
   another revision, and in `DECK_VAR_SCOPE`, so the exported name reaches this design only. Everything else — the builder, the ledger row, the frozen reference, `git diff`,
   the `deck-rebuild` and `deck-portable` lints — sees portable text, which is the only reason a
   certified deck can be committed at all. Redacting on write and restoring on read does not work:
-  the rebuild check compares bytes.
+  the rebuild check compares bytes. On the bridge lane the same invariant lives in `design/pdk.py`
+  (`TOKEN` / `restore()` / `library()`), because there the variable IS the model library.
+- **The kit path comes from the environment, and nothing is scanned for.** `design/pdk.py` reads the
+  design-scoped variable, then the name the frozen decks carry, then the per-MACHINE one derived from
+  `pdk:` (`ihp-sg13g2` → `IHP_SG13G2_PDK_LIB`), which is where the lab's per-account env file keeps it.
+  Recovering the path by grepping a NEIGHBOURING clone is not an option and is not shipped: it depends
+  on which repos a person happens to have cloned, it resolves relative to the checkout so it breaks
+  inside a worktree, and it makes the library behind a certified number depend on an unrecorded local
+  layout (MacAnalog/macanalog-design-directory#46).
 - **SpiceXplorer first.** Before writing a script, use what exists and compose it (HOW to run it: the `spicexplorer-tools`
   skill — what this pyproject names runs in this venv with `uv run --no-sync`; any platform tool runs from
   `.sx/platform/.venv/bin/<script|python>`; never `uv run --project .sx/platform` without `--no-sync`): the platform packages

@@ -17,6 +17,88 @@ Versions are `MAJOR.MINOR`, written `#.##`:
 `make template-status` prints the recorded version and the latest release. Releases are git
 tags, `v<version>`.
 
+## v2.08 — the commercial-PDK lane ships here, instead of being copied between designs
+
+Minor. **A design with no `lane:` key is unaffected** — same lane, same behaviour, same
+dependencies. What moved is a file name: the v2.07 `design/sim.py` is `design/sim_ngspice.py`,
+which gained a `main()` entry point, a docstring paragraph and two edited comments, and nothing
+that runs. Everything new is opt-in twice: the key, and the platform package a commercial-PDK
+design adds to `pyproject.toml`.
+
+The template shipped only the open lane, so every commercial-PDK design began by deleting
+`design/sim.py` and hand-porting a neighbour's. Three designs in the lab's private directory now
+carry near-identical copies of two files whose contract says "this repo's policy only" — and what
+was actually being copied was the WIRING: `work()`, `run()`, `preflight()`, the kit-path
+token/`restore()` mechanism, the revision pin. The copies had already diverged, so a lane bug had
+three fixes; the wrapper had quietly become the private driver that the "wrap the platform package"
+rule exists to prevent (MacAnalog/macanalog-design-directory#46).
+
+- **`lane:` in `harness.yaml` selects the lane; `design/sim.py` re-exports it.** `ngspice` (the
+  default, and what the key ABSENT means) is `design/sim_ngspice.py` — the v2.07 `design/sim.py`
+  under a new name, behaviour untouched. `bridge` is `design/sim_bridge.py`. `design/sim.py` now implements
+  nothing: it reads the key and replaces itself in `sys.modules` with the module it names, so
+  `from design import sim` hands back the lane itself and `sim.run` / `sim.DECK_VARS` are the
+  lane's own objects — a star-import would have copied the lane's policy constants into a second
+  namespace, and every later assignment to one would have changed the copy.
+- **`design/sim_bridge.py`** — the wrapper the copies had in common, over the platform's
+  bridge-lane package: `work()` (the platform's own `work_root` — never the repo, never `/tmp`,
+  never a tool-named path), `simulator()`, `MODE`, `run()` (deck text, `extra_files`,
+  `include_files`, mode args), `preflight()` and a `main()` that separates "no bridge profile on
+  this machine" (exit 2, not a stop) from "the lane ran and failed" (exit 1). It carries no driver:
+  upload, run, download, result parsing, redaction and the busy marker are the platform's, and a
+  test asserts this module never opens a connection itself.
+- **`design/pdk.py` is template code now**, with four things to fill in — `REVISION`, `SECTIONS`,
+  and the two variable names. `TOKEN` / `restore()` / `section()` / `models_block()` and the
+  hardened `library()` are shipped. The pin binds on EVERY route, as `resolve()`'s `DECK_VAR_PINS`
+  does on the open lane, with the same typed escape hatch (`<NAME>_ALLOW_MISMATCH=1`) and the same
+  rule that no message ever echoes the value. Deck SYNTAX stays out of it: the preamble is
+  `design/dut.py`'s, and `pdk.models_block()` supplies only the `include` lines.
+- **The kit path comes from the environment; nothing is scanned for.** Three variables, in order:
+  `<DESIGNTAG>_PDK_LIB` (scoped to the design — what a person exports), `<PREFIX>_PDK_LIB` (the
+  name the frozen decks carry, so it cannot be renamed without re-freezing every reference), and
+  the per-MACHINE `<PDK-ID>_PDK_LIB` **derived from `pdk:` in `harness.yaml`** (`ihp-sg13g2` →
+  `IHP_SG13G2_PDK_LIB`), which belongs in the account's env file and serves every design in that
+  process. The route that recovered the path by grepping a NEIGHBOURING clone's committed deck is
+  deliberately NOT shipped: it depended on which repos a person had cloned, it resolved relative to
+  the checkout so it broke inside a git worktree — the layout `CLAUDE.md` tells every agent to work
+  in — and it made the library behind a certified number depend on an unrecorded local layout.
+- **The doctor reports an unresolved process without simulating.** The probe is one resistor and
+  would pass without the kit, but a lane that cannot bind this design to its model library is not
+  alive — the rule the open lane already applies to an unset `DECK_VARS`. Unfilled template
+  placeholders are reported the same way.
+- `python -m design.sim` (`make doctor`) dispatches to the selected lane's `main()`; both lanes
+  grew one.
+- A comment in the open lane's `DECK_VAR_PINS` used a real commercial kit's revision name as its
+  example. This repo is public: it is a placeholder now.
+
+**Prerequisite for `lane:`, and only for it.** The key needs a platform whose
+`spicexplorer_harness.config.Harness` carries a `lane: str = ""` field (beside `sim_env` /
+`work_env`); an older platform refuses the key outright — `harness.yaml: unknown keys ['lane']` —
+rather than ignoring it, which is the right failure but a confusing one if unexpected. Run
+`make shared-update` on the shared root before a design writes the key. **Nothing else in this
+release needs it:** the rename, `sim_bridge.py`, `pdk.py`, the doctor and the docs all work on
+today's platform, and a design that never writes `lane:` never reads the field.
+
+**Taking it:** `make template-update`, then one decision and one manual step. Rehearsed on a copy
+of a v2.07 design that had edited its `sim.py`, so this is what the run actually does:
+
+1. **`<package>/sim.py` comes back CONFLICTED, and that is the whole migration.** The update
+   applies file by file, so the rename is not seen as one: `sim_ngspice.py`, `sim_bridge.py` and
+   `pdk.py` are ADDED clean, and `sim.py` — a whole-file rewrite into the dispatcher — meets
+   whatever the design put in it. Nothing is lost: the design's lines sit under `<<<<<<< ours`.
+   Resolve it by taking **theirs** for `sim.py` (the dispatcher holds no policy) and moving the
+   `ours` lines — `DECK_VARS`, `DECK_VAR_SCOPE`, `DECK_VAR_PINS`, `SPICEINIT_EXTRA`, any custom
+   `preflight` probe — into the newly added `<package>/sim_ngspice.py`, which is where they now
+   live. Then `make lint && make test && make doctor`, and record the release yourself
+   (`echo 2.08 > .sx/template-version`): a conflicted run deliberately does not.
+2. `harness.yaml` is never propagated (it is this design's), so add `lane:` yourself if you want
+   the bridge lane, and `pdk:` if you want the per-machine variable derived.
+
+A commercial-PDK design already carrying its own hand-ported lane: take this release, then DELETE
+its local `sim.py`/`pdk.py` mechanism and keep only what is genuinely its own — `REVISION`,
+`SECTIONS`, the two variable names, `MODE`, and any probe helpers. Export the per-machine variable
+once instead of relying on a neighbouring clone.
+
 ## v2.07 — the lifecycle is the harness's, not a copy in every design
 
 Minor, and the largest single change to `design/metrics.py` since v1: **321 lines become 151.**
