@@ -546,7 +546,9 @@ def renamed_repo(tmp_path_factory):
     pkg = root / "ldo"
     pkg.mkdir()
     (pkg / "__init__.py").write_text("")
-    for f in ("sim.py", "metrics.py", "bench.py"):   # metrics imports the reduction module
+    # `sim.py` is the lane DISPATCHER and imports the lane module `lane:` names — the open one
+    # here, as in any repo that leaves the key out.
+    for f in ("sim.py", "sim_ngspice.py", "metrics.py", "bench.py"):  # metrics imports the reduction module
         shutil.copy(src / f, pkg / f)
     (pkg / "dut.py").write_text(_DUT_SRC)
     (root / "harness.yaml").write_text(_HARNESS_SRC)

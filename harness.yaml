@@ -7,7 +7,24 @@ package: design         # this design's own Python package, named for the DESIGN
 exp_env: EXP            # env var stamping every ledger row with the experiment id
 jobs_env: JOBS          # width of spicexplorer_harness.batch
 # sim_env: SIM_NGSPICE  # the native ngspice binary design/sim.py runs (default: exp_env's prefix + _NGSPICE)
+                        # on `lane: bridge` it names a LAUNCHER carrying the tool environment instead,
+                        # so set it explicitly there — the default spells `_NGSPICE`, which that lane is not
 # work_env: SIM_WORK    # the work root (default: prefix + _WORK; else $SX_SCRATCH/<design>-<checkout>)
+
+# WHICH simulator lane `design/sim.py` re-exports. Leave it OUT for the open lane: absent means
+# `ngspice` — `design/sim_ngspice.py`, native ngspice on this machine — and nothing about an
+# open-PDK design changes. `bridge` selects `design/sim_bridge.py`: a commercial kit whose models
+# load only in the vendor simulator on the lab's EDA server, wrapped over the platform's
+# bridge-lane package (add it to pyproject.toml, fill in design/pdk.py, and drop this file's
+# `denylist:` entry for the simulator's own name).
+# NEEDS a platform whose `spicexplorer_harness.config.Harness` carries `lane:`; an older one
+# refuses the key outright (`harness.yaml: unknown keys ['lane']`) rather than ignoring it.
+# lane: bridge          # ngspice (default, key absent) | bridge
+
+# The process this design is drawn in, as its own preflight reports it (`ihp-sg13g2`). Free-form.
+# `design/pdk.py` derives the per-MACHINE model-library variable from it — `<PDK-ID>_PDK_LIB`,
+# uppercased with `-` as `_` — so one export per account serves every design in that process.
+# pdk: <pdk-id>
 
 # The headline of the challenge, as the context pack states it at the top of every task.
 goal: "<the metric to beat, its bound, and what may not be given back>"

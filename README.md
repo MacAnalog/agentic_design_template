@@ -26,8 +26,11 @@ definitions and method notes under `.claude/`.
    `spicexplorer-*` member names it in both `dependencies` and `[tool.uv.sources]`, then runs
    `uv sync` once.
 6. `make doctor` must report the lane alive: it runs a one-resistor deck with a per-run
-   `.spiceinit` through ngspice, driven by `design/sim.py` — this repo's policy layer over the
-   platform's `run_deck`. Then implement `design/dut.py` (`benches()` + `deck(bench)`) and
+   `.spiceinit` through ngspice, driven by `design/sim_ngspice.py` — this repo's policy layer over
+   the platform's `run_deck`, and what `design/sim.py` re-exports while `lane:` is absent. A
+   commercial-PDK design instead sets `lane: bridge` in `harness.yaml`, fills in `design/pdk.py`
+   (`REVISION`, `SECTIONS`, the two variable names) and adds the bridge-lane package to
+   `pyproject.toml`; its `make doctor` runs the same probe on the EDA server. Then implement `design/dut.py` (`benches()` + `deck(bench)`) and
    `design/metrics.py`'s `KEYMAP`. `make test` covers the generic modules and the scorecard
    lifecycle.
 7. `make certify` (add `ARGS="--author X --verified-by Y"` once a second actor has re-measured it),
@@ -47,7 +50,7 @@ learned.** Everything else is plumbing.
 | `harness.yaml` | the design described to the harness: spec rows, frozen dirs, denylist, ledger columns |
 | `CLAUDE.md` | the entry map agents read first — including "Where things go" |
 | `doc/` | target spec, design reference (constraints), benches, environment, experiment log, journal + index, `reviews/` (verifier reports), the memory model |
-| `design/` | this design's own code. Yours to write: `dut` (sizing point → deck), `metrics` (measure, check, log), `bench` (the reductions). Generic, imported as-is: `sim` (this repo's where/which/what policy over `spicexplorer_core.spice_engine.run_deck`), `exp` (labelled batches, markdown, CSV), `plot` (spec boxes). Data stimulus and eye metrics are the platform's — `spicexplorer_waveview.stimulus` / `.eye` — imported directly by the designs that send symbols |
+| `design/` | this design's own code. Yours to write: `dut` (sizing point → deck), `metrics` (measure, check, log), `bench` (the reductions). Generic, imported as-is: `sim` (the lane dispatcher — `lane:` in `harness.yaml` selects `sim_ngspice`, the default policy layer over `spicexplorer_core.spice_engine.run_deck`, or `sim_bridge` + `pdk` for a commercial kit simulated on the EDA server), `exp` (labelled batches, markdown, CSV), `plot` (spec boxes). Data stimulus and eye metrics are the platform's — `spicexplorer_waveview.stimulus` / `.eye` — imported directly by the designs that send symbols |
 | `experiments/NNN-*/` | one directory per hypothesis, tagged with its phase; `_template/` is the shape — `README.md`, `run.py` (simulates into git-ignored `out/`, committed `figs/` and `tables/`) and `mk_readme.py` (regenerates the README from `out/*.json`) |
 | `signoff/` | the design of record, one directory per simulation fidelity (`prelayout`, `postlayout-pex`, `postlayout-em`, and whatever physics a design adds) plus `schematic/` and `layout/`. `signoff/README.md` is the index: what is signed off, at which fidelity, by whom, when |
 | `layout/` | the layout **as code**: `gen_cell.py` (generator contract, `LayoutParams`, the per-net obstacle map) and `signoff.py` (build → render → DRC → current density → LVS → PEX → the cell's own benches). Its output lands in `signoff/layout/` |

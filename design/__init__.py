@@ -8,7 +8,10 @@ Three modules are yours to write, and they are the design:
 
 Three are generic and are imported as they are:
 
-* `sim`  — this repo's simulator-lane policy (where runs go, which binary, which vars)
+* `sim`  — this repo's simulator-lane policy (where runs go, which binary, which vars). It is a
+  DISPATCHER: `lane:` in `harness.yaml` picks `sim_ngspice` (the default — native ngspice) or
+  `sim_bridge` (a commercial kit, simulated on the EDA server through the lab's bridge), and
+  `design.sim` IS that module. `pdk` goes with the bridge lane: which model library, which sections.
 * `exp`  — labelled batches and their markdown tables
 * `plot` — figures with the spec boxes drawn on them
 
