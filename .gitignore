@@ -7,3 +7,6 @@ decks/*/out/
 .ruff_cache/
 .pytest_cache/
 .sx/platform
+# agent/session worktrees are real git checkouts INSIDE the repo; `git add -A` would sweep them in
+# as embedded-repo gitlinks that mean nothing to a cloner (template#33)
+.claude/worktrees/

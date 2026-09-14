@@ -17,6 +17,27 @@ Versions are `MAJOR.MINOR`, written `#.##`:
 `make template-status` prints the recorded version and the latest release. Releases are git
 tags, `v<version>`.
 
+## v2.10 — worktrees are ignored, and `make check` says WHY it is red
+
+Minor, two small things, nothing changes for a design that has neither.
+
+- **`.gitignore` excludes `.claude/worktrees/`** (template#33). An agent or session worktree is a
+  real git checkout inside the repo; `git add -A` (or `git add .claude`, the natural thing to type
+  when committing a skill or agent link) swept them in as embedded-repo gitlinks — a commit SHA and
+  a path with no remote, meaningless to anyone who clones. Two landed and were reverted in one
+  design in one session. The repo rule was already "never commit work dirs"; now there is a
+  mechanism behind it.
+- **`make check` propagates the harness's exit code** (`|| rc=$$?`, was `|| rc=1`). Since
+  platform #217 `design.metrics --check` exits **3** when the gate COULD NOT RUN (nothing certified
+  yet, or no frozen decks) and **1** on a real drift; folding both to 1 made an uncertified design
+  read exactly like a drifted one to every `&&` chain and agent. A fresh design now exits 3 from
+  `make check` until it certifies — that is the point, not a regression; `make baseline
+  ARGS=--allow-skip` is the deliberate opt-out for the one legitimate case. If lint fails AND the
+  check skips, the 3 wins: still nonzero, and it names the later failure.
+
+**Taking it:** `make template-update`; no conflicts expected unless you edited `.gitignore` or the
+`check:` recipe.
+
 ## v2.09 — the gates get something to be attached to: `make guard`, and an opt-in pre-push hook
 
 Minor, and **nothing changes for a design that does not run `make hook-install`**: no hook is
