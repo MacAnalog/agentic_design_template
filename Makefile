@@ -40,7 +40,9 @@ lint:  ## repo invariants (harness.yaml + scripts/lint.py extras); failures carr
 	@$(PY) scripts/lint.py
 
 check:  ## lint + the reference reproduces its certified scorecard
-	@rc=0; $(PY) scripts/lint.py || rc=1; echo; $(PY) -m design.metrics --check || rc=1; exit $$rc
+	@rc=0; $(PY) scripts/lint.py || rc=1; echo; $(PY) -m design.metrics --check || rc=$$?; exit $$rc
+	# `|| rc=$$?` (not `|| rc=1`): since platform #217 a gate that COULD NOT RUN exits 3, a drift 1 —
+	# folding every nonzero to 1 would make an uncertified design indistinguishable from a drifted one
 
 baseline:  ## simulate the frozen reference decks and print the scorecard (no drift verdict)
 	@$(PY) -m design.metrics --baseline $(ARGS)
