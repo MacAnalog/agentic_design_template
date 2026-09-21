@@ -758,6 +758,195 @@ def test_signoff_index_is_a_noop_before_anything_is_signed_off(tmp_path):
     assert L.fails == []
 
 
+# ------------------------------------------------------------------ deck-models -------
+#
+# template#36: a device moved to another model flavour, two benches kept building their header
+# from a fixed list of groups that did not include the new flavour's section, and every gate in
+# the repo was green — nothing here simulates, so only the simulator could see it.
+
+_KIT_DUT_SRC = '''
+import dataclasses
+
+from . import pdk
+
+
+@dataclasses.dataclass(frozen=True)
+class Design:
+    """A deck whose header is assembled from named model groups — the mechanism #36 is about."""
+    flavour: str = "nmos_a"
+    corner: str = "tt"
+    groups: tuple = ("core", "thick")
+
+    def benches(self): return ["op", "ac"]
+
+    def deck(self, bench):
+        return (f"* {bench}\\n"
+                f"{pdk.models_block(self.corner, *self.groups)}\\n"
+                f"* this comment names pmos_b, which instantiates nothing\\n"
+                f"m1 d g 0 0 {self.flavour} w=1u l=1u\\n"
+                f".end\\n")
+
+    def as_dict(self): return dataclasses.asdict(self)
+
+    @classmethod
+    def from_dict(cls, d):
+        f = {x.name for x in dataclasses.fields(cls)}
+        return cls(**{k: (tuple(v) if isinstance(v, list) else v)
+                      for k, v in d.items() if k in f})
+
+
+REFERENCE = Design()
+'''
+
+_KIT_HARNESS_SRC = """
+name: kit demo
+package: kitdemo
+exp_env: KIT_EXP
+jobs_env: KIT_JOBS
+lane: bridge
+spec_doc: doc/target-spec.md
+frozen: [decks/reference]
+spec:
+  - {key: gain_db, label: gain, op: ">=", bound: 60, unit: dB}
+"""
+
+
+@pytest.fixture(scope="module")
+def kit_repo(tmp_path_factory):
+    """A checkout on the sectioned lane: the real `pdk.py`, and a `dut.py` that builds a header.
+
+    The REAL `design/pdk.py` is copied in, so `section()`, `CORNERS` and `models_block()` under
+    test are the shipped ones rather than a mirror that can drift from them. Its one import —
+    `from .sim import H` — is answered by a two-line stub: `lane: bridge` would otherwise pull in
+    the bridge-lane platform package, which a machine running this test need not have installed,
+    and the lane is not what is under test here.
+    """
+    import shutil
+
+    root = tmp_path_factory.mktemp("kit")
+    src = Path(__file__).resolve().parents[1] / "design"
+    pkg = root / "kitdemo"
+    pkg.mkdir()
+    (pkg / "__init__.py").write_text("")
+    (pkg / "sim.py").write_text("from pathlib import Path\n"
+                                "from spicexplorer_harness import load\n"
+                                "H = load(Path(__file__).resolve().parents[1])\n")
+    shutil.copy(src / "pdk.py", pkg / "pdk.py")
+    (pkg / "dut.py").write_text(_KIT_DUT_SRC)
+    (root / "harness.yaml").write_text(_KIT_HARNESS_SRC)
+    (root / "doc").mkdir()
+    d = root / "decks" / "reference"
+    d.mkdir(parents=True)
+    (d / "design.json").write_text(json.dumps({"flavour": "nmos_a", "corner": "tt",
+                                               "groups": ["core", "thick"]}))
+    sys.path.insert(0, str(root))
+    yield root
+    sys.path.remove(str(root))
+    for name in [k for k in sys.modules if k == "kitdemo" or k.startswith("kitdemo.")]:
+        del sys.modules[name]
+
+
+@pytest.fixture
+def kit(kit_repo, monkeypatch):
+    """(lint module, the fixture's `pdk` and `dut` modules) with a filled, neutral MODEL_GROUPS."""
+    import importlib
+
+    mod = _load("scripts/lint.py")
+    pdk = importlib.import_module("kitdemo.pdk")
+    dut = importlib.import_module("kitdemo.dut")
+    monkeypatch.setattr(pdk, "SECTIONS", {"core": "tt_core", "thick": "tt_thick"})
+    monkeypatch.setattr(pdk, "MODEL_GROUPS", {"nmos_a": "core", "pmos_b": "thick"})
+    return mod, pdk, dut
+
+
+def _kit_lint(root):
+    from spicexplorer_harness import load
+    from spicexplorer_harness.lint import Lint
+
+    return Lint(load(root))
+
+
+def test_deck_models_catches_a_model_whose_section_is_not_in_the_header(kit, kit_repo, monkeypatch):
+    """The #36 defect itself: one flavour swapped, the header untouched. One failure per bench,
+    naming the bench, the model, the missing group and the builder to edit."""
+    mod, _pdk, dut = kit
+    monkeypatch.setattr(dut, "REFERENCE", dut.Design(flavour="pmos_b", groups=("core",)))
+    L = _kit_lint(kit_repo)
+    mod.deck_models(L)
+    assert len(L.fails) == 2, L.fails                      # both benches instantiate it
+    for text, bench in zip(sorted(L.fails), ("ac", "op")):
+        assert text.startswith(f"[deck-models] {bench}: instantiates pmos_b")
+        assert "lacks the thick section" in text and "tt_core" in text
+        assert "kitdemo/dut.py" in text and "models_block" in text
+
+
+def test_deck_models_passes_when_the_header_carries_the_group(kit, kit_repo, monkeypatch):
+    mod, _pdk, dut = kit
+    monkeypatch.setattr(dut, "REFERENCE", dut.Design(flavour="pmos_b", groups=("core", "thick")))
+    L = _kit_lint(kit_repo)
+    mod.deck_models(L)
+    assert L.fails == []
+
+
+def test_deck_models_accepts_a_corner_spelling_of_the_section(kit, kit_repo, monkeypatch):
+    """A corner deck's header says `ss_core`, not `tt_core`; matching only the typical spelling
+    would fail every corner run for a reason that does not exist."""
+    mod, _pdk, dut = kit
+    monkeypatch.setattr(dut, "REFERENCE", dut.Design(corner="ss", groups=("core",)))
+    L = _kit_lint(kit_repo)
+    mod.deck_models(L)
+    assert L.fails == [], L.fails
+
+
+def test_deck_models_checks_the_frozen_points_too(kit, kit_repo, monkeypatch):
+    """The enumeration `deck_rebuild` uses: a frozen `design.json` whose header is short fails
+    even while the reference point is clean."""
+    mod, _pdk, _dut = kit
+    card = kit_repo / "decks" / "reference" / "design.json"
+    card.write_text(json.dumps({"flavour": "pmos_b", "corner": "tt", "groups": ["core"]}))
+    try:
+        L = _kit_lint(kit_repo)
+        mod.deck_models(L)
+        assert len(L.fails) == 2 and "decks/reference" in L.fails[0]
+    finally:
+        card.write_text(json.dumps({"flavour": "nmos_a", "corner": "tt",
+                                    "groups": ["core", "thick"]}))
+
+
+def test_deck_models_refuses_a_group_that_sections_does_not_declare(kit, kit_repo, monkeypatch):
+    mod, pdk, dut = kit
+    monkeypatch.setattr(pdk, "MODEL_GROUPS", {"nmos_a": "nowhere"})
+    monkeypatch.setattr(dut, "REFERENCE", dut.Design(flavour="nmos_a", groups=("core",)))
+    L = _kit_lint(kit_repo)
+    mod.deck_models(L)
+    assert len(L.fails) == 2 and "not a section this design declares" in L.fails[0]
+    assert "SECTIONS" in L.fails[0]
+
+
+def test_deck_models_is_an_info_not_a_failure_while_the_map_is_empty(kit, kit_repo, monkeypatch,
+                                                                    capsys):
+    """The map is the design's to write: an unfillable check may not colour the invariant list."""
+    mod, pdk, _dut = kit
+    monkeypatch.setattr(pdk, "MODEL_GROUPS", {})
+    L = _kit_lint(kit_repo)
+    mod.deck_models(L)
+    assert L.fails == [] and L.warns == []
+    assert "INFO: deck-models skipped" in capsys.readouterr().out
+
+
+def test_deck_models_reads_the_header_and_the_body_apart():
+    """A section name may spell a model name and a comment may name a model: neither instantiates
+    anything, and an include line is never a device line."""
+    mod = _load("scripts/lint.py")
+    deck = ('* op\n'
+            'include "$KIT_PDK_LIB" section=tt_core\n'
+            '* pmos_b was measured in an earlier build\n'
+            'm1 d g 0 0 nmos_a w=1u\n')
+    assert mod.header_sections(deck) == {"tt_core"}
+    body = mod.instantiating_body(deck)
+    assert "nmos_a" in body and "pmos_b" not in body and "section=" not in body
+
+
 def test_lint_extras_are_green_on_the_bare_template():
     from spicexplorer_harness import load
     from spicexplorer_harness.lint import Lint

@@ -17,6 +17,61 @@ Versions are `MAJOR.MINOR`, written `#.##`:
 `make template-status` prints the recorded version and the latest release. Releases are git
 tags, `v<version>`.
 
+## v2.11 — the deck says which models it needs, and the raw records stop piling up
+
+Minor. Two gates and one sweep, all of them off by default in the sense that matters: the new lint
+check is silent until a design fills one map, and nothing is deleted unless a ledger row says the
+record has already been reduced.
+
+- **`deck_models`, a new lint invariant** (template#36). A design moved one device to another
+  model flavour — a two-line netlist edit — and two benches went on building their deck header
+  from a fixed list of model groups that did not include the new flavour's section. `make lint`
+  (20 invariants), `make test` (47) and `make guard` were all green, and the branch was pushed:
+  nothing in this repo simulates, so the first thing that could see it was the simulator, whose
+  verdict (`unresolved master`) reads like a typo in a device line rather than a missing include.
+  The check builds every deck the design builds — the frozen `design.json` points `deck_rebuild`
+  enumerates, plus `<package>.dut.REFERENCE`, so it works before the first certification — and for
+  each model name in the new `<package>.pdk.MODEL_GROUPS` map that the deck BODY instantiates, it
+  requires one of that group's section spellings (any corner) on an include line of the deck
+  HEADER. It fails with the bench, the model, the missing group and the builder to edit.
+  - **`MODEL_GROUPS: dict[str, str] = {}` in `design/pdk.py`** is the design-side map (model name
+    -> `SECTIONS` group) the check reads. Empty is legal and is the shipped state: the check then
+    prints one INFO line on `lane: bridge` and nothing at all on the open lane, whose models come
+    from the PDK's own init file. It is never a warning — a check nobody can satisfy yet must not
+    colour "all invariants hold".
+- **`make clean-runs`** (template#37). One overnight campaign left **212 GB** of raw transient
+  records in one account's scratch, every one of them already reduced to a committed table;
+  nothing deleted them because nothing owned deletion — `make clean` removes a whole checkout's
+  work dir (too coarse mid-campaign) and the lane never revisits what it wrote. The new sweep
+  removes a run dir only when all of it holds: it sits directly under `<work>/runs/`, it carries
+  no `.busy` marker, a ledger row names its label and is not a bare `sim_error`, and its simulator
+  log has been cold for `AGE` hours (default 24). Everything else is printed with the reason it
+  survived, so the output answers "why is my scratch still full?". `ARGS="--dry-run"` plans
+  without deleting; `AGE=0` sweeps every reduced record once a campaign is over.
+  - Matching is on the LABEL, never the hash: a run dir is `<slug(label)>-<sha256(deck)[:8]>` over
+    the RESOLVED deck, while the ledger's `deck` column hashes the PORTABLE text — the two
+    legitimately differ wherever `DECK_VARS` or a save list is in play.
+  - It does **not** replace `spicexplorer-harness prune`, the platform's rawfile-level retention
+    (`keep_raw:`, the `raws` ledger column, an orphan pass). That thins rawfiles inside runs you
+    still want; this removes whole run dirs of this checkout. Use both.
+- **`make doctor` reports scratch** — this checkout's work dir size and run count, with a warning
+  above `$SX_SCRATCH_WARN_GB` (50 GB), so the designer hears it before the workstation admin does.
+  The report runs whatever the lane probe said, and the probe's exit code is still what `make
+  doctor` returns.
+- **`scratch_budget`, a SOFT lint invariant** — `L.warn`, never `L.fail`: a work dir over the warn
+  mark whose biggest run dirs have no reduction row. Scratch is a property of the machine, not an
+  invariant of the design, and a gate that goes red because a campaign is in flight is a gate
+  people switch off.
+- **The rule, in `CLAUDE.md`**: *a raw simulation record is scratch, not evidence. Reduce it,
+  commit the reduction, delete the raw. Keep a raw record only while its reduction has not been
+  committed, or when the record is the thing under test.*
+
+**Taking it:** `make template-update`; no conflicts expected unless you edited the `doctor:` or
+`clean:` recipes, `design/pdk.py`'s head, or `scripts/lint.py`'s `EXTRA`. Nothing is deleted by
+taking the release — `make clean-runs` only runs when you type it. A design on the sectioned lane
+should fill `MODEL_GROUPS` while the benches are fresh in mind; until it does, the new check only
+prints one INFO line.
+
 ## v2.10 — worktrees are ignored, and `make check` says WHY it is red
 
 Minor, two small things, nothing changes for a design that has neither.

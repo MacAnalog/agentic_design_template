@@ -4,7 +4,8 @@ Used by the bridge lane (`lane: bridge`, `design/sim_bridge.py`). The open lane 
 models through the PDK's own init file and never imports this module.
 
 **Template code with four things to fill in** — `REVISION`, `SECTIONS`, the design tag in
-`LIB_ENV_SCOPED` and the variable name in `LIB_ENV`. Everything below them is the mechanism, and
+`LIB_ENV_SCOPED` and the variable name in `LIB_ENV` — and a fifth, `MODEL_GROUPS`, that is
+optional but arms a lint (`deck-models`) nothing else in this repo can do. Everything below them is the mechanism, and
 it is identical in every commercial-PDK design; it is here rather than copied between designs
 because the copies had already diverged, and a bug in a copied mechanism is a bug with N fixes
 (MacAnalog/macanalog-design-directory#46).
@@ -31,7 +32,9 @@ Four consequences of the design worth stating once:
    it (MacAnalog/macanalog-design-directory#38). The escape hatch is typed, never silent.
 4. **Sections are per device FAMILY, not one global corner.** A deck must include every section
    whose devices it instantiates; a missing one fails as an unresolved master, which reads like a
-   typo rather than like a missing include.
+   typo rather than like a missing include. That failure arrives from the SIMULATOR — no gate in
+   this repo simulates — unless `MODEL_GROUPS` below says which group each model belongs to, in
+   which case `scripts/lint.py`'s `deck-models` catches it at lint time (template#36).
 
 Nothing here writes the deck PREAMBLE — the language line, the temperature options, the title.
 That is deck syntax and it belongs to `design/dut.py`, which calls `models_block()` for the
@@ -62,6 +65,23 @@ REVISION = "<the model-library revision name, exactly as doc/environment.md pins
 # section fails as an unresolved master in whatever bench first uses it.
 SECTIONS: dict[str, str] = {
     "core": "<the section holding this design's core devices>",
+}
+
+# Which SECTIONS group each DEVICE MODEL belongs to — `<the model name a deck instantiates>:
+# <the key in SECTIONS above>`. Empty here, and empty is legal: the `deck-models` lint
+# (`scripts/lint.py`) then prints one INFO line and checks nothing.
+#
+# Fill it and that lint becomes real: for every deck this design builds it finds each model name
+# the deck instantiates and refuses a deck whose header does not include that model's section.
+# The trap it exists for (template#36): a device was moved to another model flavour in a two-line
+# netlist edit, two benches assembled their header from a fixed list of groups that did not
+# include the new flavour's section, and `make lint`, `make test` and `make guard` were all green
+# — nothing in this repo simulates, so the first thing that could see it was the simulator, and
+# what it says is "unresolved master", which reads like a typo rather than a missing include.
+#
+# One row per model the benches instantiate; the value must be a key of SECTIONS.
+MODEL_GROUPS: dict[str, str] = {
+    # "<the model a deck instantiates>": "core",
 }
 
 # Corner labels. A corner is a prefix swap on the typical section names above (`tt_x` -> `ss_x`),
@@ -109,7 +129,7 @@ def lib_envs() -> tuple[str, ...]:
 # above it pins the revision — which is what makes the deck reproducible without carrying the path.
 TOKEN = f"${LIB_ENV}"
 
-__all__ = ["REVISION", "SECTIONS", "CORNERS", "TYPICAL", "LIB_ENV", "LIB_ENV_SCOPED", "TOKEN",
+__all__ = ["REVISION", "SECTIONS", "MODEL_GROUPS", "CORNERS", "TYPICAL", "LIB_ENV", "LIB_ENV_SCOPED", "TOKEN",
            "PdkError", "machine_env", "lib_envs", "library", "restore", "section", "models_block",
            "unresolved"]
 

@@ -76,6 +76,7 @@ learned.** Everything else is plumbing.
 | `references/` | papers, datasheets and standards + `INDEX.md` (cite by handle, never by filename) |
 | `tests/` | `make test`: the generic `design/` modules (the live-lane test skips without ngspice) |
 | `scripts/lint.py` | repo-specific checks on top of the harness — including `artifact-home`, which keeps the map above true |
+| `scripts/clean_runs.py` | `make clean-runs` (sweep the run dirs whose reduction is recorded and whose log has gone cold) and the scratch report `make doctor` prints |
 | `scripts/githook.py` | `make hook-install` / `make hook-remove`: the opt-in `pre-push` hook that runs `make guard` |
 | `notebooks/` | executed in place by `make notebooks`, outputs committed |
 | `.sx/` | the per-checkout plumbing `make init` sets up: `platform` (git-ignored link to `$SX_ROOT/spicexplorer-platform`) and `skills` (the `analog-skill-directory` submodule: shared agents, skills, guard hooks, `bin/sx-link`) |
@@ -83,3 +84,4 @@ learned.** Everything else is plumbing.
 | `.claude/skills/` | links into `.sx/skills/skills/`: the visual-evidence methods (schematic of record, testbench schematics, findings as plots, layout evidence), `design-writing` (every document this repo produces), gm/ID sizing + LUTs, current mirrors, layout annotation, neutral naming, the remote-simulator learning journal and the bridge's two simulator skills |
 | `.claude/settings.json` | the one hook (`.sx/skills/hooks/cmc_ask_hook.py`): anything under the NDA kit tree asks for permission; nothing else is blocked (owner ruling 2026-09-07) |
 | `runs/` | `ledger.ndjson`, git-ignored; the numbers worth keeping move into experiment READMEs and `signoff/` |
+| *(the scratch root)* | rawfiles, run dirs and simulator logs — `$SX_SCRATCH`, never the repo. A raw record is scratch, not evidence: reduce it, commit the reduction, `make clean-runs` |

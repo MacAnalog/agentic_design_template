@@ -6,6 +6,9 @@
 PY ?= $(if $(wildcard .venv/bin/python),.venv/bin/python,python3)
 HARNESS := $(PY) -m spicexplorer_harness.cli --repo .
 ARGS ?=
+# `make clean-runs AGE=48`: how long a run's simulator log must have been cold
+# before the sweep may remove that run dir (hours).
+AGE ?= 24
 
 help:  ## list every target
 	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-10s %s\n", $$1, $$2}'
@@ -59,8 +62,11 @@ runs:  ## query the run ledger (ARGS="--fails" | "--best gain_db --desc" | "--ex
 freeze:  ## write SHA256SUMS into the frozen dirs after a deliberate certification
 	@$(HARNESS) freeze
 
-doctor:  ## is the simulation lane alive? (a one-resistor deck through design.sim, per-run .spiceinit proven)
-	@$(PY) -m design.sim
+# The scratch report runs WHATEVER the probe said, and the PROBE's exit code is what `make doctor`
+# returns: a down lane is exactly when nobody looks at the disk, and 212 GB of already-reduced
+# records is how a shared machine fills up (template#37).
+doctor:  ## is the lane alive? (a one-resistor deck through design.sim) + this checkout's scratch usage
+	@rc=0; $(PY) -m design.sim || rc=$$?; $(PY) scripts/clean_runs.py --report; exit $$rc
 
 test:  ## the generic design modules (lane, batches, plots, scorecard); live tests skip without ngspice
 	@OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 $(PY) -m pytest -q
@@ -100,4 +106,10 @@ clean:  ## delete this checkout's work dir + experiment output (never the ledger
 	@d=$$($(PY) -c "from design.sim import work; print(work())" 2>/dev/null); \
 	  [ -n "$$d" ] && echo "rm -rf $$d" && rm -rf "$$d"; rm -rf experiments/*/out/
 
-.PHONY: help init template-status template-update template-migrate skills-update lint check baseline certify pack runs freeze doctor test guard hook-install hook-remove notebooks clean
+# The mid-campaign sweep `make clean` cannot be: it never touches a run another process is
+# writing, one nothing has reduced, or one whose log is still warm — and it says why it kept each
+# of them. `make clean` stays for "this checkout is finished with".
+clean-runs:  ## delete run dirs whose reduction is in the ledger and whose log is older than AGE hours (AGE=24; ARGS="--dry-run")
+	@$(PY) scripts/clean_runs.py --age $(AGE) $(ARGS)
+
+.PHONY: help init template-status template-update template-migrate skills-update lint check baseline certify pack runs freeze doctor test guard hook-install hook-remove notebooks clean clean-runs

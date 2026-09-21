@@ -6,7 +6,10 @@ Both template instantiations independently wrote the same two extra checks, so t
 `spec_quotes` (the reference column of `doc/target-spec.md` must quote the certified scorecard).
 `deck_portable` joins them on the same evidence — two designs froze a deck carrying a
 machine-specific absolute library path. All three no-op until something is certified, so
-`make lint` is green on a bare template.
+`make lint` is green on a bare template. Two more came from the same place: `deck_models` (a deck
+that instantiates a device model must include that model's section — the one deck defect only a
+simulator could see) and `scratch_budget` (soft: a work dir over the warn mark whose biggest
+records nothing has reduced).
 
 Add this design's own `def check(L: Lint) -> None` and name it in EXTRA. A check earns its place
 when a trap has bitten twice (`doc/journal/gap-as-signal.md`); its message carries the fix.
@@ -112,6 +115,148 @@ def deck_portable(L: Lint) -> None:
                        f"`{L.h.package}.sim.DECK_VARS` (resolved in `sim.run`), re-certify "
                        f"(`make certify && make freeze`)")
 
+
+# A model name as a deck writes it: whole token only, so `nmos_a` is not found inside `nmos_a_hv`
+# and a group name that happens to be a substring of another never matches.
+def _token(name: str) -> re.Pattern[str]:
+    return re.compile(rf"(?<![0-9A-Za-z_]){re.escape(name)}(?![0-9A-Za-z_])")
+
+
+# The header lines a section can be declared on, and the section each one names.
+_SECTION_OF = re.compile(r'^\s*\.?(?:include|lib)\b[^\n]*?\bsection\s*=\s*["\']?([A-Za-z0-9_.-]+)',
+                         re.I | re.M)
+_INCLUDE_LINE = re.compile(r'^\s*\.?(?:include|lib)\b', re.I)
+# Comment spellings both deck dialects use. `*` only in the first column, which is the SPICE rule.
+_COMMENT_LINE = re.compile(r'^\s*(?:\*|//|;)|^\*')
+
+
+def header_sections(deck: str) -> set[str]:
+    """Every section name the deck's include/library lines pin (`include "$VAR" section=tt_core`)."""
+    return {m.group(1) for m in _SECTION_OF.finditer(deck)}
+
+
+def instantiating_body(deck: str) -> str:
+    """The deck without its comments and its include/library lines — where a model is INSTANTIATED.
+
+    The include lines are dropped so a section whose name happens to spell a model name cannot
+    pass the check for it, and the comments so a model named in a note does not demand a section.
+    """
+    return "\n".join(ln for ln in deck.splitlines()
+                     if not _COMMENT_LINE.match(ln) and not _INCLUDE_LINE.match(ln))
+
+
+def _points(L: Lint) -> list[tuple[str, object]]:
+    """The sizing points whose decks are checked: the same frozen `design.json`s `deck_rebuild`
+    enumerates, plus `<package>.dut.REFERENCE`.
+
+    The reference point is added because a design's FIRST deck-header omission happens long before
+    it certifies anything, and a frozen-dirs-only enumeration checks exactly nothing until then.
+    Deduped on `as_dict()`, so a repo whose frozen point IS the reference is checked once.
+    """
+    out: list[tuple[str, object]] = []
+    seen: list[dict] = []
+    try:
+        dut = importlib.import_module(f"{L.h.package}.dut")
+    except Exception:  # noqa: BLE001 - `deck_rebuild` owns the reporting of a broken package
+        return out
+    for d in _frozen_dirs(L):
+        try:
+            point = dut.Design.from_dict(json.loads((d / "design.json").read_text()))
+        except Exception:  # noqa: BLE001 - `deck_rebuild` reports an unloadable design.json
+            continue
+        out.append((d.relative_to(L.h.root).as_posix(), point))
+    ref = getattr(dut, "REFERENCE", None)
+    if ref is not None:
+        out.append((f"{L.h.package}.dut.REFERENCE", ref))
+    kept = []
+    for where, point in out:
+        try:
+            key = point.as_dict()
+        except Exception:  # noqa: BLE001
+            key = None
+        if key is not None and key in seen:
+            continue
+        if key is not None:
+            seen.append(key)
+        kept.append((where, point))
+    return kept
+
+
+def deck_models(L: Lint) -> None:
+    """A deck that instantiates a device model includes that model's section in its header.
+
+    The one class of deck defect no other gate in this repo can see (template#36). A design moved
+    one device to another model flavour — a two-line netlist edit — and two benches went on
+    assembling their header from a fixed list of model groups that did not include the new
+    flavour's section. `make lint` (20 invariants), `make test` (47) and `make guard` were all
+    green, because nothing here simulates: the first thing able to notice was the simulator, whose
+    verdict is `unresolved master`, which reads like a typo in a device line rather than like a
+    missing include.
+
+    It is string-level on text the design already generates, so it costs nothing: for every deck
+    the design builds, each model named in `<package>.pdk.MODEL_GROUPS` that appears in the deck
+    BODY must have one of its section's corner spellings on an include line of the deck HEADER.
+
+    Three ways it stays quiet rather than wrong: a design with no `pdk` module is skipped
+    silently; a design whose `MODEL_GROUPS` is still empty is skipped too, with one INFO line on
+    the lane that has sections at all (`lane: bridge`) and nothing on the open lane, which
+    resolves its models through the PDK's own init file; and the map is the design's to write, so
+    an unfillable check is never a warning. INFO rather than `L.warn` on purpose: a warning would
+    count against "all invariants hold" on every run of a design that has not got there yet.
+    """
+    try:
+        pdk = importlib.import_module(f"{L.h.package}.pdk")
+    except Exception:  # noqa: BLE001 - no pdk module (the open lane), or one that cannot import
+        return
+    groups: dict[str, str] = dict(getattr(pdk, "MODEL_GROUPS", {}) or {})
+    if not groups:
+        # The INFO is for the lane that HAS sections. Every copy of the template ships `pdk.py`,
+        # so printing it on an open-lane design (whose models come from the PDK's own init file
+        # and whose decks have no `section=` at all) would be a line nobody can ever act on.
+        if str(getattr(L.h, "lane", "") or "") == "bridge":
+            print(f"INFO: deck-models skipped — {L.h.package}/pdk.py MODEL_GROUPS is empty; fill "
+                  f"it (model name -> SECTIONS group) and every deck's header is then checked "
+                  f"against the models it instantiates")
+        return
+    corners = tuple(getattr(pdk, "CORNERS", ()) or (getattr(pdk, "TYPICAL", "tt"),))
+    seen: set[tuple[str, str]] = set()
+    for where, point in _points(L):
+        try:
+            benches = list(point.benches())
+        except Exception:  # noqa: BLE001
+            continue
+        for bench in benches:
+            try:
+                deck = point.deck(bench)
+            except NotImplementedError:
+                continue                      # a bare template: `Design.deck` is still the stub
+            except Exception:  # noqa: BLE001 - `deck_rebuild` reports a builder that raises
+                continue
+            have = header_sections(deck)
+            body = instantiating_body(deck)
+            for model, group in sorted(groups.items()):
+                if not _token(model).search(body) or (bench, model) in seen:
+                    continue
+                seen.add((bench, model))
+                try:
+                    want = {pdk.section(group, c) for c in corners}
+                except Exception as exc:  # noqa: BLE001 - an undeclared group is the same bug
+                    L.fail("deck-models",
+                           f"{bench}: instantiates {model} but MODEL_GROUPS maps it to the group "
+                           f"{group!r}, which is not a section this design declares ({exc})",
+                           f"add {group!r} to SECTIONS in {L.h.package}/pdk.py (the section name "
+                           f"the library spells), or point MODEL_GROUPS[{model!r}] at a group "
+                           f"that exists")
+                    continue
+                if not (have & want):
+                    L.fail("deck-models",
+                           f"{bench}: instantiates {model} but its header lacks the {group} "
+                           f"section (header: {sorted(have) or 'no section= include line at all'}"
+                           f"; from {where})",
+                           f'add "{group}" to the pdk.models_block(...) call in '
+                           f"{L.h.package}/dut.py that builds Design.deck({bench!r}) — the "
+                           f"simulator's own verdict for this is `unresolved master`, which "
+                           f"reads like a typo in the device line rather than a missing include")
 
 _ID_LIKE = re.compile(r"\s*([A-Z]{1,3}\d{1,3})\b")   # `S3`, `A12`: how a spec table numbers its rows
 
@@ -294,8 +439,56 @@ def signoff_index(L: Lint) -> None:
                    f"a sign-off")
 
 
+
+# How many of the biggest run dirs `scratch_budget` names in its warning. Enough to point at the
+# campaign that filled the disk, few enough that the warning stays one screen.
+BIGGEST = 5
+
+
+def scratch_budget(L: Lint) -> None:
+    """SOFT: this checkout's work dir is over the warn threshold, and its biggest runs are unreduced.
+
+    Never a failure, on purpose (template#37). Scratch is not an invariant of the design — it is a
+    property of the machine the design happens to be running on, and a gate that goes red because
+    an overnight campaign is still in flight is a gate people switch off. But 212 GB of transient
+    records, every one already reduced to a committed table, accumulated in one account's scratch
+    because nothing ever said so out loud; a warning at lint time is the cheapest place to say it.
+
+    What it reports is the pair, not the size alone: a work dir over `$SX_SCRATCH_WARN_GB` (50 GB
+    by default) whose largest run dirs have no reduction row in the ledger. That is the shape that
+    means work is being lost as well as disk — a raw record nobody has reduced is a re-simulation
+    waiting to happen, not evidence.
+    """
+    from scripts import clean_runs  # noqa: PLC0415 - local: only this check pays for the import
+
+    work, _note = clean_runs.work_dir()
+    if work is None or not work.is_dir():
+        return                      # nothing has simulated in this checkout: nothing to report
+    rep = clean_runs.usage(work)
+    if not rep["over"]:
+        return
+    entries = clean_runs.scan(work / "runs", clean_runs.rows_by_label(L.rows()))
+    biggest = sorted(entries, key=lambda e: -e["bytes"])[:BIGGEST]
+    unreduced = [e for e in biggest if not e["reduced"]]
+    where = f"{rep['work']} holds {rep['human']} in {rep['runs']} run dir(s), over the "\
+            f"{rep['warn_gb']:g} GB mark (${clean_runs.WARN_GB_ENV})"
+    if unreduced:
+        names = ", ".join(f"{e['name']} ({clean_runs.human_bytes(e['bytes'])})" for e in unreduced)
+        L.warn("scratch-budget",
+               f"{where}, and {len(unreduced)} of its {len(biggest)} biggest run dir(s) have no "
+               f"reduction row: {names}",
+               "reduce each one to the number it was run for, commit that reduction (a scorecard, "
+               "an experiment table, a ledger row), then `make clean-runs` — a raw simulation "
+               "record is scratch, not evidence, and the deck rebuilds it")
+    else:
+        L.warn("scratch-budget",
+               f"{where}; every one of its {len(biggest)} biggest run dir(s) is already reduced",
+               "`make clean-runs` (it keeps anything unreduced, running, or younger than AGE); "
+               "`make clean-runs AGE=0` once the campaign is finished")
+
 # `package-importable` is NOT here: the platform ships it (driven by `package:` in harness.yaml).
-EXTRA = (deck_rebuild, deck_portable, spec_quotes, sx_links, artifact_home, signoff_index)
+EXTRA = (deck_rebuild, deck_portable, deck_models, spec_quotes, sx_links,
+         artifact_home, signoff_index, scratch_budget)
 
 
 def hook_info(repo: Path = REPO) -> str:
