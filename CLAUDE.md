@@ -58,6 +58,17 @@ artefact has one home, and raw simulator output has none, because it is not comm
 | working notes, throwaway scripts, a plot you just want to look at | `experiments/NNN-*/out/` — inside the repo and git-ignored. **Not** `/tmp`, and not the agent tool's own scratchpad |
 | rawfiles, work directories, simulator logs | the scratch root (`$SX_SCRATCH`) — never the repo |
 
+**A raw simulation record is scratch, not evidence.** Reduce it, commit the reduction, delete the
+raw. Keep a raw record only while its reduction has not been committed, or when the record *is*
+the thing under test. Nothing used to own that last step — the lane writes records and never
+revisits them — and one overnight campaign left 212 GB of already-reduced transient records on a
+shared workstation, found by the admin rather than by the designer (template#37). Three mechanisms
+carry the rule now: `make clean-runs` sweeps the spent records (a run dir goes only when a ledger
+row already carries its reduction, nothing is writing into it, and its simulator log has been cold
+for `AGE` hours — default 24, so it is safe mid-campaign, unlike `make clean`); `make doctor`
+prints this checkout's scratch usage and warns above `$SX_SCRATCH_WARN_GB` (50 GB); and `make lint`
+warns — never fails — when a work dir over that mark has unreduced records among its biggest.
+
 `artifact-home` in `scripts/lint.py` enforces the table: a committed `.png`, `.csv`, `.pdf` or
 `.gds` outside a declared home fails `make lint` with the fix. **The reason is not tidiness.** A
 reviewer who cannot find the evidence treats the claim as unsupported, and six weeks later so does
@@ -71,9 +82,15 @@ undeclared case: an artefact somewhere nobody wrote down.
 ## Harness commands (`make help`; the generic work is `spicexplorer-harness`, driven by `harness.yaml`)
 
 - `make doctor` — is the lane alive? A one-resistor deck through `design/sim.py`, passing only on a
-  parsed scalar + rawfile + the per-run `.spiceinit` (`doc/environment.md`). `make test` covers the
+  parsed scalar + rawfile + the per-run `.spiceinit` (`doc/environment.md`). It also prints this
+  checkout's scratch usage (and warns above `$SX_SCRATCH_WARN_GB`, 50 GB). `make test` covers the
   generic modules and the scorecard lifecycle (live tests skip without ngspice); `make lint` the
   repo invariants `harness.yaml` drives — every failure message carries its fix.
+- `make clean-runs` — delete the run dirs whose reduction the ledger already carries and whose
+  simulator log is older than `AGE` hours (`AGE=24` by default; `ARGS="--dry-run"` prints the plan).
+  It keeps everything it cannot prove is spent — a run in progress, one no row names, one that only
+  ever failed — and prints the reason beside each. `make clean` is the coarse version: it removes
+  the whole work dir, so it is for "finished with this checkout", never mid-campaign.
 - `make guard` — the two gates above in ONE command, plus a clean tree: run it before you push
   (see "Parallel sessions, blast radius, git"). `make hook-install` / `make hook-remove` attach it
   to `git push` as an opt-in `pre-push` hook.
