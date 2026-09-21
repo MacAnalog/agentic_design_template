@@ -1514,8 +1514,8 @@ requires-dist = [
     { name = "spicexplorer-layout", marker = "extra == 'layout'", editable = ".sx/platform/packages/spicexplorer-layout" },
     { name = "spicexplorer-signoff", marker = "extra == 'layout'", editable = ".sx/platform/packages/spicexplorer-signoff" },
     { name = "sympy", specifier = ">=1.13.3" },
-    { name = "torch", marker = "python_full_version >= '3.11' and sys_platform == 'linux' and extra == 'ax'", specifier = ">=2.14.0", index = "https://download.pytorch.org/whl/cpu" },
-    { name = "torch", marker = "python_full_version >= '3.11' and sys_platform != 'linux' and extra == 'ax'", specifier = ">=2.14.0" },
+    { name = "torch", marker = "python_full_version >= '3.11' and sys_platform == 'linux' and extra == 'ax'", specifier = ">=2.6", index = "https://download.pytorch.org/whl/cpu" },
+    { name = "torch", marker = "python_full_version >= '3.11' and sys_platform != 'linux' and extra == 'ax'", specifier = ">=2.6" },
     { name = "tqdm", specifier = ">=4.70.0" },
 ]
 provides-extras = ["ax", "layout"]
