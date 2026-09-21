@@ -23,5 +23,5 @@ labels: bug
 ## Proposed fix
 <!-- what you would change, and why it is not a quick PR (interface / second opinion / more than one repo) -->
 
-- [ ] No NDA content: no kit bytes, no kit-tree path, revision names only (`grep -n -e kits/tsmc -e crn65` on this text came back empty)
+- [ ] No NDA content: no kit bytes, no kit-tree path, revision names only (grep this text for your kit's directory token and its model-library revision token; both came back empty)
 - [ ] Filed at confirmation time; the design's journal has the one-line entry with this URL
