@@ -17,6 +17,14 @@ Versions are `MAJOR.MINOR`, written `#.##`:
 `make template-status` prints the recorded version and the latest release. Releases are git
 tags, `v<version>`.
 
+## v2.12 — the public bug template stops spelling a kit's revision token
+
+Minor, one file, no design module touched. `.github/ISSUE_TEMPLATE/bug_report.md`'s NDA checklist
+line used a real commercial kit's model-library revision token as its `grep` example. The token is
+a kit identifier; this repository is public, so the line now tells the filer to grep the issue text
+for their own kit's directory token and revision token instead. `make template-update` takes it as
+any MINOR; a design that already edited its bug template gets the usual three-way merge.
+
 ## v2.11 — the deck says which models it needs, and the raw records stop piling up
 
 Minor. Two gates and one sweep, all of them off by default in the sense that matters: the new lint
