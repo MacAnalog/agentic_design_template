@@ -11,7 +11,7 @@ with the source that recorded it and one decision per item: **absorb** (it ships
 Sources: the LDO repo `feat/001-reference` (`doc/journal/template-gaps-t8.md`, nine gaps recorded
 at instantiation, plus its other 23 journal entries and `doc/reviews/review-002-capless-ldo.md`),
 the transmitter repo `feat/003-integrate` (`doc/journal/`, `doc/reviews/review-003-resimulation.md`),
-and the meta review `doc/reviews/overnight_build_2026-09-04.md`.
+and the meta review `doc/archive/reviews/overnight_build_2026-09-04.md`.
 
 **23 absorbed, 5 as doc guidance, 9 rejected.**
 
