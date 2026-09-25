@@ -566,10 +566,29 @@ def own_tree_only(module=lint):
     Platform #269 added the skip to `denylist` only. `SX_ROOT` decides which platform a design
     runs, so the skip is applied here, to both walks, on any platform version.
 
-    None of this repo's own checks (EXTRA) reads every file below the repo root today: they read
-    `git ls-files`, the frozen bench directories (`frozen:` in harness.yaml), the entries of
-    `signoff/`, `doc/target-spec.md`, `.sx/` and the scratch work dir, and `deck_models` imports
-    `<package>.dut`.
+    None of this repo's own checks (EXTRA) reads every file below the repo root, so none of them
+    needs `own_tree_walk`. What each one reads:
+
+    - `deck_rebuild`: `design.json` and the `<bench>.spice` of each frozen bench directory
+      (`frozen:` in harness.yaml); it imports `<package>.dut` to rebuild the decks.
+    - `deck_portable`: the `*.spice` files of the same frozen bench directories.
+    - `deck_models`: imports `<package>.pdk` (`MODEL_GROUPS`, `CORNERS`, `section()`) and
+      `<package>.dut`, and builds the decks of each frozen `design.json` and of
+      `<package>.dut.REFERENCE`; it reads `lane:` in harness.yaml.
+    - `spec_quotes`: the certified scorecard named by `reference_scorecard:`, the spec document
+      (`spec_doc:`, default `doc/target-spec.md`) and the `spec:` rows of harness.yaml.
+    - `sx_links`: `.sx/platform` (the harness `pyproject.toml` through it) and the output of
+      `.sx/skills/bin/sx-link --check`, which reads one link under `.claude/agents/` or
+      `.claude/skills/` for each entry of `.sx/skills/linksets/design.txt`.
+    - `artifact_home`: the file list `git ls-files` prints.
+    - `signoff_index`: the top-level entries of `signoff/` and `signoff/README.md`.
+    - `scratch_budget`: the scratch work dir `<package>.sim.work()` returns (never inside the
+      repo) and its `runs/`, `$SX_SCRATCH_WARN_GB`, and the ledger (`ledger:`, default
+      `runs/ledger.ndjson`); `scripts/clean_runs.py` imports `<package>.sim` to find the work dir.
+
+    Outside EXTRA, `main` prints `hook_info`, which reads this checkout's pre-push hook file.
+    `tests/test_design.py` checks that every check listed here is in EXTRA, and that every
+    `<package>.<module>` a listed check imports, itself or through a helper, is named on its line.
     """
     saved = getattr(module, "os", None)
     if saved is not os:     # no `os` name to replace (a harness that walks some other way)

@@ -957,6 +957,77 @@ def _init_has_run(root: Path) -> bool:
     return plat.is_symlink() or plat.exists()
 
 
+# `importlib.import_module(f"{L.h.package}.dut")` in lint.py, `f"{package}.sim"` in clean_runs.py
+_PKG_IMPORT = re.compile(r'import_module\(f"\{[^}]*package\}\.(\w+)"\)')
+
+
+def _own_tree_only_list() -> dict[str, str]:
+    """The per-check list in the `own_tree_only` docstring of scripts/lint.py: {check: its text}."""
+    import ast
+
+    tree = ast.parse((_REPO / "scripts" / "lint.py").read_text())
+    fn = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "own_tree_only")
+    listed: dict[str, str] = {}
+    name = None
+    for line in (ast.get_docstring(fn) or "").splitlines():
+        m = re.match(r"- `(\w+)`:", line)
+        if m:
+            name = m.group(1)
+            listed[name] = line
+        elif name and line.startswith("  "):
+            listed[name] += " " + line.strip()
+        else:
+            name = None
+    return listed
+
+
+def _package_imports(module: str, name: str, seen: set | None = None) -> set[str]:
+    """The `<package>.<module>` names that function `name` of scripts/<module>.py imports, itself
+    or through a function it calls: one in the same file, or `<m>.<function>` of scripts/<m>.py."""
+    import ast
+
+    seen = set() if seen is None else seen
+    if (module, name) in seen:
+        return set()
+    seen.add((module, name))
+    src = (_REPO / "scripts" / f"{module}.py").read_text()
+    fns = {n.name: n for n in ast.parse(src).body if isinstance(n, ast.FunctionDef)}
+    if name not in fns:
+        return set()
+    found = set(_PKG_IMPORT.findall(ast.get_source_segment(src, fns[name]) or ""))
+    for node in ast.walk(fns[name]):
+        f = node.func if isinstance(node, ast.Call) else None
+        if isinstance(f, ast.Name) and f.id in fns:
+            found |= _package_imports(module, f.id, seen)
+        elif (isinstance(f, ast.Attribute) and isinstance(f.value, ast.Name)
+              and (_REPO / "scripts" / f"{f.value.id}.py").is_file()):
+            found |= _package_imports(f.value.id, f.attr, seen)
+    return found
+
+
+def test_own_tree_only_names_each_listed_checks_package_imports():
+    """The `own_tree_only` docstring lists what each check in EXTRA reads, which is why the lint
+    applies the nested-checkout skip only to the two harness walks. Two parts of that list can be
+    checked from the source: every check it lists is in EXTRA, and every `<package>.<module>` a
+    listed check imports is named on that check's own line. A check it does not list is not
+    required, because a design adds its own checks to EXTRA and `make template-update` brings this
+    test into the design. File paths and harness.yaml keys are not checked."""
+    import ast
+
+    listed = _own_tree_only_list()
+    assert "deck_rebuild" in listed, "the own_tree_only docstring no longer lists the checks"
+    tree = ast.parse((_REPO / "scripts" / "lint.py").read_text())
+    extra = next(n.value for n in tree.body if isinstance(n, ast.Assign)
+                 and any(isinstance(t, ast.Name) and t.id == "EXTRA" for t in n.targets))
+    in_extra = {e.id for e in extra.elts if isinstance(e, ast.Name)}
+    for check, text in listed.items():
+        assert check in in_extra, f"own_tree_only lists `{check}`, which is not in EXTRA"
+        for mod in sorted(_package_imports("lint", check)):
+            assert f"`<package>.{mod}`" in text, (
+                f"`{check}` imports `<package>.{mod}`: name it on that check's line of the "
+                f"own_tree_only docstring in scripts/lint.py")
+
+
 def test_lint_extras_are_green_on_the_bare_template():
     """Every EXTRA but `sx_links`, which checks per-checkout state (`.sx/platform`, the
     `.sx/skills` links) that only `make init` creates: that one is the next test."""
@@ -1130,9 +1201,10 @@ def _clean_export(dst: Path) -> Path:
 
 
 def test_a_clean_export_is_green_before_init_and_red_once_a_link_dangles(tmp_path):
-    """GAP-D6 end to end, in a subprocess on a clean export of THIS tree: the bare-template lint
-    test passes and the checkout-level sx_links test SKIPS, naming `make init`. Then give it a
-    dangling `.sx/platform` (init ran, the link broke): that test must FAIL, not skip."""
+    """A clean clone end to end, in a subprocess on a clean export of THIS tree: the
+    bare-template lint test passes and the checkout-level sx_links test SKIPS, naming `make init`.
+    Then give it a dangling `.sx/platform` (init ran, the link broke): that test must FAIL, not
+    skip."""
     import os
     import subprocess as sp
 
@@ -1162,10 +1234,10 @@ def test_a_clean_export_is_green_before_init_and_red_once_a_link_dangles(tmp_pat
                     .is_file(), reason="no resolving .sx/platform (`make init` has not run): "
                                        "uv.lock resolves the platform packages through it")
 def test_uv_lock_is_current_against_the_linked_platform():
-    """FIX-TMPL-LOCK: `make init` runs `uv sync`, which rewrites a stale uv.lock, so a stale one
-    means every checkout starts with uv.lock modified. `uv lock --check` (offline: path sources
-    plus the lock) is the check; if it fails, relock against the platform `.sx/platform` names,
-    and commit it."""
+    """uv.lock matches the linked platform. `make init` runs `uv sync`, which rewrites a stale
+    uv.lock, so a stale one means every checkout starts with uv.lock modified. `uv lock --check`
+    (offline: path sources plus the lock) is the check; if it fails, relock against the platform
+    `.sx/platform` names, and commit it."""
     import os
     import shutil
     import subprocess as sp
