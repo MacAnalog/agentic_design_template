@@ -10,10 +10,10 @@ from pathlib import Path
 
 import pytest
 
-# A push from a linked worktree runs the pre-push hook with GIT_DIR set, and a hook installed
-# before the hook cleared it passes GIT_DIR on to `make test`. While one of these is set, the
-# `git init` / `git add` / `git commit` calls the tests make in tmp dirs write into the repo it
-# names: commits on the pushed branch, core.bare=true in its config.
+# A push from a linked worktree runs the pre-push hook with GIT_DIR set. A hook installed by an
+# older scripts/githook.py does not unset it and passes it on to `make test`. While one of these
+# is set, the `git init` / `git add` / `git commit` calls the tests make in tmp dirs write into the
+# repo it names: commits on the pushed branch, core.bare=true in its config.
 _GIT_REPO_VARS = ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE")
 
 

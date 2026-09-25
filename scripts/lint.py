@@ -15,7 +15,7 @@ Add this design's own `def check(L: Lint) -> None` and name it in EXTRA. A check
 when a trap has bitten twice (`doc/journal/gap-as-signal.md`); its message carries the fix.
 
 A nested checkout is a directory below the repo root that holds its own `.git`, such as a parallel
-session's worktree under `.claude/worktrees/`. Its own `make lint` judges its files (template#40).
+session's worktree under `.claude/worktrees/`. Its own `make lint` checks its files (template#40).
 The two harness checks that read every file below the repo root skip it: `denylist`, and
 `scorecard_recompute` in its search for `scorecard.json` (`own_tree_only`).
 
@@ -562,12 +562,14 @@ class _OwnTreeOs:
 def own_tree_only(module=lint):
     """While active, every `os.walk` made by `module` (the harness lint) is `own_tree_walk`.
 
-    Only `module`'s `os` is replaced; the real one comes back on exit, also after an error.
+    Only `module`'s `os` is replaced; the real one is restored on exit, also after an error.
     Platform #269 added the skip to `denylist` only. `SX_ROOT` decides which platform a design
     runs, so the skip is applied here, to both walks, on any platform version.
 
     None of this repo's own checks (EXTRA) reads every file below the repo root today: they read
-    `git ls-files`, the frozen dirs, the entries of `signoff/` or the scratch work dir.
+    `git ls-files`, the frozen bench directories (`frozen:` in harness.yaml), the entries of
+    `signoff/`, `doc/target-spec.md`, `.sx/` and the scratch work dir, and `deck_models` imports
+    `<package>.dut`.
     """
     saved = getattr(module, "os", None)
     if saved is not os:     # no `os` name to replace (a harness that walks some other way)

@@ -228,8 +228,8 @@ def test_guard_skip_test_reaches_the_hook_through_the_environment(pushable):
 
 # ------------------------------------------------ git's environment: the hook and the suite
 
-# The test clause of the stubbed guard and the probe suite below do what this repo's own tests do
-# in their tmp dirs: `git init`, `git add`, `git commit`.
+# The stub `test` clause that the guard runs and the probe suite below make the same git calls as
+# this repo's own tests in their tmp dirs: `git init`, `git add`, `git commit`.
 _GIT_WRITES = "git init -q && echo x > f && git add f && git -c user.email=t@t -c user.name=t commit -qm probe"
 
 
@@ -247,7 +247,7 @@ def test_a_push_from_a_linked_worktree_keeps_the_guard_s_git_calls_out_of_the_re
     """A push from a linked worktree runs the hook with GIT_DIR=<repo>/.git/worktrees/<name>.
 
     With that variable in the environment, `git init` and `git commit` in a tmp dir write into
-    the repo being pushed: before the hook cleared it, a `make test` run by the hook added commits
+    the repo being pushed: before the hook unset it, a `make test` run by the hook added commits
     to the pushed branch and set core.bare=true in the repo's config. The hook now removes
     GIT_DIR, GIT_WORK_TREE and GIT_INDEX_FILE before `make guard`.
     """
@@ -284,12 +284,12 @@ def test_probe(module_repo, tmp_path):
 
 
 def test_the_suite_removes_git_dir_before_its_first_git_call(tmp_path):
-    """`make test` started with GIT_DIR in its environment (by hand, or by a hook installed
-    before the hook cleared it) must not write into that repo.
+    """`make test` started with GIT_DIR in its environment (by hand, or by a hook installed by
+    an older scripts/githook.py) must not write into that repo.
 
     tests/conftest.py removes GIT_DIR, GIT_WORK_TREE and GIT_INDEX_FILE for the whole session.
-    This runs a probe suite under a copy of that conftest, with GIT_DIR pointing at a sentinel
-    repo, and checks that the sentinel is unchanged.
+    This runs a probe suite under a copy of that conftest, with GIT_DIR pointing at a separate
+    repo (`sentinel`), and checks that its refs, config and worktrees are unchanged.
     """
     sentinel = tmp_path / "sentinel"
     sentinel.mkdir()

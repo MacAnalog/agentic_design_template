@@ -952,19 +952,19 @@ _REPO = Path(__file__).resolve().parents[1]
 
 def _init_has_run(root: Path) -> bool:
     """Has `make init` ever run in this checkout? Its first effect is the git-ignored
-    `.sx/platform` link, so a clone never carries it. Present at all (even dangling) = yes."""
+    `.sx/platform` link, which a clone never has. Present in any form, even dangling, means yes."""
     plat = root / ".sx" / "platform"
     return plat.is_symlink() or plat.exists()
 
 
 def test_lint_extras_are_green_on_the_bare_template():
-    """Every EXTRA but `sx_links`, which judges per-checkout state (`.sx/platform`, the
+    """Every EXTRA but `sx_links`, which checks per-checkout state (`.sx/platform`, the
     `.sx/skills` links) that only `make init` creates: that one is the next test."""
     from spicexplorer_harness import load
     from spicexplorer_harness.lint import Lint
 
     mod = _load("scripts/lint.py")
-    # Leaving it out HERE is the whole change: `make lint` must still run it on every checkout.
+    # Only this test leaves `sx_links` out: `make lint` must still run it on every checkout.
     assert mod.sx_links in mod.EXTRA
     L = Lint(load(_REPO))
     for check in mod.EXTRA:
@@ -979,7 +979,7 @@ def test_lint_extras_are_green_on_the_bare_template():
                            "test_sx_links_* — `SX_ROOT=<workspace> make init` to run this one")
 def test_sx_links_is_green_on_an_initialised_checkout():
     """Once `make init` has run, a dangling `.sx/platform`, an uninitialised `.sx/skills` or a
-    missing agent/skill link is a real defect of this checkout, so this does NOT skip on those."""
+    missing agent/skill link is a defect of this checkout, so this does NOT skip on those."""
     from spicexplorer_harness import load
     from spicexplorer_harness.lint import Lint
 
@@ -1004,8 +1004,9 @@ def _sx_tree(root: Path, *, platform: bool = True, link_tool: str | None = "exit
 
 
 def test_sx_links_names_make_init_on_a_clean_clone(tmp_path):
-    """A clone before `make init` (the state the skip above describes): both halves fail, and
-    both remediations say `make init`. A dangling link is reported with where it points."""
+    """A clone before `make init` (the state the skip above describes): both halves of `sx_links`
+    (the `.sx/platform` check and the `.sx/skills` check) fail, and both remediations say
+    `make init`. A dangling link is reported with where it points."""
     root = _staged_repo(tmp_path, {})
     mod, L = _lint_on(root)
     mod.sx_links(L)
@@ -1023,8 +1024,8 @@ def test_sx_links_names_make_init_on_a_clean_clone(tmp_path):
 
 
 def test_sx_links_is_green_on_an_initialised_tree_and_relays_the_link_check(tmp_path):
-    """The initialised case, hermetically: the platform resolves and `sx-link --check` passes
-    -> green; `sx-link --check` failing -> one failure carrying its first un-indented line."""
+    """The initialised case, on a stand-in `.sx/`: platform resolves, `sx-link --check` passes ->
+    no failure; `sx-link --check` fails -> one failure carrying its first un-indented line."""
     root = _staged_repo(tmp_path, {})
     _sx_tree(root)
     mod, L = _lint_on(root)
@@ -1061,7 +1062,7 @@ def test_sx_links_relays_the_summary_line_past_blank_and_indented_ones(tmp_path)
 
 
 def test_sx_links_fails_once_for_each_half_that_init_left_undone(tmp_path):
-    """The two halves are judged apart. Platform linked, `.sx/skills` never initialised: one
+    """The two halves are checked separately. Platform linked, `.sx/skills` never initialised: one
     failure, the submodule's. `.sx/platform` linked to a directory that is NOT a platform
     checkout (a wrong SX_ROOT) fails like a dangling link does, naming where it points."""
     (tmp_path / "a").mkdir()
@@ -1086,8 +1087,9 @@ def test_sx_links_fails_once_for_each_half_that_init_left_undone(tmp_path):
 
 
 def test_init_has_run_counts_a_dangling_platform_link_as_initialised(tmp_path):
-    """The gate on the checkout-level sx_links test: `.sx/platform` present in ANY form means
-    `make init` ran. A dangling link must count, or a broken init would skip instead of failing."""
+    """The skip condition of the checkout-level sx_links test: `.sx/platform` present in ANY
+    form means `make init` ran. A dangling link must count, or a broken init would skip instead of
+    failing."""
     assert _init_has_run(tmp_path) is False
     (tmp_path / ".sx").mkdir()
     assert _init_has_run(tmp_path) is False  # `.sx/` alone is tracked (template-version)
@@ -1103,7 +1105,7 @@ def test_init_has_run_counts_a_dangling_platform_link_as_initialised(tmp_path):
 def _clean_export(dst: Path) -> Path:
     """This checkout's TRACKED files as they stand in the working tree (an edit under test is
     what gets copied, not HEAD), in a fresh git repo: a clone before `make init`. Nothing
-    git-ignored comes along (no `.sx/platform`, no `.venv`); the `.sx/skills` gitlink is the
+    git-ignored is copied (no `.sx/platform`, no `.venv`); the `.sx/skills` gitlink is the
     empty directory a non-recursive clone has; tracked agent/skill links dangle, as in a clone."""
     import os
     import shutil
@@ -1161,8 +1163,9 @@ def test_a_clean_export_is_green_before_init_and_red_once_a_link_dangles(tmp_pat
                                        "uv.lock resolves the platform packages through it")
 def test_uv_lock_is_current_against_the_linked_platform():
     """FIX-TMPL-LOCK: `make init` runs `uv sync`, which rewrites a stale uv.lock, so a stale one
-    means every checkout starts dirty. `uv lock --check` (offline: path sources plus the lock)
-    is the probe; red here = relock against the platform `.sx/platform` names, and commit it."""
+    means every checkout starts with uv.lock modified. `uv lock --check` (offline: path sources
+    plus the lock) is the check; if it fails, relock against the platform `.sx/platform` names,
+    and commit it."""
     import os
     import shutil
     import subprocess as sp

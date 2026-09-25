@@ -2,13 +2,13 @@
 
 A nested checkout is a directory inside this repo that holds its own `.git`: a git worktree under
 `.claude/worktrees/<name>/` (its `.git` is a one-line file naming this repo's git directory), or a
-clone. A parallel session keeps its uncommitted work there, and its own `make lint` judges it.
+clone. A parallel session keeps its uncommitted work there, and its own `make lint` checks it.
 
 Before the fix, the parent's lint read those files too: one denylisted word in a paused session's
 notes made `make lint` fail in a parent checkout whose own files were clean.
 
 The fixture repo holds only a `harness.yaml` written here, a `.gitignore` and a README, so the
-harness reports a few failures about files it lacks. Each test compares the report before and
+harness reports failures about files it lacks. Each test compares the report before and
 after planting files, which keeps it independent of that baseline and of checks a later platform
 adds.
 """
@@ -93,8 +93,9 @@ def _worktree(root: Path, name: str = "paused-session") -> Path:
 
 def _plant(d: Path) -> None:
     """Uncommitted work in `d`: a note with the denied word, a scorecard with a stale hash, and a
-    figure outside every declared home (`artifact-home` lists files with `git ls-files`, so an
-    uncommitted one is never reported, nested or not; it is planted to show that stays so)."""
+    figure outside every directory the `artifact-home` check accepts (it lists files with
+    `git ls-files`, so an uncommitted one is never reported, nested or not; it is added to show
+    that this does not change)."""
     (d / "doc").mkdir(parents=True, exist_ok=True)
     (d / "doc" / "wip-notes.md").write_text(f"a draft that still says {TOKEN}\n")
     card = d / "experiments" / "007-wip" / "scorecard.json"
@@ -110,7 +111,7 @@ def _lint(mod, root: Path, capsys) -> tuple[int, str]:
 
 
 def test_a_nested_worktree_changes_nothing_in_the_parent_report(mod, repo, capsys):
-    """The denied word and the stale scorecard both sit in a paused session's worktree."""
+    """The denied word and the stale scorecard both are files in a paused session's worktree."""
     before = _lint(mod, repo, capsys)
     _plant(_worktree(repo))
     after = _lint(mod, repo, capsys)
@@ -120,8 +121,8 @@ def test_a_nested_worktree_changes_nothing_in_the_parent_report(mod, repo, capsy
 
 def test_a_nested_worktree_is_skipped_on_a_harness_that_walks_into_it(mod, repo, capsys,
                                                                       monkeypatch):
-    """A platform older than its own nested-checkout skip (platform #269) walked every directory.
-    `SX_ROOT` decides which platform a design runs, so the template may not rely on the newer one."""
+    """Before platform #269 the harness had no nested-checkout skip and walked every directory.
+    `SX_ROOT` decides which platform a design runs, so the template cannot assume the newer one."""
     monkeypatch.setattr(harness_lint, "_is_nested_checkout", lambda d: False, raising=False)
     before = _lint(mod, repo, capsys)
     _plant(_worktree(repo))
@@ -131,8 +132,8 @@ def test_a_nested_worktree_is_skipped_on_a_harness_that_walks_into_it(mod, repo,
 
 
 def test_a_plain_subdirectory_with_the_same_files_still_fails(mod, repo, capsys):
-    """The skip keys on `.git`, not on the directory's name or place: without one, the directory
-    is part of this checkout, and both checks report it."""
+    """The skip depends on a `.git` entry, not on the directory's name or place: without one, the
+    directory is part of this checkout, and both checks report it."""
     _rc, before = _lint(mod, repo, capsys)
     _plant(repo / ".claude" / "worktrees" / "not-a-checkout")
     rc, after = _lint(mod, repo, capsys)
@@ -155,7 +156,7 @@ def test_the_worktree_still_fails_its_own_lint(mod, repo, capsys):
 
 def test_a_design_check_skips_the_worktree_only_when_it_walks_with_own_tree_walk(
         mod, repo, capsys, monkeypatch):
-    """A check a design adds to EXTRA runs inside `main`, as the module docstring describes.
+    """A check a design adds to EXTRA runs inside `main`, as the scripts/lint.py docstring says.
 
     `own_tree_walk` skips the worktree. `os` in scripts/lint.py is not replaced, so `os.walk`
     there still enters it: the docstring tells a check author to use `own_tree_walk`.
