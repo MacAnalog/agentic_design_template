@@ -19,11 +19,12 @@ tags, `v<version>`.
 
 ## v2.13 — tests pass before `make init`, lint skips nested checkouts, the push hook clears `GIT_DIR`
 
-Minor. No module is renamed; `harness.yaml`, the `Makefile` and `design/` are unchanged since
-v2.12, so every lifecycle command keeps its name and recipe. The release is template#41 (merged as
-3073686) plus a move of the `.sx/skills` pin: two new walk functions and a `main(repo)` entry in
-`scripts/lint.py`, one line of the pre-push hook, 21 tests, one `CLAUDE.md` paragraph, and 4 new
-agent and skill links.
+Minor. No module is renamed; `harness.yaml` and `design/` are unchanged since v2.12, and the
+`Makefile` changes only in the `skills-update` recipe, so every lifecycle command keeps its name.
+The release is template#41 (merged as 3073686), a move of the `.sx/skills` pin and a check in
+`make skills-update`: two new walk functions and a `main(repo)` entry in `scripts/lint.py`, one line
+of the pre-push hook, one line of the `skills-update` recipe, 23 tests, one `CLAUDE.md` paragraph,
+and 4 new agent and skill links.
 
 - **`make test` passes on a fresh clone before `make init`** (template#41). The `sx_links` check
   reads state that only `make init` creates (the `.sx/platform` link and the `.sx/skills` links).
@@ -57,6 +58,11 @@ agent and skill links.
   - **`tests/conftest.py`** clears the same three variables for the whole test session, so
     `make test` is also protected under a hook installed by an earlier release.
   - **2 tests in `tests/test_guard.py`** show that each of the two layers is needed.
+- **`make skills-update` refuses to run before `make init`.** Before this release, `.sx/skills` in
+  such a checkout had no `.git`, so the recipe's `git -C .sx/skills` fetch and checkout ran in the
+  design's own repository and moved its HEAD from its branch to a detached `origin/main`. The recipe
+  now exits 2 unless `.sx/skills/.git` exists (a file, for a submodule), and names `make init` as
+  the fix. `tests/test_skills_update.py` (2 tests) runs the recipe in temporary repositories.
 - **`CLAUDE.md`** gains one paragraph: the two whole-tree checks skip a nested checkout, and a
   whole-tree check an agent adds walks with `own_tree_walk`.
 - **`.sx/skills` moves from de8d992 to e9c0230**, the `main` of MacAnalog/analog-skill-directory:
@@ -78,10 +84,10 @@ agent and skill links.
 **Taking it:**
 
 1. **`make template-update`.** Where the design edited them, it merges three-way: `CLAUDE.md`,
-   `scripts/lint.py` (every design that added a check to `EXTRA`), `scripts/githook.py`,
+   `Makefile`, `scripts/lint.py` (every design that added a check to `EXTRA`), `scripts/githook.py`,
    `tests/conftest.py`, `tests/test_design.py`, `tests/test_guard.py` and `CHANGELOG.md`. It adds
-   `tests/test_lint_own_tree.py` and the 4 links. It does not carry `uv.lock`, the `.sx/skills` pin
-   or `doc/`.
+   `tests/test_lint_own_tree.py`, `tests/test_skills_update.py` and the 4 links. It does not carry
+   `uv.lock`, the `.sx/skills` pin or `doc/`.
 2. **`make skills-update`**, then commit the pin. Until the design's `.sx/skills` reaches e9c0230,
    a new link whose entry its library does not have points at nothing: 3 of the 4 at de8d992, the
    template's previous pin. `make lint` does not report them, because the older link set does not
