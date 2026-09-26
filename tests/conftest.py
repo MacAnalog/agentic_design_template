@@ -1,10 +1,15 @@
 """pytest scratch lives under $SX_SCRATCH (never /tmp): the lane rejects /tmp work roots.
 
+Each checkout has its own base folder, `pytest/<folder name>-<first 8 hex of the sha256 of its
+resolved path>`: pytest empties the base folder when a run starts, so two checkouts with the same
+folder name must not share one (template#43).
+
 No test or fixture sees GIT_DIR, GIT_WORK_TREE or GIT_INDEX_FILE from the caller's environment.
 """
 
 from __future__ import annotations
 
+import hashlib
 import os
 from pathlib import Path
 
@@ -32,6 +37,8 @@ def _no_inherited_git_repo():
 def pytest_configure(config):
     if not config.option.basetemp:
         root = Path(os.environ.get("SX_SCRATCH") or Path.home() / "sx-scratch")
-        base = root / "pytest" / Path(__file__).resolve().parents[1].name
+        checkout = Path(__file__).resolve().parents[1]
+        tag = hashlib.sha256(str(checkout).encode()).hexdigest()[:8]
+        base = root / "pytest" / f"{checkout.name}-{tag}"
         base.parent.mkdir(parents=True, exist_ok=True)
         config.option.basetemp = str(base)
