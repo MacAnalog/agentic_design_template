@@ -22,9 +22,10 @@ tags, `v<version>`.
 Minor. No module is renamed; `harness.yaml` and `design/` are unchanged since v2.12, and the
 `Makefile` changes only in the `skills-update` recipe, so every lifecycle command keeps its name.
 The release is template#41 (merged as 3073686), a move of the `.sx/skills` pin and a check in
-`make skills-update`: two new walk functions and a `main(repo)` entry in `scripts/lint.py`, one line
-of the pre-push hook, one line of the `skills-update` recipe, 23 tests, one `CLAUDE.md` paragraph,
-and 4 new agent and skill links.
+`make skills-update`. In `scripts/lint.py`: a walk function (`own_tree_walk`), a nested-checkout
+test (`is_nested_checkout`), a context manager (`own_tree_only`) and a `main(repo)` entry. Also one
+line of the pre-push hook, one line of the `skills-update` recipe, 23 tests, one `CLAUDE.md`
+paragraph, and 4 new agent and skill links.
 
 - **`make test` passes on a fresh clone before `make init`** (template#41). The `sx_links` check
   reads state that only `make init` creates (the `.sx/platform` link and the `.sx/skills` links).
