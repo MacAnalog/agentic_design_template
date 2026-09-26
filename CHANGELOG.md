@@ -17,6 +17,82 @@ Versions are `MAJOR.MINOR`, written `#.##`:
 `make template-status` prints the recorded version and the latest release. Releases are git
 tags, `v<version>`.
 
+## v2.13 — tests pass before `make init`, lint skips nested checkouts, the push hook clears `GIT_DIR`
+
+Minor. No module is renamed; `harness.yaml`, the `Makefile` and `design/` are unchanged since
+v2.12, so every lifecycle command keeps its name and recipe. The release is template#41 (merged as
+3073686) plus a move of the `.sx/skills` pin: two new walk functions and a `main(repo)` entry in
+`scripts/lint.py`, one line of the pre-push hook, 21 tests, one `CLAUDE.md` paragraph, and 4 new
+agent and skill links.
+
+- **`make test` passes on a fresh clone before `make init`** (template#41). The `sx_links` check
+  reads state that only `make init` creates (the `.sx/platform` link and the `.sx/skills` links).
+  Its test on the checkout itself therefore skips and names `make init` until init has run, and
+  tests in temporary repositories cover its logic. `make lint` still reports `sx_links` as a
+  failure before init, with `make init` as the fix.
+- **A stale `uv.lock` now fails `make test`.** In a checkout where `make init` has run,
+  `test_uv_lock_is_current_against_the_linked_platform` runs `uv lock --check --offline`. So
+  `make test`, `make guard` and the pre-push hook fail once the linked platform changes the declared
+  dependencies of a package the lock records. The fix is `uv lock`, then commit `uv.lock`.
+  - The template's `uv.lock` records `pyyaml>=6.0` for `spicexplorer-core`
+    (MacAnalog/spicexplorer-platform#284). It is current against platform `main` at 86ccc89 and at
+    28a17f2. Against a platform older than that change, the test fails, and the `uv sync` inside
+    `make init` rewrites the lock without `pyyaml`.
+- **`make lint` skips nested checkouts** (template#40). The two checks that read every file below
+  the repository root, `denylist` and the `scorecard.json` search, skip each directory that holds
+  its own `.git`. An example is a second checkout of the repository made with `git worktree add`
+  under `.claude/worktrees/`: its uncommitted files now fail only its own `make lint`.
+  - **A whole-tree check a design adds** to `scripts/lint.py` walks with `own_tree_walk`.
+  - **`scripts/lint.py` runs through `main(repo)`**, so a test can lint a fixture repository;
+    `tests/test_lint_own_tree.py` (10 tests) is that test.
+  - **`own_tree_only`** carries the template's half of the fix until the shared install runs a
+    platform with MacAnalog/spicexplorer-platform#289. Its docstring names, one line per check, what
+    that check reads. A new test in `tests/test_design.py` fails when a listed check imports a
+    `<package>.<module>` that its line does not name.
+- **The pre-push hook clears `GIT_DIR`, `GIT_WORK_TREE` and `GIT_INDEX_FILE`.** A push from a
+  checkout made with `git worktree add` runs the hook with `GIT_DIR` set to that checkout's git
+  directory. The `git init` and `git commit` calls that `make test` makes in temporary directories
+  then wrote into the repository being pushed: in a throwaway clone, 8 commits, `core.bare=true`, a
+  stray worktree and a branch.
+  - **`tests/conftest.py`** clears the same three variables for the whole test session, so
+    `make test` is also protected under a hook installed by an earlier release.
+  - **2 tests in `tests/test_guard.py`** show that each of the two layers is needed.
+- **`CLAUDE.md`** gains one paragraph: the two whole-tree checks skip a nested checkout, and a
+  whole-tree check an agent adds walks with `own_tree_walk`.
+- **`.sx/skills` moves from de8d992 to e9c0230**, the `main` of MacAnalog/analog-skill-directory:
+  28 commits, 27 of them on the library's first-parent line. The `design` link set gains 4 links
+  and loses none; links go from 9 agents + 16 skills to 10 agents + 19 skills.
+
+  | link | what it is |
+  |---|---|
+  | `.claude/agents/schematic-reviewer.md` | the reviewer of the schematic builder/reviewer pair (MacAnalog/analog-skill-directory#42) |
+  | `.claude/skills/measurement-setup-of-record` | the measurement traps of the simulation lane, the harness and the experiment process |
+  | `.claude/skills/analog-knowledge-authoring` | the standard a knowledge skill is written to (MacAnalog/analog-skill-directory#45) |
+  | the skill for the commercial-simulator lane that `lane: bridge` selects | linked only on request before this move; now in the `design` set |
+
+  - **Content changed** in 8 of the 9 agents and 13 of the 16 skills that were already linked.
+  - **`sx-link --check`**, which `sx_links` runs, reports two more states once a design's own pin
+    reaches e9c0230: WRONG, a link that resolves to another entry or another checkout, and LOCAL, a
+    local file or directory with the name of a library entry, which keeps that entry from loading.
+
+**Taking it:**
+
+1. **`make template-update`.** Where the design edited them, it merges three-way: `CLAUDE.md`,
+   `scripts/lint.py` (every design that added a check to `EXTRA`), `scripts/githook.py`,
+   `tests/conftest.py`, `tests/test_design.py`, `tests/test_guard.py` and `CHANGELOG.md`. It adds
+   `tests/test_lint_own_tree.py` and the 4 links. It does not carry `uv.lock`, the `.sx/skills` pin
+   or `doc/`.
+2. **`make skills-update`**, then commit the pin. Until the design's `.sx/skills` reaches e9c0230,
+   a new link whose entry its library does not have points at nothing: 3 of the 4 at de8d992, the
+   template's previous pin. `make lint` does not report them, because the older link set does not
+   list them. A design already at e9c0230 or later has the 4 links, and they merge without
+   conflict.
+3. **`make lint && make test`.** If the new `uv.lock` test fails, run `uv lock` (or `make init`,
+   whose `uv sync` relocks) and commit `uv.lock`.
+4. **`make hook-install`** again in each clone that installed the hook. The installed hook is a
+   copy and keeps the earlier text until it is written again; until then, `tests/conftest.py`
+   protects `make test`.
+
 ## v2.12 — the public bug template stops spelling a kit's revision token
 
 Minor, one file, no design module touched. `.github/ISSUE_TEMPLATE/bug_report.md`'s NDA checklist
