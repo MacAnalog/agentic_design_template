@@ -1546,12 +1546,14 @@ source = { editable = ".sx/platform/packages/spicexplorer-core" }
 dependencies = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "numpy", version = "2.5.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+    { name = "pyyaml" },
     { name = "spicelib" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "numpy", specifier = ">=2.2" },
+    { name = "pyyaml", specifier = ">=6.0" },
     { name = "spicelib", specifier = ">=1.5,<1.6" },
 ]
 
