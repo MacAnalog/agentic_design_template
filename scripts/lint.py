@@ -13,10 +13,19 @@ records nothing has reduced).
 
 Add this design's own `def check(L: Lint) -> None` and name it in EXTRA. A check earns its place
 when a trap has bitten twice (`doc/journal/gap-as-signal.md`); its message carries the fix.
+
+A nested checkout is a directory below the repo root that holds its own `.git`, such as a parallel
+session's worktree under `.claude/worktrees/`. Its own `make lint` checks its files (template#40).
+The two harness checks that read every file below the repo root skip it: `denylist`, and
+`scorecard_recompute` in its search for `scorecard.json` (`own_tree_only`).
+
+A check added here that reads every file below the repo root walks with `own_tree_walk(L.h.root)`.
+`os.walk` and `Path.rglob` in this file are not replaced, and they still enter a nested checkout.
 """
 
 from __future__ import annotations
 
+import contextlib
 import importlib
 import json
 import os
@@ -513,7 +522,95 @@ def hook_info(repo: Path = REPO) -> str:
     return "INFO: pre-push guard hook not installed — `make hook-install` (optional, per clone)"
 
 
+def is_nested_checkout(d: Path) -> bool:
+    """True when `d` holds its own `.git`: a file in a git worktree, a directory in a clone.
+
+    A directory whose `.git` cannot be read (no permission) counts as a plain directory.
+    """
+    try:
+        return (d / ".git").exists()
+    except OSError:
+        return False
+
+
+_OS_WALK = os.walk
+
+
+def own_tree_walk(top, *args, **kwargs):
+    """`os.walk(top)` without the directories below `top` that are nested checkouts.
+
+    It prunes the `dirs` list in place, which stops a top-down walk (the default, and the only
+    kind the harness makes) from entering them. `top` itself may hold a `.git`: it is the repo.
+    """
+    for root, dirs, files in _OS_WALK(top, *args, **kwargs):
+        dirs[:] = [d for d in dirs if not is_nested_checkout(Path(root, d))]
+        yield root, dirs, files
+
+
+class _OwnTreeOs:
+    """The `os` module with `walk` replaced by `own_tree_walk`; every other name is `os`'s own."""
+
+    walk = staticmethod(own_tree_walk)
+
+    def __getattr__(self, name: str) -> object:
+        return getattr(os, name)
+
+
+# GAP: MacAnalog/spicexplorer-platform#289: the harness `_scorecards` search has no nested-checkout
+# skip. Keep this replacement after that fix, for older platforms.
+@contextlib.contextmanager
+def own_tree_only(module=lint):
+    """While active, every `os.walk` made by `module` (the harness lint) is `own_tree_walk`.
+
+    Only `module`'s `os` is replaced; the real one is restored on exit, also after an error.
+    Platform #269 added the skip to `denylist` only. `SX_ROOT` decides which platform a design
+    runs, so the skip is applied here, to both walks, on any platform version.
+
+    None of this repo's own checks (EXTRA) reads every file below the repo root, so none of them
+    needs `own_tree_walk`. What each one reads:
+
+    - `deck_rebuild`: `design.json` and the `<bench>.spice` of each frozen bench directory
+      (`frozen:` in harness.yaml); it imports `<package>.dut` to rebuild the decks.
+    - `deck_portable`: the `*.spice` files of the same frozen bench directories.
+    - `deck_models`: imports `<package>.pdk` (`MODEL_GROUPS`, `CORNERS`, `section()`) and
+      `<package>.dut`, and builds the decks of each frozen `design.json` and of
+      `<package>.dut.REFERENCE`; it reads `lane:` in harness.yaml.
+    - `spec_quotes`: the certified scorecard named by `reference_scorecard:`, the spec document
+      (`spec_doc:`, default `doc/target-spec.md`) and the `spec:` rows of harness.yaml.
+    - `sx_links`: `.sx/platform` (the harness `pyproject.toml` through it) and the output of
+      `.sx/skills/bin/sx-link --check`, which reads one link under `.claude/agents/` or
+      `.claude/skills/` for each entry of `.sx/skills/linksets/design.txt`.
+    - `artifact_home`: the file list `git ls-files` prints.
+    - `signoff_index`: the top-level entries of `signoff/` and `signoff/README.md`.
+    - `scratch_budget`: the scratch work dir `<package>.sim.work()` returns (never inside the
+      repo) and its `runs/`, `$SX_SCRATCH_WARN_GB`, and the ledger (`ledger:`, default
+      `runs/ledger.ndjson`); `scripts/clean_runs.py` imports `<package>.sim` to find the work dir.
+
+    Outside EXTRA, `main` prints `hook_info`, which reads this checkout's pre-push hook file.
+    `tests/test_design.py` checks that every check listed here is in EXTRA, and that every
+    `<package>.<module>` a listed check imports, itself or through a helper, is named on its line.
+    """
+    saved = getattr(module, "os", None)
+    if saved is not os:     # no `os` name to replace (a harness that walks some other way)
+        yield
+        return
+    module.os = _OwnTreeOs()
+    try:
+        yield
+    finally:
+        module.os = saved
+
+
+def main(repo: Path = REPO) -> int:
+    """`make lint` on the checkout at `repo`: the harness checks under `own_tree_only`, then EXTRA.
+
+    Returns the exit code.
+    """
+    with own_tree_only():
+        rc = lint.main(load(repo), extra=EXTRA)
+    print(hook_info(repo))
+    return rc
+
+
 if __name__ == "__main__":
-    rc = lint.main(load(REPO), extra=EXTRA)
-    print(hook_info())
-    sys.exit(rc)
+    sys.exit(main())

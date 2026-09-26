@@ -228,6 +228,11 @@ from its ported cellview instead.
 One experiment = one session = one worktree on `feat/NNN-<technique>`; `EXP=NNN` stamps the ledger.
 A worktree is a new checkout: run `make init` in it (`.sx/platform` is git-ignored and `.sx/skills`
 needs its submodule update) before `uv sync` can resolve the platform packages.
+The two `make lint` checks that read every file below the repo root (`denylist`, the
+`scorecard.json` search) skip each directory that holds its own `.git`, such as a worktree under
+`.claude/worktrees/`: another session's uncommitted files fail only that session's `make lint`
+(template#40). A check you add to `scripts/lint.py` that reads every file walks with
+`own_tree_walk`.
 Ledger and work dirs are per checkout; shared docs (`doc/journal.md`, `doc/experiment-log.md`,
 `references/INDEX.md`) are written at close-out only — until then write into your own
 `experiments/NNN-*/README.md`. Branch `feat/<name>` off `main`, PR, squash. **Ask before pushing.**

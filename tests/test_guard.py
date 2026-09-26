@@ -18,6 +18,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -222,4 +223,88 @@ def test_guard_skip_test_reaches_the_hook_through_the_environment(pushable):
     assert git(root, "push", "--dry-run", "origin", "main").returncode != 0
     r = subprocess.run(["git", "push", "--dry-run", "origin", "main"], cwd=root,
                        capture_output=True, text=True, env={**_env(), "GUARD_SKIP_TEST": "1"})
+    assert r.returncode == 0, r.stdout + r.stderr
+
+
+# ------------------------------------------------ git's environment: the hook and the suite
+
+# The stub `test` clause that the guard runs and the probe suite below make the same git calls as
+# this repo's own tests in their tmp dirs: `git init`, `git add`, `git commit`.
+_GIT_WRITES = "git init -q && echo x > f && git add f && git -c user.email=t@t -c user.name=t commit -qm probe"
+
+
+def _repo_state(root: Path) -> dict[str, str]:
+    """What a git write aimed at the wrong repo changes in `root`: refs, local config, worktrees."""
+    return {
+        "refs": git(root, "for-each-ref", "--format=%(refname) %(objectname)").stdout,
+        "config": git(root, "config", "--local", "--list").stdout,
+        "worktrees": git(root, "worktree", "list", "--porcelain").stdout,
+    }
+
+
+def test_a_push_from_a_linked_worktree_keeps_the_guard_s_git_calls_out_of_the_repo(pushable,
+                                                                                 tmp_path):
+    """A push from a linked worktree runs the hook with GIT_DIR=<repo>/.git/worktrees/<name>.
+
+    With that variable in the environment, `git init` and `git commit` in a tmp dir write into
+    the repo being pushed: before the hook unset it, a `make test` run by the hook added commits
+    to the pushed branch and set core.bare=true in the repo's config. The hook now removes
+    GIT_DIR, GIT_WORK_TREE and GIT_INDEX_FILE before `make guard`.
+    """
+    probe = tmp_path / "probe"
+    probe.mkdir()
+    root = pushable(test=f'@cd "{probe}" && {_GIT_WRITES}')
+    wt = tmp_path / "w"
+    assert git(root, "worktree", "add", "-q", str(wt), "-b", "wt").returncode == 0
+    before = _repo_state(root)
+    r = git(wt, "push", "--dry-run", "origin", "wt")
+    assert _repo_state(root) == before, r.stdout + r.stderr
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert (probe / ".git").is_dir()      # the stub's commit went to a repo of its own
+
+
+_PROBE_SUITE = f"""
+import subprocess
+
+import pytest
+
+
+@pytest.fixture(scope="module")
+def module_repo(tmp_path_factory):
+    # a module-scoped fixture is set up before any function-scoped one
+    root = tmp_path_factory.mktemp("module-repo")
+    subprocess.run({_GIT_WRITES!r}, shell=True, cwd=root, check=True)
+    return root
+
+
+def test_probe(module_repo, tmp_path):
+    subprocess.run({_GIT_WRITES!r}, shell=True, cwd=tmp_path, check=True)
+    assert (module_repo / ".git").is_dir() and (tmp_path / ".git").is_dir()
+"""
+
+
+def test_the_suite_removes_git_dir_before_its_first_git_call(tmp_path):
+    """`make test` started with GIT_DIR in its environment (by hand, or by a hook installed by
+    an older scripts/githook.py) must not write into that repo.
+
+    tests/conftest.py removes GIT_DIR, GIT_WORK_TREE and GIT_INDEX_FILE for the whole session.
+    This runs a probe suite under a copy of that conftest, with GIT_DIR pointing at a separate
+    repo (`sentinel`), and checks that its refs, config and worktrees are unchanged.
+    """
+    sentinel = tmp_path / "sentinel"
+    sentinel.mkdir()
+    git(sentinel, "init", "-q", "-b", "main")
+    git(sentinel, "commit", "-q", "--allow-empty", "-m", "sentinel")
+    suite = tmp_path / "suite"
+    suite.mkdir()
+    shutil.copy(REPO / "tests" / "conftest.py", suite / "conftest.py")
+    (suite / "pytest.ini").write_text("[pytest]\n")
+    (suite / "test_probe.py").write_text(_PROBE_SUITE)
+    before = _repo_state(sentinel)
+    env = {k: v for k, v in _env().items() if not k.startswith(("PYTEST_", "GIT_"))}
+    env["GIT_DIR"] = str(sentinel / ".git")
+    r = subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider",
+                        f"--basetemp={tmp_path / 'probe-tmp'}", str(suite)],
+                       cwd=suite, env=env, capture_output=True, text=True, check=False)
+    assert _repo_state(sentinel) == before, r.stdout + r.stderr
     assert r.returncode == 0, r.stdout + r.stderr

@@ -42,6 +42,9 @@ SCRIPT = f"""#!/bin/sh
 # Git runs this from the top of the working tree; be explicit anyway (a hook invoked by other
 # tooling has been seen with a different cwd).
 cd "$(git rev-parse --show-toplevel)" || exit 1
+# A push from a linked worktree runs this hook with GIT_DIR set to that worktree's git dir. Left
+# set, it sends the `git init` / `git commit` calls `make test` makes in tmp dirs into this repo.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE
 
 make guard && exit 0
 

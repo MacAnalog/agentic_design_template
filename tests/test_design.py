@@ -947,15 +947,306 @@ def test_deck_models_reads_the_header_and_the_body_apart():
     assert "nmos_a" in body and "pmos_b" not in body and "section=" not in body
 
 
+_REPO = Path(__file__).resolve().parents[1]
+
+
+def _init_has_run(root: Path) -> bool:
+    """Has `make init` ever run in this checkout? Its first effect is the git-ignored
+    `.sx/platform` link, which a clone never has. Present in any form, even dangling, means yes."""
+    plat = root / ".sx" / "platform"
+    return plat.is_symlink() or plat.exists()
+
+
+# `importlib.import_module(f"{L.h.package}.dut")` in lint.py, `f"{package}.sim"` in clean_runs.py
+_PKG_IMPORT = re.compile(r'import_module\(f"\{[^}]*package\}\.(\w+)"\)')
+
+
+def _own_tree_only_list() -> dict[str, str]:
+    """The per-check list in the `own_tree_only` docstring of scripts/lint.py: {check: its text}."""
+    import ast
+
+    tree = ast.parse((_REPO / "scripts" / "lint.py").read_text())
+    fn = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "own_tree_only")
+    listed: dict[str, str] = {}
+    name = None
+    for line in (ast.get_docstring(fn) or "").splitlines():
+        m = re.match(r"- `(\w+)`:", line)
+        if m:
+            name = m.group(1)
+            listed[name] = line
+        elif name and line.startswith("  "):
+            listed[name] += " " + line.strip()
+        else:
+            name = None
+    return listed
+
+
+def _package_imports(module: str, name: str, seen: set | None = None) -> set[str]:
+    """The `<package>.<module>` names that function `name` of scripts/<module>.py imports, itself
+    or through a function it calls: one in the same file, or `<m>.<function>` of scripts/<m>.py."""
+    import ast
+
+    seen = set() if seen is None else seen
+    if (module, name) in seen:
+        return set()
+    seen.add((module, name))
+    src = (_REPO / "scripts" / f"{module}.py").read_text()
+    fns = {n.name: n for n in ast.parse(src).body if isinstance(n, ast.FunctionDef)}
+    if name not in fns:
+        return set()
+    found = set(_PKG_IMPORT.findall(ast.get_source_segment(src, fns[name]) or ""))
+    for node in ast.walk(fns[name]):
+        f = node.func if isinstance(node, ast.Call) else None
+        if isinstance(f, ast.Name) and f.id in fns:
+            found |= _package_imports(module, f.id, seen)
+        elif (isinstance(f, ast.Attribute) and isinstance(f.value, ast.Name)
+              and (_REPO / "scripts" / f"{f.value.id}.py").is_file()):
+            found |= _package_imports(f.value.id, f.attr, seen)
+    return found
+
+
+def test_own_tree_only_names_each_listed_checks_package_imports():
+    """The `own_tree_only` docstring lists what each check in EXTRA reads, which is why the lint
+    applies the nested-checkout skip only to the two harness walks. Two parts of that list can be
+    checked from the source: every check it lists is in EXTRA, and every `<package>.<module>` a
+    listed check imports is named on that check's own line. A check it does not list is not
+    required, because a design adds its own checks to EXTRA and `make template-update` brings this
+    test into the design. File paths and harness.yaml keys are not checked."""
+    import ast
+
+    listed = _own_tree_only_list()
+    assert "deck_rebuild" in listed, "the own_tree_only docstring no longer lists the checks"
+    tree = ast.parse((_REPO / "scripts" / "lint.py").read_text())
+    extra = next(n.value for n in tree.body if isinstance(n, ast.Assign)
+                 and any(isinstance(t, ast.Name) and t.id == "EXTRA" for t in n.targets))
+    in_extra = {e.id for e in extra.elts if isinstance(e, ast.Name)}
+    for check, text in listed.items():
+        assert check in in_extra, f"own_tree_only lists `{check}`, which is not in EXTRA"
+        for mod in sorted(_package_imports("lint", check)):
+            assert f"`<package>.{mod}`" in text, (
+                f"`{check}` imports `<package>.{mod}`: name it on that check's line of the "
+                f"own_tree_only docstring in scripts/lint.py")
+
+
 def test_lint_extras_are_green_on_the_bare_template():
+    """Every EXTRA but `sx_links`, which checks per-checkout state (`.sx/platform`, the
+    `.sx/skills` links) that only `make init` creates: that one is the next test."""
     from spicexplorer_harness import load
     from spicexplorer_harness.lint import Lint
 
     mod = _load("scripts/lint.py")
-    L = Lint(load(Path(__file__).resolve().parents[1]))
+    # Only this test leaves `sx_links` out: `make lint` must still run it on every checkout.
+    assert mod.sx_links in mod.EXTRA
+    L = Lint(load(_REPO))
     for check in mod.EXTRA:
-        check(L)
+        if check is not mod.sx_links:
+            check(L)
     assert L.fails == []
+
+
+@pytest.mark.skipif(not _init_has_run(_REPO),
+                    reason="`make init` has not run in this checkout (no .sx/platform): sx_links "
+                           "judges what init creates; its logic runs hermetically in "
+                           "test_sx_links_* — `SX_ROOT=<workspace> make init` to run this one")
+def test_sx_links_is_green_on_an_initialised_checkout():
+    """Once `make init` has run, a dangling `.sx/platform`, an uninitialised `.sx/skills` or a
+    missing agent/skill link is a defect of this checkout, so this does NOT skip on those."""
+    from spicexplorer_harness import load
+    from spicexplorer_harness.lint import Lint
+
+    mod = _load("scripts/lint.py")
+    L = Lint(load(_REPO))
+    mod.sx_links(L)
+    assert L.fails == []
+
+
+def _sx_tree(root: Path, *, platform: bool = True, link_tool: str | None = "exit 0") -> None:
+    """A stand-in `.sx/`: the platform marker file `sx_links` looks for, and an `sx-link` stub
+    that records its argv and then runs `link_tool` (None = the submodule is not initialised)."""
+    if platform:
+        marker = root / ".sx/platform/packages/spicexplorer-harness/pyproject.toml"
+        marker.parent.mkdir(parents=True)
+        marker.write_text("")
+    if link_tool is not None:
+        tool = root / ".sx/skills/bin/sx-link"
+        tool.parent.mkdir(parents=True, exist_ok=True)
+        tool.write_text(f'#!/bin/sh\necho "$@" > "$(dirname "$0")/argv"\n{link_tool}\n')
+        tool.chmod(0o755)
+
+
+def test_sx_links_names_make_init_on_a_clean_clone(tmp_path):
+    """A clone before `make init` (the state the skip above describes): both halves of `sx_links`
+    (the `.sx/platform` check and the `.sx/skills` check) fail, and both remediations say
+    `make init`. A dangling link is reported with where it points."""
+    root = _staged_repo(tmp_path, {})
+    mod, L = _lint_on(root)
+    mod.sx_links(L)
+    assert len(L.fails) == 2, L.fails
+    assert ".sx/platform does not resolve" in L.fails[0] and "(missing)" in L.fails[0]
+    assert ".sx/skills" in L.fails[1] and "not initialised" in L.fails[1]
+    assert all("make init" in f for f in L.fails)
+
+    (root / ".sx").mkdir()
+    (root / ".sx" / "platform").symlink_to(tmp_path / "gone")
+    _sx_tree(root, platform=False)
+    mod, L = _lint_on(root)
+    mod.sx_links(L)
+    assert len(L.fails) == 1 and f"({tmp_path / 'gone'})" in L.fails[0], L.fails
+
+
+def test_sx_links_is_green_on_an_initialised_tree_and_relays_the_link_check(tmp_path):
+    """The initialised case, on a stand-in `.sx/`: platform resolves, `sx-link --check` passes ->
+    no failure; `sx-link --check` fails -> one failure carrying its first un-indented line."""
+    root = _staged_repo(tmp_path, {})
+    _sx_tree(root)
+    mod, L = _lint_on(root)
+    mod.sx_links(L)
+    assert L.fails == [], L.fails
+    argv = (root / ".sx/skills/bin/argv").read_text().split()
+    assert argv == [str(root), "--set", "design", "--check"]
+
+    _sx_tree(root, platform=False, link_tool='echo "2 link(s) missing in .claude/agents"\n'
+                                             'echo "  schematic-builder.md"\nexit 1')
+    mod, L = _lint_on(root)
+    mod.sx_links(L)
+    assert len(L.fails) == 1 and "2 link(s) missing in .claude/agents" in L.fails[0], L.fails
+    assert "schematic-builder.md" not in L.fails[0] and "make init" in L.fails[0]
+
+
+def test_sx_links_relays_the_summary_line_past_blank_and_indented_ones(tmp_path):
+    """The relayed line is the first NON-EMPTY, UN-INDENTED one wherever it sits in the output;
+    a failing `sx-link --check` that prints nothing usable still fails, as `links missing`."""
+    root = _staged_repo(tmp_path, {})
+    _sx_tree(root, link_tool='echo ""\necho "  layout-reviewer.md"\n'
+                             'echo "1 link(s) missing in .claude/skills"\nexit 1')
+    mod, L = _lint_on(root)
+    mod.sx_links(L)
+    assert len(L.fails) == 1 and "1 link(s) missing in .claude/skills" in L.fails[0], L.fails
+    assert "layout-reviewer.md" not in L.fails[0]
+
+    for quiet in ("exit 1", 'echo "  only-indented.md"\nexit 1'):
+        _sx_tree(root, platform=False, link_tool=quiet)
+        mod, L = _lint_on(root)
+        mod.sx_links(L)
+        assert len(L.fails) == 1 and "links missing" in L.fails[0], (quiet, L.fails)
+        assert "only-indented.md" not in L.fails[0] and "make init" in L.fails[0]
+
+
+def test_sx_links_fails_once_for_each_half_that_init_left_undone(tmp_path):
+    """The two halves are checked separately. Platform linked, `.sx/skills` never initialised: one
+    failure, the submodule's. `.sx/platform` linked to a directory that is NOT a platform
+    checkout (a wrong SX_ROOT) fails like a dangling link does, naming where it points."""
+    (tmp_path / "a").mkdir()
+    root = _staged_repo(tmp_path / "a", {})
+    _sx_tree(root, link_tool=None)
+    mod, L = _lint_on(root)
+    mod.sx_links(L)
+    assert len(L.fails) == 1 and ".sx/skills" in L.fails[0], L.fails
+    assert "not initialised" in L.fails[0] and "make init" in L.fails[0]
+
+    (tmp_path / "b").mkdir()
+    root = _staged_repo(tmp_path / "b", {})
+    (tmp_path / "not-a-platform").mkdir()
+    (root / ".sx").mkdir()
+    (root / ".sx" / "platform").symlink_to(tmp_path / "not-a-platform")
+    _sx_tree(root, platform=False)
+    mod, L = _lint_on(root)
+    mod.sx_links(L)
+    assert len(L.fails) == 1, L.fails
+    assert ".sx/platform does not resolve" in L.fails[0]
+    assert f"({tmp_path / 'not-a-platform'})" in L.fails[0]
+
+
+def test_init_has_run_counts_a_dangling_platform_link_as_initialised(tmp_path):
+    """The skip condition of the checkout-level sx_links test: `.sx/platform` present in ANY
+    form means `make init` ran. A dangling link must count, or a broken init would skip instead of
+    failing."""
+    assert _init_has_run(tmp_path) is False
+    (tmp_path / ".sx").mkdir()
+    assert _init_has_run(tmp_path) is False  # `.sx/` alone is tracked (template-version)
+    (tmp_path / ".sx" / "platform").symlink_to(tmp_path / "gone")
+    assert _init_has_run(tmp_path) is True   # dangling
+    (tmp_path / "gone").mkdir()
+    assert _init_has_run(tmp_path) is True   # resolving
+    (tmp_path / ".sx" / "platform").unlink()
+    (tmp_path / ".sx" / "platform").mkdir()
+    assert _init_has_run(tmp_path) is True   # a plain directory
+
+
+def _clean_export(dst: Path) -> Path:
+    """This checkout's TRACKED files as they stand in the working tree (an edit under test is
+    what gets copied, not HEAD), in a fresh git repo: a clone before `make init`. Nothing
+    git-ignored is copied (no `.sx/platform`, no `.venv`); the `.sx/skills` gitlink is the
+    empty directory a non-recursive clone has; tracked agent/skill links dangle, as in a clone."""
+    import os
+    import shutil
+    import subprocess as sp
+
+    ls = sp.run(["git", "ls-files", "-z"], cwd=_REPO, capture_output=True, text=True,
+                check=False)
+    if ls.returncode:
+        pytest.skip("not a git checkout: there is no clean clone to reproduce")
+    for rel in filter(None, ls.stdout.split("\0")):
+        src, to = _REPO / rel, dst / rel
+        to.parent.mkdir(parents=True, exist_ok=True)
+        if src.is_symlink():
+            to.symlink_to(os.readlink(src))
+        elif src.is_dir():
+            to.mkdir()
+        elif src.is_file():
+            shutil.copy2(src, to)
+    sp.run(["git", "init", "-q"], cwd=dst, check=True)
+    sp.run(["git", "add", "-A"], cwd=dst, check=True)
+    return dst
+
+
+def test_a_clean_export_is_green_before_init_and_red_once_a_link_dangles(tmp_path):
+    """A clean clone end to end, in a subprocess on a clean export of THIS tree: the
+    bare-template lint test passes and the checkout-level sx_links test SKIPS, naming `make init`.
+    Then give it a dangling `.sx/platform` (init ran, the link broke): that test must FAIL, not
+    skip."""
+    import os
+    import subprocess as sp
+
+    dst = _clean_export(tmp_path / "clone")
+    env = {k: v for k, v in os.environ.items() if not k.startswith(("PYTEST_", "COV_CORE_"))}
+
+    def pytest_in_clone(*names: str) -> sp.CompletedProcess:
+        return sp.run([sys.executable, "-m", "pytest", "-q", "-rs", "-p", "no:cacheprovider",
+                       "-o", "addopts=", *(f"tests/test_design.py::{n}" for n in names)],
+                      cwd=dst, capture_output=True, text=True, env={**env, "NO_COLOR": "1"},
+                      check=False)
+
+    r = pytest_in_clone("test_lint_extras_are_green_on_the_bare_template",
+                        "test_sx_links_is_green_on_an_initialised_checkout")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "1 passed, 1 skipped" in r.stdout, r.stdout
+    assert "`make init` has not run" in r.stdout, r.stdout
+
+    (dst / ".sx" / "platform").symlink_to(tmp_path / "no-such-workspace")
+    r = pytest_in_clone("test_sx_links_is_green_on_an_initialised_checkout")
+    assert r.returncode == 1, r.stdout + r.stderr
+    assert "1 failed" in r.stdout and "skipped" not in r.stdout, r.stdout
+    assert ".sx/platform does not resolve" in r.stdout, r.stdout
+
+
+@pytest.mark.skipif(not (_REPO / ".sx/platform/packages/spicexplorer-harness/pyproject.toml")
+                    .is_file(), reason="no resolving .sx/platform (`make init` has not run): "
+                                       "uv.lock resolves the platform packages through it")
+def test_uv_lock_is_current_against_the_linked_platform():
+    """uv.lock matches the linked platform. `make init` runs `uv sync`, which rewrites a stale
+    uv.lock, so a stale one means every checkout starts with uv.lock modified. `uv lock --check`
+    (offline: path sources plus the lock) is the check; if it fails, relock against the platform
+    `.sx/platform` names, and commit it."""
+    import os
+    import shutil
+    import subprocess as sp
+
+    if shutil.which("uv") is None:
+        pytest.skip("no `uv` on PATH")
+    r = sp.run(["uv", "lock", "--check", "--offline"], cwd=_REPO, capture_output=True,
+               text=True, env={**os.environ, "NO_COLOR": "1"}, check=False)
+    assert r.returncode == 0, r.stdout + r.stderr
 
 
 def _drc_types():
