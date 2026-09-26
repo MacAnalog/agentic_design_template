@@ -33,7 +33,11 @@ template-update:  ## propagate the template's MINOR updates into this design (th
 template-migrate:  ## cross a MAJOR template release (1.xx -> 2.00): moves directories, repoints harness.yaml, commits nothing. ARGS="--dry-run" first
 	@$(PY) scripts/migrate_v1_to_v2.py $(ARGS)
 
+# Before `make init`, .sx/skills is an empty directory with no .git, so `git -C .sx/skills` finds
+# the design's own repository one level up: the fetch and checkout below then moved the design's
+# HEAD to a detached origin/main. A submodule's .git is a file, so the check is -e, not -d.
 skills-update:  ## move .sx/skills (the shared agent/skill library) to its main, re-link, and stage the pin — then commit it
+	@test -e .sx/skills/.git || { echo "REFUSING: .sx/skills is not initialised (it has no .git), so its git commands would run in this design's own repository: run 'make init' first"; exit 2; }
 	@git -C .sx/skills fetch -q origin main && git -C .sx/skills checkout -q origin/main
 	@.sx/skills/bin/sx-link . --set design
 	@git add .sx/skills .claude
