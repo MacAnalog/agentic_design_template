@@ -65,8 +65,22 @@ reference_scorecard: ""          # e.g. signoff/prelayout/decks/scorecard.json (
 # alias heuristic stands in, and a name that folds onto the author's is refused as a self-sign.
 # verifiers: [owner, signoff-verifier]
 
-# Memory surfaces: entries stay under size_cap (20 KB); the one-line-per-entry index may grow past it.
-memory: {index_size_cap: 32000}
+# Memory surfaces (doc/memory/README.md). Each entry stays under size_cap (20 KB, the default); the
+# index is held to the same cap in LIVE rows only, so a row marked superseded costs nothing.
+memory:
+  # The ceiling, in bytes, on the pack `make pack` assembles. Lessons are ranked and cut to what the
+  # rest of the pack leaves; the Lessons heading then says how many were dropped.
+  pack_budget: 20000
+  # `dirs` is the indexed set: `make lint` wants an index row and a valid header for every entry in
+  # it. `load_dirs` is what the pack reads. doc/memory/archive is in the first only, so an archived
+  # entry stays accounted for and leaves the pack (doc/memory/archive/README.md).
+  dirs: [doc/journal, doc/memory/semantic, doc/memory/procedural, doc/memory/archive]
+  load_dirs: [doc/journal, doc/memory/semantic, doc/memory/procedural]
+  # The design directory's index of every registered design's live lessons, read into the pack's
+  # "Fleet lessons" section. This path fits a clone at <design directory>/designs/<name>/; anywhere
+  # else, give <design directory checkout>/registry/fleet-lessons.json as an absolute path. A
+  # missing file leaves the section out and changes no exit code.
+  fleet_index: ../../registry/fleet-lessons.json
 
 gitignore_must: ["runs/", "*.raw", "__pycache__/", "experiments/*/out/", ".sx/platform"]
 

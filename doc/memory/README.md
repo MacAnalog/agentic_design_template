@@ -15,10 +15,18 @@ directories below all serve that rule. An entry that does not fit in the context
 
 | tier | home | written by | read by |
 |---|---|---|---|
-| **working** | assembled fresh: `make pack K="…"` | retrieval over the tiers below | the agent, at task start and again on every new symptom (`S="…"`) |
+| **working** | assembled fresh: `make pack K="…"`, at most `memory.pack_budget` bytes | retrieval over the tiers below, plus other designs' lessons from the fleet index | the agent, at task start and again on every new symptom (`S="…"`) |
 | **episodic** | `runs/ledger.ndjson` — one row per simulation, gitignored, per checkout | **automatic**: `design.metrics.evaluate()` via `spicexplorer_harness.log_run` | `make runs`, the pack's Episodes section |
-| **semantic** | `doc/journal/` (one file per lesson) + `doc/journal.md` (index); overflow in `doc/memory/semantic/`; curated docs `doc/design-reference.md`, `doc/pdk-notes.md`, `references/INDEX.md`, experiment READMEs, verifier reports in `doc/reviews/` | distillation at experiment close-out, or the moment a failure surprises you; **provenance required** | the pack's Lessons/Constraints/Papers sections |
+| **semantic** | `doc/journal/` (one file per lesson) + `doc/journal.md` (index); overflow in `doc/memory/semantic/`; indexed but not loaded in `doc/memory/archive/`; curated docs `doc/design-reference.md`, `doc/pdk-notes.md`, `references/INDEX.md`, experiment READMEs, verifier reports in `doc/reviews/` | distillation at experiment close-out, or the moment a failure surprises you; **provenance required** | the pack's Lessons/Constraints/Papers sections |
 | **procedural** | `design/`, `scripts/`, `Makefile`, `harness.yaml`, agent definitions, `CLAUDE.md`; recipes in `doc/memory/procedural/` | **human-reviewed only** (trap → gate promotion) | `CLAUDE.md` harness commands |
+
+Three `memory:` keys in `harness.yaml` set what the working tier costs and where it reads from:
+
+| key | this template | what it does |
+|---|---|---|
+| **`pack_budget`** | `20000` | the ceiling on the assembled pack, in bytes. Lessons are ranked and cut to what the other sections leave, and the Lessons heading then reads `N matched, M served, K dropped, budget 20 kB` |
+| **`dirs` / `load_dirs`** | `doc/memory/archive` in `dirs` only | an archived entry keeps its index row and its lint checks and leaves the pack (`doc/memory/archive/README.md`) |
+| **`fleet_index`** | `../../registry/fleet-lessons.json` | the design directory's index of the live lessons of every registered design. When the file exists, the pack adds a `Fleet lessons` section (this design's own rows excluded); when it does not, the section is left out |
 
 ## 2. Learning actions
 
@@ -52,13 +60,16 @@ the rows. The session writes the shared docs at close-out, from the experiment's
 
 `make lint` (`spicexplorer_harness.lint`) checks that:
 
-- every entry is indexed, typed, dated, under the size cap, and its supersession is complete;
+- every entry in `memory.dirs`, the archive included, is indexed, typed, dated, under the size
+  cap, and its supersession is complete; the index's live rows are under the same cap;
 - every experiment dir is logged, with Paper/Hypothesis/Verdict rows;
 - every PDF is indexed;
 - the spec numbers are present in `doc/target-spec.md`;
 - frozen dirs match their `SHA256SUMS`;
 - the denylist is clean;
 - the pack retrieves at least one constraint and one lesson;
+- the pack fits `memory.pack_budget`: when lessons were dropped to fit, a warning says how many
+  (warning tier: the exit code does not change);
 - the design package imports;
 - a frozen deck still rebuilds;
 - a signed scorecard still recomputes.
