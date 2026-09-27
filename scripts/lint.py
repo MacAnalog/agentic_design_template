@@ -38,7 +38,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
-from scripts import githook  # noqa: E402
+from scripts import githook, pdk_links  # noqa: E402
 from spicexplorer_harness import lint, load  # noqa: E402
 from spicexplorer_harness.lint import Lint  # noqa: E402
 
@@ -303,6 +303,9 @@ def sx_links(L: Lint) -> None:
     are per-entry symlinks into the `.sx/skills` submodule; a checkout where either dangles runs
     with no harness or with no agents, silently. Both are per-checkout state, so `make init` is
     the fix in every case.
+
+    The links checked are the library's `design` set, and its `pdk-<id>` set when `pdk:` in
+    harness.yaml declares a process the pinned library ships a set for (the one `make init` links).
     """
     root = L.h.root
     plat = root / ".sx" / "platform"
@@ -315,11 +318,18 @@ def sx_links(L: Lint) -> None:
         L.fail("sx-links", ".sx/skills (the analog-skill-directory submodule) is not initialised",
                "run `make init` (= git submodule update --init --recursive .sx/skills, then the links)")
         return
-    r = subprocess.run([str(tool), str(root), "--set", "design", "--check"], capture_output=True, text=True)
-    if r.returncode:
-        first = next((ln for ln in r.stdout.splitlines() if ln and not ln.startswith(" ")), "links missing")
-        L.fail("sx-links", first.strip(), "run `make init` (re-links every entry from .sx/skills; a "
-               "nested submodule needs the --recursive it does)")
+    sets = ["design"]
+    pdk_set = pdk_links.linkset(root, str(getattr(L.h, "pdk", "") or ""))
+    if pdk_set:
+        sets.append(pdk_set)            # after `design`, in the order `make init` links them
+    for name in sets:
+        r = subprocess.run([str(tool), str(root), "--set", name, "--check"], capture_output=True,
+                           text=True)
+        if r.returncode:
+            first = next((ln for ln in r.stdout.splitlines() if ln and not ln.startswith(" ")),
+                         "links missing")
+            L.fail("sx-links", first.strip(), "run `make init` (re-links every entry from "
+                   ".sx/skills; a nested submodule needs the --recursive it does)")
 
 
 # Where a committed artefact is allowed to live (template 2.00, "every artefact has a home").
@@ -541,7 +551,8 @@ def own_tree_only(module=lint):
       (`spec_doc:`, default `doc/target-spec.md`) and the `spec:` rows of harness.yaml.
     - `sx_links`: `.sx/platform` (the harness `pyproject.toml` through it) and the output of
       `.sx/skills/bin/sx-link --check`, which reads one link under `.claude/agents/` or
-      `.claude/skills/` for each entry of `.sx/skills/linksets/design.txt`.
+      `.claude/skills/` for each entry of `.sx/skills/linksets/design.txt`, and of
+      `linksets/pdk-<id>.txt` when `pdk:` declares a process that file exists for.
     - `artifact_home`: the file list `git ls-files` prints.
     - `signoff_index`: the top-level entries of `signoff/` and `signoff/README.md`.
     - `scratch_budget`: the scratch work dir `<package>.sim.work()` returns (never inside the

@@ -9,18 +9,22 @@ ARGS ?=
 # `make clean-runs AGE=48`: how long a run's simulator log must have been cold
 # before the sweep may remove that run dir (hours).
 AGE ?= 24
+# The agent/skill links from .sx/skills: the library's `design` set, then its `pdk-<id>` set when
+# harness.yaml declares `pdk: <id>` and the pinned library ships that set (scripts/pdk_links.py).
+# init and skills-update both run this one line, so the two cannot link different sets.
+LINK = .sx/skills/bin/sx-link . --set design && $(PY) scripts/pdk_links.py
 
 help:  ## list every target
 	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-10s %s\n", $$1, $$2}'
 
 # One-time per checkout. SX_ROOT = the SpiceXplorer workspace checkout (the lab exports it in
 # ~/.sx_env; a read-only shared checkout is fine — editable installs write only into ./.venv).
-init:  ## set up this checkout: .sx/platform -> $$SX_ROOT/spicexplorer-platform, the .sx/skills library + agent/skill links, uv sync
+init:  ## set up this checkout: .sx/platform -> $$SX_ROOT/spicexplorer-platform, the .sx/skills library + agent/skill links (+ pdk-<id> for a declared pdk:), uv sync
 	@test -n "$(SX_ROOT)" || { echo "SX_ROOT is not set: export SX_ROOT=<your spicexplorer-workspace checkout> (the lab puts it in ~/.sx_env)"; exit 2; }
 	@test -f "$(SX_ROOT)/spicexplorer-platform/packages/spicexplorer-harness/pyproject.toml" || { echo "SX_ROOT=$(SX_ROOT) holds no spicexplorer-platform/ checkout: run 'make setup' there, or fix SX_ROOT"; exit 2; }
 	@mkdir -p .sx && ln -sfn "$(SX_ROOT)/spicexplorer-platform" .sx/platform
 	@git submodule update --init --recursive .sx/skills
-	@.sx/skills/bin/sx-link . --set design
+	@$(LINK)
 	@uv sync
 	@echo "init OK: .sx/platform -> $$(readlink .sx/platform); $$(ls .claude/agents | wc -l) agents + $$(ls .claude/skills | wc -l) skills linked from .sx/skills; next: make doctor"
 
@@ -39,7 +43,7 @@ template-migrate:  ## cross a MAJOR template release (1.xx -> 2.00): moves direc
 skills-update:  ## move .sx/skills (the shared agent/skill library) to its main, re-link, and stage the pin — then commit it
 	@test -e .sx/skills/.git || { echo "REFUSING: .sx/skills is not initialised (it has no .git), so its git commands would run in this design's own repository: run 'make init' first"; exit 2; }
 	@git -C .sx/skills fetch -q origin main && git -C .sx/skills checkout -q origin/main
-	@.sx/skills/bin/sx-link . --set design
+	@$(LINK)
 	@git add .sx/skills .claude
 	@echo "skills @ $$(git -C .sx/skills rev-parse --short HEAD): $$(ls .claude/agents | wc -l) agents + $$(ls .claude/skills | wc -l) skills linked; staged — commit the pin: git commit -m 'skills: bump .sx/skills to $$(git -C .sx/skills rev-parse --short HEAD)'"
 

@@ -44,10 +44,13 @@ def head(root: Path) -> tuple[str, str]:
     return git(root, "rev-parse", "--abbrev-ref", "HEAD"), git(root, "rev-parse", "HEAD")
 
 
-def design(tmp_path: Path) -> Path:
+def design(tmp_path: Path, *extra: str) -> Path:
     """A design repository on branch `probe`, one commit ahead of the `main` its `origin` holds,
-    so a checkout of `origin/main` would move HEAD. `.sx/skills` is an empty directory."""
-    ls = subprocess.run(["git", "ls-files", "-z", "--", "Makefile", ".gitmodules", ".claude"],
+    so a checkout of `origin/main` would move HEAD. `.sx/skills` is an empty directory. The
+    recipe's link step runs `scripts/pdk_links.py`, so that is copied too; `extra` names more
+    tracked paths to copy in."""
+    ls = subprocess.run(["git", "ls-files", "-z", "--", "Makefile", ".gitmodules", ".claude",
+                         "scripts/pdk_links.py", *extra],
                         cwd=REPO, capture_output=True, text=True, check=False)
     if ls.returncode:
         pytest.skip("not a git checkout: there are no tracked files to copy")
@@ -105,3 +108,35 @@ def test_skills_update_accepts_a_submodule_whose_git_is_a_file(tmp_path):
     assert r.returncode == 0, out
     assert head(root) == before, out
     assert git(skills, "rev-parse", "HEAD") == git(lib, "rev-parse", "HEAD"), out
+
+
+@pytest.mark.parametrize(("pdk", "want"), [
+    ("ihp-sg13g2", ["--set design", "--set pdk-ihp-sg13g2"]),
+    ("", ["--set design"]),
+])
+def test_skills_update_links_the_pdk_set_harness_yaml_declares(tmp_path, pdk, want):
+    """The recipe's link step is the `design` set, then the `pdk-<id>` set when `pdk:` names one
+    the library ships (scripts/pdk_links.py). Keyed on the declaration: with `pdk:` empty, the
+    library's `pdk-ihp-sg13g2` set is not linked."""
+    root = design(tmp_path, "harness.yaml")
+    text = (root / "harness.yaml").read_text()
+    (root / "harness.yaml").write_text(
+        "\n".join(f"pdk: {pdk}" if ln.startswith("pdk:") else ln for ln in text.splitlines()))
+    git(root, "commit", "-qam", "pdk")
+    lib = tmp_path / "library"
+    (lib / "bin").mkdir(parents=True)
+    (lib / "linksets").mkdir()
+    (lib / "linksets" / "pdk-ihp-sg13g2.txt").write_text("skills/pdk-ihp-sg13g2\n")
+    log = tmp_path / "sx-link.log"
+    (lib / "bin" / "sx-link").write_text(f'#!/bin/sh\necho "$2 $3" >> "{log}"\nexit 0\n')
+    (lib / "bin" / "sx-link").chmod(0o755)
+    git(lib, "init", "-q", "-b", "main")
+    git(lib, "add", "-A")
+    git(lib, "commit", "-qm", "pinned")
+    skills = root / ".sx" / "skills"
+    skills.rmdir()
+    git(tmp_path, "clone", "-q", f"--separate-git-dir={tmp_path / 'skills.git'}", str(lib),
+        str(skills))
+    r = _run(root, "make", "skills-update")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert log.read_text().splitlines() == want

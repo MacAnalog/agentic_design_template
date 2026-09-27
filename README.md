@@ -16,7 +16,9 @@ definitions and method notes under `.claude/`.
    `.sx/skills` library (analog-skill-directory) with its agent/skill links, and runs `uv sync`.
    Repeat in every new checkout or worktree.
 3. Fill `harness.yaml`, `pyproject.toml` (name, description) and every `<…>` in `CLAUDE.md`
-   and `doc/`.
+   and `doc/`. Declare the process in `harness.yaml` (`pdk: ihp-sg13g2`, as the kit's own
+   preflight reports it) and run `make init` again: when the library ships a `pdk-<id>` link set
+   for that process, it links those skills too. `make lint` warns while `pdk:` is empty.
 4. Rename the design package: `git mv design <name>`, set `package:` in `harness.yaml`, and
    update the imports plus `Makefile` and `experiments/_template/`. The package is named for the
    DESIGN — the instances are `ldo/` and `mzm_tx/`. `make lint` checks the package is importable;
@@ -78,10 +80,11 @@ learned.** Everything else is plumbing.
 | `scripts/lint.py` | repo-specific checks on top of the harness — including `artifact-home`, which keeps the map above true |
 | `scripts/clean_runs.py` | `make clean-runs` (sweep the run dirs whose reduction is recorded and whose log has gone cold) and the scratch report `make doctor` prints |
 | `scripts/githook.py` | `make hook-install` / `make hook-remove`: the opt-in `pre-push` hook that runs `make guard` |
+| `scripts/pdk_links.py` | the step of `make init` and `make skills-update` that links the library's `pdk-<id>` skills for the `pdk:` declared in `harness.yaml` |
 | `notebooks/` | executed in place by `make notebooks`, outputs committed |
 | `.sx/` | the per-checkout plumbing `make init` sets up: `platform` (git-ignored link to `$SX_ROOT/spicexplorer-platform`) and `skills` (the `analog-skill-directory` submodule: shared agents, skills, guard hooks, `bin/sx-link`) |
 | `.claude/agents/` | links into `.sx/skills/agents/` (the library's `design` link set, 10 agents): variant-runner, signoff-verifier, schematic-builder, schematic-reviewer, paper-analyst, gardener + the layout chain (brief-author, designer, reviewer, schematic-codesign); design-specific agents are plain files beside them |
-| `.claude/skills/` | links into `.sx/skills/skills/` (the `design` link set, 19 skills): the visual-evidence methods (schematic of record, testbench schematics, findings as plots, layout evidence), `measurement-setup-of-record` (the measurement traps of the lane, the harness and the experiment process), `design-writing` (every document this repo produces), `analog-knowledge-authoring` (the standard a knowledge skill is written to), gm/ID sizing + LUTs, current mirrors, layout annotation, optimizer convergence plots, neutral naming, `spicexplorer-tools`, `sx-contributing`, the remote-simulator learning journal, the bridge-lane skill and the bridge's two simulator skills |
+| `.claude/skills/` | links into `.sx/skills/skills/` (the `design` link set, 19 skills): the visual-evidence methods (schematic of record, testbench schematics, findings as plots, layout evidence), `measurement-setup-of-record` (the measurement traps of the lane, the harness and the experiment process), `design-writing` (every document this repo produces), `analog-knowledge-authoring` (the standard a knowledge skill is written to), gm/ID sizing + LUTs, current mirrors, layout annotation, optimizer convergence plots, neutral naming, `spicexplorer-tools`, `sx-contributing`, the remote-simulator learning journal, the bridge-lane skill and the bridge's two simulator skills; plus the library's `pdk-<id>` set when `pdk:` in `harness.yaml` names a process it has one for |
 | `.claude/settings.json` | a copy of the library's settings file (`.sx/skills/settings/project-settings.json`): the one PreToolUse hook (`.sx/skills/hooks/cmc_ask_hook.py`), under which anything in the NDA kit tree asks for permission and nothing else is blocked (owner ruling 2026-09-07), and the permissions a design session needs |
 | `runs/` | `ledger.ndjson`, git-ignored; the numbers worth keeping move into experiment READMEs and `signoff/` |
 | *(the scratch root)* | rawfiles, run dirs and simulator logs — `$SX_SCRATCH`, never the repo. A raw record is scratch, not evidence: reduce it, commit the reduction, `make clean-runs` |
