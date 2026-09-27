@@ -119,9 +119,8 @@ def test_skills_update_links_the_pdk_set_harness_yaml_declares(tmp_path, pdk, wa
     the library ships (scripts/pdk_links.py). Keyed on the declaration: with `pdk:` empty, the
     library's `pdk-ihp-sg13g2` set is not linked."""
     root = design(tmp_path, "harness.yaml")
-    text = (root / "harness.yaml").read_text()
-    (root / "harness.yaml").write_text(
-        "\n".join(f"pdk: {pdk}" if ln.startswith("pdk:") else ln for ln in text.splitlines()))
+    lines = [ln for ln in (root / "harness.yaml").read_text().splitlines() if not ln.startswith("pdk:")]
+    (root / "harness.yaml").write_text("\n".join([*lines, f"pdk: {pdk}"]) + "\n")
     git(root, "commit", "-qam", "pdk")
     lib = tmp_path / "library"
     (lib / "bin").mkdir(parents=True)

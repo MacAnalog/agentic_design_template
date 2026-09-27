@@ -30,9 +30,12 @@ pdk_links = _mod("scripts/pdk_links.py")
 
 
 def _with_pdk(line: str) -> str:
-    """The template's harness.yaml with its `pdk:` line replaced by `line` ("" drops it)."""
+    """This checkout's harness.yaml with its `pdk:` line replaced by `line` ("" drops it). A design
+    that has not added `pdk:` yet (CHANGELOG v2.14, Taking it, step 2) gets the line appended, so
+    these tests do not depend on that step."""
     out, n = re.subn(r"^pdk:.*$", line, TEMPLATE_YAML, count=1, flags=re.M)
-    assert n == 1, "the template's harness.yaml has no top-level pdk: line"
+    if n == 0:
+        out = TEMPLATE_YAML.rstrip("\n") + "\n" + (line + "\n" if line else "")
     return out
 
 
