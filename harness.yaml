@@ -24,7 +24,7 @@ jobs_env: JOBS          # width of spicexplorer_harness.batch
 # The process this design is drawn in, as its own preflight reports it (`ihp-sg13g2`). Free-form.
 # `design/pdk.py` derives the per-MACHINE model-library variable from it — `<PDK-ID>_PDK_LIB`,
 # uppercased with `-` as `_` — so one export per account serves every design in that process.
-# pdk: <pdk-id>
+pdk: ""   # declare it (e.g. ihp-sg13g2): lint warns while empty; make init links the pdk-<id> skills
 
 # The headline of the challenge, as the context pack states it at the top of every task.
 goal: "<the metric to beat, its bound, and what may not be given back>"
