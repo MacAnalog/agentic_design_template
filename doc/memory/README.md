@@ -15,7 +15,7 @@ directories below all serve that rule. An entry that does not fit in the context
 
 | tier | home | written by | read by |
 |---|---|---|---|
-| **working** | assembled fresh: `make pack K="…"`, at most `memory.pack_budget` bytes | retrieval over the tiers below, plus other designs' lessons from the fleet index | the agent, at task start and again on every new symptom (`S="…"`) |
+| **working** | assembled fresh: `make pack K="…"`, at most `memory.pack_budget` bytes; the bare pack is also handed to each new session (below) | retrieval over the tiers below, plus other designs' lessons from the fleet index | the agent, at task start and again on every new symptom (`S="…"`) |
 | **episodic** | `runs/ledger.ndjson` — one row per simulation, gitignored, per checkout | **automatic**: `design.metrics.evaluate()` via `spicexplorer_harness.log_run` | `make runs`, the pack's Episodes section |
 | **semantic** | `doc/journal/` (one file per lesson) + `doc/journal.md` (index); overflow in `doc/memory/semantic/`; indexed but not loaded in `doc/memory/archive/`; curated docs `doc/design-reference.md`, `doc/pdk-notes.md`, `references/INDEX.md`, experiment READMEs, verifier reports in `doc/reviews/` | distillation at experiment close-out, or the moment a failure surprises you; **provenance required** | the pack's Lessons/Constraints/Papers sections |
 | **procedural** | `design/`, `scripts/`, `Makefile`, `harness.yaml`, agent definitions, `CLAUDE.md`; recipes in `doc/memory/procedural/` | **human-reviewed only** (trap → gate promotion) | `CLAUDE.md` harness commands |
@@ -27,6 +27,16 @@ Three `memory:` keys in `harness.yaml` set what the working tier costs and where
 | **`pack_budget`** | `20000` | the ceiling on the assembled pack, in bytes. Lessons are ranked and cut to what the other sections leave, and the Lessons heading then reads `N matched, M served, K dropped, budget 20 kB` |
 | **`dirs` / `load_dirs`** | `doc/memory/archive` in `dirs` only | an archived entry keeps its index row and its lint checks and leaves the pack (`doc/memory/archive/README.md`) |
 | **`fleet_index`** | `../../registry/fleet-lessons.json` | the design directory's index of the live lessons of every registered design. When the file exists, the pack adds a `Fleet lessons` section (this design's own rows excluded); when it does not, the section is left out |
+
+**The pack at session start.** `.claude/settings.json` runs `scripts/session_pack.py` as a
+`SessionStart` hook when a session starts, after `/clear` and after a compaction. It prints the
+bare pack (what `make pack` prints) into the session's context, cut at a line boundary to
+`memory.pack_budget` bytes, 20000 when none is declared, with a last line saying so when it cut.
+
+- **It never blocks and never prompts.** It exits 0 and prints nothing when the checkout has no
+  `harness.yaml` or no `.venv` (before `make init`), and when the pack fails or runs past 20 s.
+- **Re-key it by hand.** The hook serves the bare pack only; `make pack K="…"` and `S="…"` remain
+  the way to retrieve on a task's own words.
 
 ## 2. Learning actions
 

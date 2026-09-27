@@ -30,6 +30,18 @@
           }
         ]
       }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "startup|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ -f \"$CLAUDE_PROJECT_DIR/scripts/session_pack.py\" ]; then python3 \"$CLAUDE_PROJECT_DIR/scripts/session_pack.py\" 2>/dev/null; fi; exit 0",
+            "timeout": 30
+          }
+        ]
+      }
     ]
   }
 }
