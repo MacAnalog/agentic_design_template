@@ -14,7 +14,7 @@ spec of record is `doc/target-spec.md`, its machine twin `spec:` in `harness.yam
 
 | you are about to… | read first |
 |---|---|
-| set up a fresh checkout | `make init` — needs `$SX_ROOT` (the SpiceXplorer workspace); links `.sx/platform`, initialises the `.sx/skills` library and the agent/skill links, syncs the venv. `doc/environment.md` has the rows |
+| set up a fresh checkout | `make init` — needs `$SX_ROOT` (the SpiceXplorer workspace); links `.sx/platform`, initialises the `.sx/skills` library and the agent/skill links (plus the library's `pdk-<id>` skills when `harness.yaml` declares `pdk:`), syncs the venv. `doc/environment.md` has the rows |
 | anything | `doc/target-spec.md` — the acceptance box, pass/fail definitions |
 | measure something | `doc/benches.md` — reference-first, and the measure → spec-key map |
 | touch the DUT / model it | `doc/design-reference.md` — device map, validated model, the constraints every candidate respects |
@@ -94,9 +94,13 @@ undeclared case: an artefact somewhere nobody wrote down.
 - `make guard` — the two gates above in ONE command, plus a clean tree: run it before you push
   (see "Parallel sessions, blast radius, git"). `make hook-install` / `make hook-remove` attach it
   to `git push` as an opt-in `pre-push` hook.
-- `make pack K="noise irn"` — **working memory** at task start; re-run with `S="<failure
+- `make pack K="noise irn"` — **working memory** at task start (a new session already holds the
+  bare pack: the `SessionStart` hook, `doc/memory/README.md` §1); re-run with `S="<failure
   signature>"` before diagnosing anything new. `make runs ARGS="--fails | --best <metric> | --exp
   NNN"` reads the ledger every `metrics.evaluate()` appends to.
+- `make size PLAN=<plan.json> OUT=<dir>` / `make layout-flow RUN=<dir>` — the orchestration
+  workflows `workflows.sizing` (gm/ID sizing → optimizer project; `BUDGET=N` adds the optimize
+  step) and `workflows.layout`, run from `$SX_ROOT`'s orchestration venv; the rest through `ARGS`.
 - `make template-status` / `make template-update` — this repo was **copied** from the template, so
   it records the release it was cut from in `.sx/template-version` (`#.##`) and takes later MINOR
   work by three-way merge, never by overwrite (`CHANGELOG.md` says what each release changed; a
@@ -213,11 +217,11 @@ start of a session when `make status` in the design directory says the design's 
 from `make pack`, reads `harness.yaml`, obeys rules 7–10):
 `paper-analyst` (paper → falsifiable brief; never simulates), `variant-runner` (parallel batches),
 `signoff-verifier` (re-measures independently, signs the row), `schematic-builder` (the `.sch` of
-record), `gardener` (report-only, by design). Visual evidence is not optional: `.claude/skills/` —
+record), `schematic-reviewer` (report-only check that each sheet of record is legible and complete), `gardener` (report-only, by design). Visual evidence is not optional: `.claude/skills/` —
 `schematic-of-record`, `testbench-schematic` (components, not text), `findings-as-plots` (spec
 boxes on figures), `layout-evidence` (brief → generator → GDS → DRC/Jmax/LVS/PEX → review, via the linked
-`layout-*` agents) — say how each is produced and gated. Also linked: `gmid-sizing`,
-`current-mirrors`, `layout-annotation`, `neutral-artifact-naming`, and the bridge's two
+`layout-*` agents) — say how each is produced and gated. Also linked: `measurement-setup-of-record` (the measurement traps of the lane, the harness and the experiment process), `analog-knowledge-authoring` (the standard a knowledge skill is written to), `gmid-sizing`,
+`current-mirrors`, `layout-annotation`, `neutral-artifact-naming`, the library's `pdk-<id>` skills when `harness.yaml` declares `pdk:`, and the bridge's two
 remote-simulator skills (the `denylist:` keeps their vendor names out of this file).
 A request for a schematic means the xschem sheet of record built by `schematic-of-record`
 (never an ad-hoc drawing); only a cell already ported through the bridge's `xvport` lane is shown
