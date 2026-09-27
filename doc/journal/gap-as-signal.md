@@ -1,6 +1,6 @@
 # 2026-09-01 — a trap that bites twice becomes a lint
 
-KIND: journal entry | type: procedural | status: live
+KIND: journal entry | type: seed | status: live
 
 An agent that struggles has found something missing: a tool, a doc it could not find, or a check
 that would have caught the mistake. The struggle is the signal, not the agent. Fix the harness:

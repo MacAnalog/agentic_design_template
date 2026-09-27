@@ -61,6 +61,11 @@ title. Retiring an entry is a three-place edit: `status: superseded` in the head
 row. The pack serves only live entries. Retire the claim that no longer holds, not the
 whole entry.
 
+`type: seed` marks the example entries this template ships in `doc/journal/`. `make lint` indexes
+and checks them like any entry. The bare pack leaves them out; `make pack K="…"` still serves one
+when a keyword names it in its title or index row. The pack's floor of one lesson applies from
+the design's first entry of its own, which is `semantic` or `procedural`, never `seed`.
+
 ## 5. Blast radius
 
 One experiment = one worktree. The ledger and work dirs are per checkout, and `EXP=NNN` stamps

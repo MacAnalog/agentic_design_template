@@ -1,6 +1,6 @@
 # 2026-09-04 — the design package consolidated from the LDO, transmitter and LPF lanes
 
-KIND: journal entry | type: procedural | status: live
+KIND: journal entry | type: seed | status: live
 
 [2026-09-04 — this repo's package was called `lab/` when this entry was written and is
 now `design/` (see `template-revised-from-the-ldo-instance.md`). The module column below
