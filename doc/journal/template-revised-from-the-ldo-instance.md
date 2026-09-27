@@ -1,6 +1,6 @@
 # 2026-09-04 — the template revised from what its first two instantiations had to add
 
-KIND: journal entry | type: procedural | status: live
+KIND: journal entry | type: seed | status: live
 
 Two designs were cut from this template on the same day: an LDO and an optoelectronic
 transmitter. The tables below list everything each of them had to add, work around or discover,

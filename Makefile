@@ -9,18 +9,22 @@ ARGS ?=
 # `make clean-runs AGE=48`: how long a run's simulator log must have been cold
 # before the sweep may remove that run dir (hours).
 AGE ?= 24
+# The agent/skill links from .sx/skills: the library's `design` set, then its `pdk-<id>` set when
+# harness.yaml declares `pdk: <id>` and the pinned library ships that set (scripts/pdk_links.py).
+# init and skills-update both run this one line, so the two cannot link different sets.
+LINK = .sx/skills/bin/sx-link . --set design && $(PY) scripts/pdk_links.py
 
 help:  ## list every target
 	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-10s %s\n", $$1, $$2}'
 
 # One-time per checkout. SX_ROOT = the SpiceXplorer workspace checkout (the lab exports it in
 # ~/.sx_env; a read-only shared checkout is fine — editable installs write only into ./.venv).
-init:  ## set up this checkout: .sx/platform -> $$SX_ROOT/spicexplorer-platform, the .sx/skills library + agent/skill links, uv sync
+init:  ## set up this checkout: .sx/platform -> $$SX_ROOT/spicexplorer-platform, the .sx/skills library + agent/skill links (+ pdk-<id> for a declared pdk:), uv sync
 	@test -n "$(SX_ROOT)" || { echo "SX_ROOT is not set: export SX_ROOT=<your spicexplorer-workspace checkout> (the lab puts it in ~/.sx_env)"; exit 2; }
 	@test -f "$(SX_ROOT)/spicexplorer-platform/packages/spicexplorer-harness/pyproject.toml" || { echo "SX_ROOT=$(SX_ROOT) holds no spicexplorer-platform/ checkout: run 'make setup' there, or fix SX_ROOT"; exit 2; }
 	@mkdir -p .sx && ln -sfn "$(SX_ROOT)/spicexplorer-platform" .sx/platform
 	@git submodule update --init --recursive .sx/skills
-	@.sx/skills/bin/sx-link . --set design
+	@$(LINK)
 	@uv sync
 	@echo "init OK: .sx/platform -> $$(readlink .sx/platform); $$(ls .claude/agents | wc -l) agents + $$(ls .claude/skills | wc -l) skills linked from .sx/skills; next: make doctor"
 
@@ -39,7 +43,7 @@ template-migrate:  ## cross a MAJOR template release (1.xx -> 2.00): moves direc
 skills-update:  ## move .sx/skills (the shared agent/skill library) to its main, re-link, and stage the pin — then commit it
 	@test -e .sx/skills/.git || { echo "REFUSING: .sx/skills is not initialised (it has no .git), so its git commands would run in this design's own repository: run 'make init' first"; exit 2; }
 	@git -C .sx/skills fetch -q origin main && git -C .sx/skills checkout -q origin/main
-	@.sx/skills/bin/sx-link . --set design
+	@$(LINK)
 	@git add .sx/skills .claude
 	@echo "skills @ $$(git -C .sx/skills rev-parse --short HEAD): $$(ls .claude/agents | wc -l) agents + $$(ls .claude/skills | wc -l) skills linked; staged — commit the pin: git commit -m 'skills: bump .sx/skills to $$(git -C .sx/skills rev-parse --short HEAD)'"
 
@@ -65,6 +69,25 @@ runs:  ## query the run ledger (ARGS="--fails" | "--best gain_db --desc" | "--ex
 
 freeze:  ## write SHA256SUMS into the frozen dirs after a deliberate certification
 	@$(HARNESS) freeze
+
+# Two orchestration workflows, run in the workspace's orchestration venv ($SX_ROOT, as for
+# `make init`). Thin on purpose: the required arguments are named, the rest go through ARGS, and
+# `$(ORCH_PY) -m spicexplorer_orchestration.workflows.<name> --help` lists them. The library's
+# variant-runner and layout-designer agents call these when their MCP tool is not registered.
+ORCH_PY ?= $(SX_ROOT)/spicexplorer-orchestration/.venv/bin/python
+ORCH_OK = test -x "$(ORCH_PY)" || { if [ -z "$(SX_ROOT)" ]; then echo "SX_ROOT is not set: export SX_ROOT=<your spicexplorer-workspace checkout> (the lab puts it in ~/.sx_env), or set ORCH_PY"; \
+	else echo "no orchestration venv at $(ORCH_PY): run 'make setup' in SX_ROOT, or set ORCH_PY"; fi; exit 2; }
+GEN ?= layout/gen_cell.py
+
+size:  ## gm/ID sizing -> optimizer project (workflows.sizing): PLAN=<plan.json> OUT=<dir> (plan netlist paths relative to OUT) ARGS="--table n=<pdk>/<device> ..."; BUDGET=N adds N optimizer trials
+	@$(ORCH_OK)
+	@test -n "$(PLAN)" -a -n "$(OUT)" || { echo "make size needs PLAN=<SizingPlan JSON> and OUT=<dir for sizing.json + project_setup.yaml>, e.g. OUT=experiments/NNN-<slug>/out/sizing"; exit 2; }
+	@$(ORCH_PY) -m spicexplorer_orchestration.workflows.sizing . "$(PLAN)" --out "$(OUT)" $(if $(BUDGET),--optimize-budget $(BUDGET)) $(ARGS)
+
+layout-flow:  ## layout build, DRC, current density, LVS, PEX (workflows.layout): RUN=<run dir> GEN=layout/gen_cell.py ARGS="--netlist ... --cell ..."
+	@$(ORCH_OK)
+	@test -n "$(RUN)" || { echo "make layout-flow needs RUN=<run dir>, e.g. RUN=\$$SX_SCRATCH/<design>-layout (GDS and reports are scratch until signed off into signoff/layout/)"; exit 2; }
+	@$(ORCH_PY) -m spicexplorer_orchestration.workflows.layout . --generator "$(GEN)" --run-dir "$(RUN)" $(ARGS)
 
 # The scratch report runs WHATEVER the probe said, and the PROBE's exit code is what `make doctor`
 # returns: a down lane is exactly when nobody looks at the disk, and 212 GB of already-reduced
@@ -116,4 +139,4 @@ clean:  ## delete this checkout's work dir + experiment output (never the ledger
 clean-runs:  ## delete run dirs whose reduction is in the ledger and whose log is older than AGE hours (AGE=24; ARGS="--dry-run")
 	@$(PY) scripts/clean_runs.py --age $(AGE) $(ARGS)
 
-.PHONY: help init template-status template-update template-migrate skills-update lint check baseline certify pack runs freeze doctor test guard hook-install hook-remove notebooks clean clean-runs
+.PHONY: help init template-status template-update template-migrate skills-update lint check baseline certify pack runs freeze size layout-flow doctor test guard hook-install hook-remove notebooks clean clean-runs

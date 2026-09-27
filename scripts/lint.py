@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """`make lint`: the generic harness checks (driven by harness.yaml) plus this repo's own.
 
-Both template instantiations independently wrote the same two extra checks, so they ship here:
-`deck_rebuild` (a frozen deck must still be reproducible from `design/` + its `design.json`) and
-`spec_quotes` (the reference column of `doc/target-spec.md` must quote the certified scorecard).
-`deck_portable` joins them on the same evidence — two designs froze a deck carrying a
-machine-specific absolute library path. All three no-op until something is certified, so
-`make lint` is green on a bare template. Two more came from the same place: `deck_models` (a deck
+Both template instantiations independently wrote the same two extra checks. One, `deck_rebuild`
+(a frozen deck must still be reproducible from `design/` + its `design.json`), is a generic
+harness check (`spicexplorer_harness.lint.GENERIC`), so it is not in EXTRA. The other,
+`spec_quotes` (the reference column of `doc/target-spec.md` must quote the certified scorecard),
+ships here. `deck_portable` joins it on the same evidence — two designs froze a deck carrying a
+machine-specific absolute library path. Both no-op until something is certified, so `make lint`
+is green on a bare template. Two more came from the same place: `deck_models` (a deck
 that instantiates a device model must include that model's section — the one deck defect only a
 simulator could see) and `scratch_budget` (soft: a work dir over the warn mark whose biggest
 records nothing has reduced).
@@ -37,7 +38,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
-from scripts import githook  # noqa: E402
+from scripts import githook, pdk_links  # noqa: E402
 from spicexplorer_harness import lint, load  # noqa: E402
 from spicexplorer_harness.lint import Lint  # noqa: E402
 
@@ -59,45 +60,6 @@ def _frozen_dirs(L: Lint) -> list[Path]:
     return [L.h.path(rel) for rel in L.h.frozen if (L.h.path(rel) / "design.json").is_file()]
 
 
-def deck_rebuild(L: Lint) -> None:
-    """Every frozen bench must still be byte-reproducible from `design.dut.Design` + `design.json`.
-
-    The frozen `*.spice` are bytes; `design/dut.py` is their generator. If a bench template, a model
-    pin or the deck builder drifts, every experiment silently measures a different bench than the
-    certified one — and the drift is invisible, because the frozen bytes still hash correctly.
-    """
-    fix = ("a bench template, a submodule pin or design/dut.py changed: revert it, or re-certify "
-           "deliberately (`make certify && make freeze`) — an un-reproducible reference means "
-           "every A/B is measured against a bench nobody can rebuild")
-    for d in _frozen_dirs(L):
-        rel = d.relative_to(L.h.root).as_posix()
-        try:
-            # via `package:`, never `from design.dut import …`: the check that catches a
-            # half-finished rename must not itself be broken BY the rename
-            Design = importlib.import_module(f"{L.h.package}.dut").Design
-            point = Design.from_dict(json.loads((d / "design.json").read_text()))
-            built = {b: point.deck(b) for b in point.benches()}
-        except NotImplementedError:
-            continue  # a bare template: Design.deck is still the stub. `continue`, not `return`
-        except ModuleNotFoundError as exc:
-            L.fail("deck-rebuild", f"cannot import {L.h.package}.dut: {exc}",
-                   f"harness.yaml says `package: {L.h.package}` — finish the rename (the package "
-                   "dir, its imports, the Makefile, layout/signoff.py, experiments/_template/) "
-                   "or point `package:` at the directory that exists")
-            continue
-        except Exception as exc:  # noqa: BLE001
-            L.fail("deck-rebuild", f"cannot rebuild {rel} from its design.json: {exc!r}",
-                   "design.json must round-trip through design.dut.Design.from_dict; "
-                   "fix the loader or re-certify")
-            continue
-        for b, text in built.items():
-            p = d / f"{b}.spice"
-            if not p.exists():
-                L.fail("deck-rebuild", f"{rel}/{b}.spice is missing", fix)
-            elif p.read_text() != text:
-                L.fail("deck-rebuild", f"design.dut.Design.deck({b!r}) no longer reproduces {rel}/{b}.spice", fix)
-
-
 def abs_includes(text: str) -> list[str]:
     """Absolute paths named on a deck's include/library lines (`include`, `.include`, `.lib`)."""
     return [m.group(1) for m in _ABS_INCLUDE.finditer(text)]
@@ -109,8 +71,8 @@ def deck_portable(L: Lint) -> None:
     Bitten twice, in two designs: a deck built with the model library's absolute path in its
     include line was frozen and committed, which makes the certified reference unusable on any
     other machine and hard-codes a path that may not be publishable at all. Redaction on write
-    with restoration on read does not fix it — `deck_rebuild` above compares bytes, so every
-    redacted bench stops reproducing. The pattern that works lives in `design/sim.py`: the deck
+    with restoration on read does not fix it — the harness's `deck_rebuild` compares bytes, so
+    every redacted bench stops reproducing. The pattern that works lives in `design/sim.py`: the deck
     text names `$VAR`, `sim.DECK_VARS` declares it, `sim.run` resolves it at the moment of
     simulating, and the committed bytes stay portable.
     """
@@ -341,6 +303,9 @@ def sx_links(L: Lint) -> None:
     are per-entry symlinks into the `.sx/skills` submodule; a checkout where either dangles runs
     with no harness or with no agents, silently. Both are per-checkout state, so `make init` is
     the fix in every case.
+
+    The links checked are the library's `design` set, and its `pdk-<id>` set when `pdk:` in
+    harness.yaml declares a process the pinned library ships a set for (the one `make init` links).
     """
     root = L.h.root
     plat = root / ".sx" / "platform"
@@ -353,11 +318,18 @@ def sx_links(L: Lint) -> None:
         L.fail("sx-links", ".sx/skills (the analog-skill-directory submodule) is not initialised",
                "run `make init` (= git submodule update --init --recursive .sx/skills, then the links)")
         return
-    r = subprocess.run([str(tool), str(root), "--set", "design", "--check"], capture_output=True, text=True)
-    if r.returncode:
-        first = next((ln for ln in r.stdout.splitlines() if ln and not ln.startswith(" ")), "links missing")
-        L.fail("sx-links", first.strip(), "run `make init` (re-links every entry from .sx/skills; a "
-               "nested submodule needs the --recursive it does)")
+    sets = ["design"]
+    pdk_set = pdk_links.linkset(root, str(getattr(L.h, "pdk", "") or ""))
+    if pdk_set:
+        sets.append(pdk_set)            # after `design`, in the order `make init` links them
+    for name in sets:
+        r = subprocess.run([str(tool), str(root), "--set", name, "--check"], capture_output=True,
+                           text=True)
+        if r.returncode:
+            first = next((ln for ln in r.stdout.splitlines() if ln and not ln.startswith(" ")),
+                         "links missing")
+            L.fail("sx-links", first.strip(), "run `make init` (re-links every entry from "
+                   ".sx/skills; a nested submodule needs the --recursive it does)")
 
 
 # Where a committed artefact is allowed to live (template 2.00, "every artefact has a home").
@@ -496,7 +468,8 @@ def scratch_budget(L: Lint) -> None:
                "`make clean-runs AGE=0` once the campaign is finished")
 
 # `package-importable` is NOT here: the platform ships it (driven by `package:` in harness.yaml).
-EXTRA = (deck_rebuild, deck_portable, deck_models, spec_quotes, sx_links,
+# `deck_rebuild` is NOT here either: the platform's GENERIC runs it, and naming it here ran it twice.
+EXTRA = (deck_portable, deck_models, spec_quotes, sx_links,
          artifact_home, signoff_index, scratch_budget)
 
 
@@ -569,9 +542,8 @@ def own_tree_only(module=lint):
     None of this repo's own checks (EXTRA) reads every file below the repo root, so none of them
     needs `own_tree_walk`. What each one reads:
 
-    - `deck_rebuild`: `design.json` and the `<bench>.spice` of each frozen bench directory
-      (`frozen:` in harness.yaml); it imports `<package>.dut` to rebuild the decks.
-    - `deck_portable`: the `*.spice` files of the same frozen bench directories.
+    - `deck_portable`: the `*.spice` files of each frozen bench directory that holds a
+      `design.json` (`frozen:` in harness.yaml).
     - `deck_models`: imports `<package>.pdk` (`MODEL_GROUPS`, `CORNERS`, `section()`) and
       `<package>.dut`, and builds the decks of each frozen `design.json` and of
       `<package>.dut.REFERENCE`; it reads `lane:` in harness.yaml.
@@ -579,7 +551,8 @@ def own_tree_only(module=lint):
       (`spec_doc:`, default `doc/target-spec.md`) and the `spec:` rows of harness.yaml.
     - `sx_links`: `.sx/platform` (the harness `pyproject.toml` through it) and the output of
       `.sx/skills/bin/sx-link --check`, which reads one link under `.claude/agents/` or
-      `.claude/skills/` for each entry of `.sx/skills/linksets/design.txt`.
+      `.claude/skills/` for each entry of `.sx/skills/linksets/design.txt`, and of
+      `linksets/pdk-<id>.txt` when `pdk:` declares a process that file exists for.
     - `artifact_home`: the file list `git ls-files` prints.
     - `signoff_index`: the top-level entries of `signoff/` and `signoff/README.md`.
     - `scratch_budget`: the scratch work dir `<package>.sim.work()` returns (never inside the

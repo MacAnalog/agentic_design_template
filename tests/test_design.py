@@ -586,19 +586,6 @@ def test_signed_certify_survives_the_rename(renamed_repo, monkeypatch, tmp_path)
     assert doc["provenance"]["script_sha"]
 
 
-def test_deck_rebuild_resolves_the_package_from_harness_yaml(renamed_repo):
-    """The check that catches a half-finished rename must not itself be broken BY the rename —
-    and one un-implemented frozen dir must not skip every dir after it (`continue`, not `return`)."""
-    from spicexplorer_harness import load
-    from spicexplorer_harness.lint import Lint
-
-    mod = _load("scripts/lint.py")
-    L = Lint(load(renamed_repo))
-    mod.deck_rebuild(L)
-    assert len(L.fails) == 1 and "decks/reference" in L.fails[0]     # the stubbed dir was skipped
-    assert "No module named 'design'" not in L.fails[0]
-
-
 def test_spec_quotes_needs_the_certified_precision_not_a_substring(renamed_repo):
     from spicexplorer_harness import load
     from spicexplorer_harness.lint import Lint
@@ -1015,7 +1002,7 @@ def test_own_tree_only_names_each_listed_checks_package_imports():
     import ast
 
     listed = _own_tree_only_list()
-    assert "deck_rebuild" in listed, "the own_tree_only docstring no longer lists the checks"
+    assert "deck_portable" in listed, "the own_tree_only docstring no longer lists the checks"
     tree = ast.parse((_REPO / "scripts" / "lint.py").read_text())
     extra = next(n.value for n in tree.body if isinstance(n, ast.Assign)
                  and any(isinstance(t, ast.Name) and t.id == "EXTRA" for t in n.targets))
@@ -1042,6 +1029,36 @@ def test_lint_extras_are_green_on_the_bare_template():
         if check is not mod.sx_links:
             check(L)
     assert L.fails == []
+
+
+def test_no_extra_check_repeats_a_generic_harness_check():
+    """`make lint` runs `(*GENERIC, *EXTRA)` and names every check in its closing line. A check in
+    both lists runs twice and is named twice: `deck_rebuild` was, from the day the harness took it
+    into GENERIC until this template dropped its own copy."""
+    from spicexplorer_harness import lint as harness_lint
+
+    mod = _load("scripts/lint.py")
+    names = [c.__name__ for c in (*harness_lint.GENERIC, *mod.EXTRA)]
+    assert sorted({n for n in names if names.count(n) > 1}) == []
+    assert names.count("deck_rebuild") == 1
+
+
+_SETTINGS_DROP_IN = _REPO / ".sx" / "skills" / "settings" / "project-settings.json"
+
+
+@pytest.mark.skipif(not _SETTINGS_DROP_IN.is_file(),
+                    reason="no .sx/skills/settings/project-settings.json: `make init` has not run "
+                           "(the library is not checked out) or the library pin predates the file")
+def test_settings_json_is_the_library_drop_in_plus_the_session_start_hook():
+    """`.claude/settings.json` is the library's settings file (the kit-tree ask hook and the
+    permissions), plus this template's own `SessionStart` hook. Anything else the library changes
+    reaches a design only through this copy, so a copy that drifted from the pinned library runs
+    a hook or a permission list nobody reviewed."""
+    ours = json.loads((_REPO / ".claude" / "settings.json").read_text())
+    ours.get("hooks", {}).pop("SessionStart", None)
+    assert ours == json.loads(_SETTINGS_DROP_IN.read_text()), (
+        "copy the library's file: cp .sx/skills/settings/project-settings.json .claude/settings.json"
+        ", then put this template's SessionStart hook back into it")
 
 
 @pytest.mark.skipif(not _init_has_run(_REPO),
