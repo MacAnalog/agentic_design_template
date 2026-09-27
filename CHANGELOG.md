@@ -17,6 +17,139 @@ Versions are `MAJOR.MINOR`, written `#.##`:
 `make template-status` prints the recorded version and the latest release. Releases are git
 tags, `v<version>`.
 
+## v2.14 — per-PDK skills, the context pack at session start, `make size` and `make layout-flow`
+
+Minor. No module is renamed and every lifecycle command keeps its name; `make size` and
+`make layout-flow` are new. The template's own `make lint` needs a platform at 82d1584c
+(MacAnalog/spicexplorer-platform#311) or later, because its three journal entries are now
+`type: seed`; the rest of this release also runs on platform 1b08a0a. `.sx/skills` is library
+main at 0c2bf08. Before `make init` the suite gives 185 passed and 3 skipped, each skip naming
+`make init`; after it, 188 passed.
+
+| change | files | carried by `make template-update` |
+|---|---|---|
+| per-PDK skill links | `Makefile`, `scripts/pdk_links.py`, `scripts/lint.py` | yes |
+| the `pdk:` key | `harness.yaml` | no: add it by hand |
+| pack budget, archive dir, fleet index | `harness.yaml`, `doc/memory/` | no: add them by hand |
+| the context pack at session start | `.claude/settings.json`, `scripts/session_pack.py` | yes |
+| `make size`, `make layout-flow` | `Makefile` | yes |
+| `.claude/settings.json` is the library's settings file | `.claude/settings.json` | yes |
+| `deck_rebuild` runs once | `scripts/lint.py` | yes |
+| the template's journal entries are seeds | `doc/journal.md`, `doc/journal/` | no |
+| one pytest scratch folder per checkout path (template#44) | `tests/conftest.py` | yes |
+| the agent map names the new links and targets | `CLAUDE.md` | yes |
+
+- **`make init` and `make skills-update` link the library's `pdk-<id>` skills.** After the
+  `design` link set, both run `scripts/pdk_links.py`. It reads `pdk:` in `harness.yaml`:
+  - **`pdk: <id>`, and the pinned library ships `linksets/pdk-<id>.txt`:** it runs
+    `sx-link . --set pdk-<id>`. The library ships `pdk-ihp-sg13g2`, one skill.
+  - **`pdk: <id>`, no such set:** one INFO line, exit 0.
+  - **`pdk:` empty or absent:** nothing is linked or printed.
+  - The link is keyed on the declaration only, never on the registry. `make lint`'s `sx_links`
+    checks the `pdk-<id>` set after the `design` set.
+- **`harness.yaml` carries `pdk: ""`** with a one-line comment. It is empty on the template, so
+  `make lint` keeps its `pdk` warning (warning tier, exit 0) and `make init` links no more than
+  before. A design writes its process id there, as its preflight reports it (`ihp-sg13g2`).
+- **The `memory:` block** of `harness.yaml`:
+
+  | key | value | effect |
+  |---|---|---|
+  | `pack_budget` | `20000` | the assembled pack's ceiling in bytes; lessons are ranked and cut to what the other sections leave, and the Lessons heading says how many were dropped |
+  | `dirs` | adds `doc/memory/archive` | an archived entry keeps its index row and its lint checks |
+  | `load_dirs` | the other three | the archive is not served by the pack (`doc/memory/archive/README.md`) |
+  | `fleet_index` | `../../registry/fleet-lessons.json` | the design directory's index of every registered design's live lessons, from a clone at `<design directory>/designs/<name>/`; a `Fleet lessons` section when the file exists, nothing when it does not |
+  | `index_size_cap` | removed (was `32000`) | the harness charges only live index rows to the 20 kB entry cap |
+
+- **Each new session starts with the context pack.** `.claude/settings.json` gains a
+  `SessionStart` hook. When a session starts, after `/clear` and after a compaction, it runs
+  `scripts/session_pack.py`. That script runs the checkout's `.venv` interpreter for the pack
+  `make pack` prints with no keywords, and hands it to the session cut at a line boundary to
+  `memory.pack_budget` bytes (20000 when none is declared), with a last line saying where it was
+  cut. It never blocks a session and never asks anything: with no `harness.yaml`, no `.venv`
+  (before `make init`), or a pack that fails or runs past 20 s, it prints nothing and exits 0.
+  `make pack K="…"` stays the way to retrieve on a task's own words.
+- **`make size` and `make layout-flow`** run two orchestration workflows on this repo, in the
+  workspace's orchestration venv (`$SX_ROOT/spicexplorer-orchestration/.venv`; `ORCH_PY=`
+  overrides it). Both exit 2 with the fix when `SX_ROOT`, the venv or a required argument is
+  missing. The library's variant-runner and layout-designer agents use them when the MCP server
+  is not registered.
+  - **`make size PLAN=<plan.json> OUT=<dir> [BUDGET=N] [ARGS=…]`** runs `workflows.sizing`: gm/ID
+    sizing, then an optimizer project (`project_setup.yaml`, `sizing.json`). `BUDGET=N` adds N
+    optimizer trials (`--optimize-budget`, orchestration fb59cd4 or later).
+  - **`make layout-flow RUN=<run dir> [GEN=layout/gen_cell.py] [ARGS=…]`** runs
+    `workflows.layout`: layout build, DRC, current density, LVS, PEX.
+- **`.claude/settings.json` is the library's settings file**
+  (`.sx/skills/settings/project-settings.json`) plus the `SessionStart` block. Against the v2.13 copy, the kit-tree ask list gains the Grep and
+  Glob tools, and the ask hook's matcher gains `mcp__.*`, so an MCP tool call that names a
+  kit-tree path also asks. `test_settings_json_is_the_library_drop_in_plus_the_session_start_hook`
+  compares the two; it skips before `make init`, when the library is not checked out.
+- **`deck_rebuild` runs once.** The harness has run its own `deck_rebuild` in its generic checks
+  since platform #130, so `make lint` ran the check twice and listed it twice. The template's copy
+  (the function, its EXTRA entry and its test) is removed, and
+  `test_no_extra_check_repeats_a_generic_harness_check` fails when any check name is in both lists.
+- **The template's three journal entries are `type: seed`**
+  (`design-consolidated-from-three-lanes.md`, `gap-as-signal.md`,
+  `template-revised-from-the-ldo-instance.md`, and their type cells in `doc/journal.md`). On
+  platform 82d1584c the bare pack leaves them out, `make lint` prints a NOTE instead of failing
+  the pack's one-lesson floor, and the provenance check skips their pointers: 9 warnings to 0 on
+  the template. A platform older than 82d1584c refuses the type (`lacks a 'type:
+  semantic|procedural' header line`). `doc/memory/README.md` §4 says what the type means.
+- **One pytest scratch folder per checkout path** (template#44): `tests/conftest.py` puts it at
+  `$SX_SCRATCH/pytest/<folder name>-<first 8 hex of the sha256 of the checkout path>`, so two
+  checkouts with the same folder name no longer empty each other's folder.
+- **`uv.lock`** is current against platform main at 82d1584c. Relocking the eight platform
+  packages changed nothing: their declared dependencies are those of 1b08a0a. template#45 had
+  removed `control` 0.10.2 when the platform retired its Bode optimizer.
+- **`.sx/skills` moves from e9c0230 to 0c2bf08**, library main
+  (MacAnalog/analog-skill-directory#89). The `design` link set is the same 10 agents and 19
+  skills. The workflow steps of paper-analyst, variant-runner and layout-designer now try the
+  MCP tool first, then a command path (`make size` and `make layout-flow` where a design has
+  them), then the agent's own procedure; signoff-verifier's step calls `workflows.signoff`, which
+  has no MCP tool. The README's agent and skill rows now name every link of the set.
+- **`CLAUDE.md`** names the `pdk-<id>` skills in its `make init` row, the pack a new session
+  already holds beside `make pack`, `make size` and `make layout-flow` among the harness
+  commands, and `schematic-reviewer`, `measurement-setup-of-record` and
+  `analog-knowledge-authoring` among the agents and methods.
+- **Tests:** four new files (`test_pdk_links.py`, `test_session_pack.py`,
+  `test_memory_wiring.py`, `test_orchestration_targets.py`); `test_design.py` gains two tests
+  and loses the test of the removed `deck_rebuild` copy; `test_skills_update.py` gains one test
+  with two cases.
+
+**Taking it:**
+
+1. **`make template-update`.** It carries the `Makefile`, `scripts/` (`lint.py` merged
+   three-way; `pdk_links.py` and `session_pack.py` added), `tests/` and `.claude/settings.json`
+   (merged three-way), and `CLAUDE.md` and `CHANGELOG.md` with them. It does **not** carry
+   `harness.yaml`, `README.md` or `doc/`, and it never carries `uv.lock` or the `.sx/skills` pin.
+2. **Add to `harness.yaml` by hand**: `pdk: <its PDK id>`, and the `memory:` block. A design that
+   kept `index_size_cap` may drop it. The fleet path fits a clone at
+   `<design directory>/designs/<name>/`; anywhere else, give the absolute path of the design
+   directory's `registry/fleet-lessons.json`. Copy `doc/memory/archive/README.md` from the
+   template if the design wants it.
+
+   ```yaml
+   pdk: ihp-sg13g2
+   memory:
+     pack_budget: 20000
+     dirs: [doc/journal, doc/memory/semantic, doc/memory/procedural, doc/memory/archive]
+     load_dirs: [doc/journal, doc/memory/semantic, doc/memory/procedural]
+     fleet_index: ../../registry/fleet-lessons.json
+   ```
+
+   Until the design declares them, `tests/test_memory_wiring.py` skips its budget and fleet tests
+   and names the missing key; its test of the template's own values runs only on the template.
+3. **`make skills-update`** (or `make init`, to keep the current pin): the link step now adds
+   `.claude/skills/pdk-<id>` when the library ships that set. Commit the pin and the new link.
+4. **The seed marking** matters only for a design that still carries the three template entries
+   in `doc/journal/` as the template shipped them. On platform 82d1584c or later, those entries,
+   typed `procedural`, are served as lessons, and their pointers into the template's history give
+   provenance warnings (9 on the template). Mark them by hand:
+   `type: procedural` → `type: seed` on line 3 of each, and the same three type cells in
+   `doc/journal.md`. A design that edited, superseded or removed them leaves them as they are.
+5. **`make lint && make test`.** A design that edited `.claude/settings.json` sees the settings
+   test fail until the file is the pinned library's `settings/project-settings.json` plus the
+   `SessionStart` block again.
+
 ## v2.13 — tests pass before `make init`, lint skips nested checkouts, the push hook clears `GIT_DIR`
 
 Minor. No module is renamed; `harness.yaml` and `design/` are unchanged since v2.12, and the
