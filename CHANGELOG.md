@@ -123,7 +123,7 @@ main at 0c2bf08. Before `make init` the suite gives 185 passed and 3 skipped, ea
    `harness.yaml`, `README.md` or `doc/`, and it never carries `uv.lock` or the `.sx/skills` pin.
 2. **Add to `harness.yaml` by hand**: `pdk: <its PDK id>`, and the `memory:` block. A design that
    kept `index_size_cap` drops it only when its live index rows fit the 20000 B default
-   (`spicexplorer-harness health` prints `index_live_bytes`); a larger index keeps its cap, or the
+   (`spicexplorer-harness health --json` prints `index_live_bytes`); a larger index keeps its cap, or the
    journal lint fails on the size. The fleet path fits a clone at
    `<design directory>/designs/<name>/`; anywhere else, give the absolute path of the design
    directory's `registry/fleet-lessons.json`. Copy `doc/memory/archive/README.md` from the
