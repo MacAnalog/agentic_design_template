@@ -98,7 +98,7 @@ undeclared case: an artefact somewhere nobody wrote down.
   bare pack: the `SessionStart` hook, `doc/memory/README.md` §1); re-run with `S="<failure
   signature>"` before diagnosing anything new. `make runs ARGS="--fails | --best <metric> | --exp
   NNN"` reads the ledger every `metrics.evaluate()` appends to.
-- `make size PLAN=<plan.json> OUT=<dir>` / `make layout-flow RUN=<dir>` — the orchestration
+- `make size PLAN=<plan.json> OUT=<dir>` (the plan's netlist paths are relative to OUT) / `make layout-flow RUN=<dir>` — the orchestration
   workflows `workflows.sizing` (gm/ID sizing → optimizer project; `BUDGET=N` adds the optimize
   step) and `workflows.layout`, run from `$SX_ROOT`'s orchestration venv; the rest through `ARGS`.
 - `make template-status` / `make template-update` — this repo was **copied** from the template, so

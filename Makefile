@@ -79,7 +79,7 @@ ORCH_OK = test -x "$(ORCH_PY)" || { if [ -z "$(SX_ROOT)" ]; then echo "SX_ROOT i
 	else echo "no orchestration venv at $(ORCH_PY): run 'make setup' in SX_ROOT, or set ORCH_PY"; fi; exit 2; }
 GEN ?= layout/gen_cell.py
 
-size:  ## gm/ID sizing -> optimizer project (workflows.sizing): PLAN=<plan.json> OUT=<dir> ARGS="--table n=<pdk>/<device> ..."; BUDGET=N adds N optimizer trials
+size:  ## gm/ID sizing -> optimizer project (workflows.sizing): PLAN=<plan.json> OUT=<dir> (plan netlist paths relative to OUT) ARGS="--table n=<pdk>/<device> ..."; BUDGET=N adds N optimizer trials
 	@$(ORCH_OK)
 	@test -n "$(PLAN)" -a -n "$(OUT)" || { echo "make size needs PLAN=<SizingPlan JSON> and OUT=<dir for sizing.json + project_setup.yaml>, e.g. OUT=experiments/NNN-<slug>/out/sizing"; exit 2; }
 	@$(ORCH_PY) -m spicexplorer_orchestration.workflows.sizing . "$(PLAN)" --out "$(OUT)" $(if $(BUDGET),--optimize-budget $(BUDGET)) $(ARGS)
