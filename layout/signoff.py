@@ -47,7 +47,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
-from spicexplorer_harness import load  # noqa: E402
+from spicexplorer_harness import load
 
 H = load(REPO)
 # Resolved through `package:`, never spelled `design.…`: this file must survive the instantiation

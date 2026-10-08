@@ -13,12 +13,12 @@ from pathlib import Path
 import matplotlib
 
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt  # noqa: E402
-import numpy as np  # noqa: E402
-from spicexplorer_waveview.eye import fold, rx_bandwidth  # noqa: E402
-from spicexplorer_waveview.stimulus import Data  # noqa: E402
+import matplotlib.pyplot as plt
+import numpy as np
+from spicexplorer_waveview.eye import fold, rx_bandwidth
+from spicexplorer_waveview.stimulus import Data
 
-from .sim import H  # noqa: E402
+from .sim import H
 
 plt.rcParams.update({"font.size": 9, "axes.grid": True, "grid.alpha": 0.3, "figure.dpi": 130})
 SPEC = {r.key: r for r in H.spec}

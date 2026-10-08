@@ -38,10 +38,10 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
-from spicexplorer_harness import lint, load  # noqa: E402
-from spicexplorer_harness.lint import Lint  # noqa: E402
+from spicexplorer_harness import lint, load
+from spicexplorer_harness.lint import Lint
 
-from scripts import githook, pdk_links  # noqa: E402
+from scripts import githook, pdk_links
 
 # How a certified number may be written in doc/target-spec.md; any one WHOLE-TOKEN match passes.
 # Three significant figures minimum, on purpose: at `{:.0f}` a doc reading `62` would "quote" a
@@ -403,7 +403,7 @@ def artifact_home(L: Lint) -> None:
     — and a design with its own durable output directory adds one line to `ARTIFACT_HOMES` above.
     What it refuses is the undeclared case: an artefact somewhere nobody wrote down.
     """
-    import subprocess  # noqa: PLC0415 - local: a design's lint.py may not import it at module level
+    import subprocess
 
     root = L.h.root
     r = subprocess.run(
@@ -492,7 +492,7 @@ def scratch_budget(L: Lint) -> None:
     means work is being lost as well as disk — a raw record nobody has reduced is a re-simulation
     waiting to happen, not evidence.
     """
-    from scripts import clean_runs  # noqa: PLC0415 - local: only this check pays for the import
+    from scripts import clean_runs
 
     work, _note = clean_runs.work_dir()
     if work is None or not work.is_dir():
