@@ -30,7 +30,11 @@ import time
 from pathlib import Path
 
 from spicexplorer_harness import batch, log_run
-from spicexplorer_harness.lifecycle import CertifyRefused, Drift, Lifecycle
+from spicexplorer_harness.lifecycle import (  # noqa: F401 - re-exported: callers use metrics.CertifyRefused/Drift
+    CertifyRefused,
+    Drift,
+    Lifecycle,
+)
 
 from . import bench as bench_mod
 from . import sim

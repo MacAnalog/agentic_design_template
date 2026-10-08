@@ -36,7 +36,7 @@ TEXT_SUFFIXES = (".md", ".py", ".yaml", ".yml", ".txt", ".ipynb")
 
 
 def sh(*args: str, check: bool = True) -> str:
-    r = subprocess.run(args, cwd=REPO, capture_output=True, text=True)
+    r = subprocess.run(args, cwd=REPO, capture_output=True, check=False, text=True)
     if check and r.returncode:
         raise SystemExit(f"$ {' '.join(args)}\n{r.stdout}{r.stderr}")
     return r.stdout
@@ -240,9 +240,9 @@ def _frozen_entries() -> tuple[list[str], str]:
     y = (REPO / "harness.yaml").read_text()
     # re.S on purpose: a real design wraps the list over two lines, and a single-line regex
     # reports "nothing is frozen" for a repo with six frozen dirs.
-    m = re.search(r"^frozen:\s*\[(.*?)\]", y, re.M | re.S)
+    m = re.search(r"^frozen:\s*\[(.*?)\]", y, re.MULTILINE | re.DOTALL)
     entries = [e.strip().strip("'\"") for e in m.group(1).split(",") if e.strip()] if m else []
-    c = re.search(r'^reference_scorecard:\s*["\']?([^"\'\n#]*)', y, re.M)
+    c = re.search(r'^reference_scorecard:\s*["\']?([^"\'\n#]*)', y, re.MULTILINE)
     return entries, (c.group(1).strip() if c else "")
 
 
@@ -403,7 +403,12 @@ def phase_rows(plan: Plan) -> None:
         plan.do(
             "harness.yaml: add Phase to experiments_rows",
             lambda: y.write_text(
-                re.sub(r"^experiments_rows:\s*\[", "experiments_rows: [Phase, ", text, flags=re.M)
+                re.sub(
+                    r"^experiments_rows:\s*\[",
+                    "experiments_rows: [Phase, ",
+                    text,
+                    flags=re.MULTILINE,
+                )
             ),
         )
 
@@ -419,7 +424,7 @@ def phase_rows(plan: Plan) -> None:
         # (`| **Paper(s)** | … |`). Match whichever this file uses, or the row is inserted in a
         # form its own table will not render — and `make lint` fails on a file the migration
         # claims to have fixed.
-        m = re.search(r"^(\|\s*)?\*\*Paper", t, re.M)
+        m = re.search(r"^(\|\s*)?\*\*Paper", t, re.MULTILINE)
         if not m:
             plan.note(f"{rel}: no **Paper row to anchor **Phase** to — add it by hand")
             continue
@@ -430,7 +435,8 @@ def phase_rows(plan: Plan) -> None:
         )
         plan.do(
             f"insert a **Phase** row in {rel} ({'table' if m.group(1) else 'bold-line'} form)",
-            lambda p=readme, t=t, i=m.start(): p.write_text(t[:i] + row + t[i:]),
+            # Plan.do runs fn immediately, so `row` is this iteration's value (no late binding).
+            lambda p=readme, t=t, i=m.start(): p.write_text(t[:i] + row + t[i:]),  # noqa: B008, B023
         )
 
 

@@ -36,7 +36,7 @@ class Design:
         return dataclasses.asdict(self)
 
     @classmethod
-    def from_dict(cls, d: dict) -> "Design":
+    def from_dict(cls, d: dict) -> Design:
         fields = {f.name for f in dataclasses.fields(cls)}
         return cls(**{k: v for k, v in d.items() if k in fields})
 

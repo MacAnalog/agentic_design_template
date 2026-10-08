@@ -84,12 +84,16 @@ def test_reduced_is_a_row_that_is_not_a_bare_sim_error():
 @pytest.mark.parametrize(
     "kw, delete, phrase",
     [
-        (dict(busy=True, age_s=99 * HOUR, rows=[{"status": "ok"}]), False, "in progress"),
-        (dict(busy=False, age_s=99 * HOUR, rows=[]), False, "no ledger row"),
-        (dict(busy=False, age_s=99 * HOUR, rows=[{"status": "sim_error"}]), False, "the evidence"),
-        (dict(busy=False, age_s=None, rows=[{"status": "ok"}]), False, "no simulator log"),
-        (dict(busy=False, age_s=2 * HOUR, rows=[{"status": "ok"}]), False, "AGE=24"),
-        (dict(busy=False, age_s=99 * HOUR, rows=[{"status": "ok"}]), True, "reduced"),
+        ({"busy": True, "age_s": 99 * HOUR, "rows": [{"status": "ok"}]}, False, "in progress"),
+        ({"busy": False, "age_s": 99 * HOUR, "rows": []}, False, "no ledger row"),
+        (
+            {"busy": False, "age_s": 99 * HOUR, "rows": [{"status": "sim_error"}]},
+            False,
+            "the evidence",
+        ),
+        ({"busy": False, "age_s": None, "rows": [{"status": "ok"}]}, False, "no simulator log"),
+        ({"busy": False, "age_s": 2 * HOUR, "rows": [{"status": "ok"}]}, False, "AGE=24"),
+        ({"busy": False, "age_s": 99 * HOUR, "rows": [{"status": "ok"}]}, True, "reduced"),
     ],
 )
 def test_decide_keeps_everything_it_cannot_prove_is_spent(kw, delete, phrase):

@@ -79,7 +79,7 @@ quit
 # Platform names, kept under the names this repo's tests, docs and ledger rows use.
 SimError = DeckRunError
 Run = RunResult
-__all__ = [
+__all__ = [  # noqa: RUF022 - kept in declaration order
     "H",
     "REPO",
     "CHECKOUT",

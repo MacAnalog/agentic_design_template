@@ -122,7 +122,11 @@ def load_sizing(path: str | Path | None = None) -> dict:
     return json.loads(Path(path).read_text())
 
 
-def build(params: LayoutParams = LayoutParams(), sizing: dict | None = None):
+# One shared default, evaluated once at import exactly as the inline default was.
+_DEFAULT_PARAMS = LayoutParams()
+
+
+def build(params: LayoutParams = _DEFAULT_PARAMS, sizing: dict | None = None):
     """Place and route the cell; return the gdsfactory Component."""
     import gdsfactory as gf  # noqa: F401  (the generator interpreter, not the repo venv)
 
@@ -134,7 +138,7 @@ def build(params: LayoutParams = LayoutParams(), sizing: dict | None = None):
 
 
 def write_lvs_reference(
-    params: LayoutParams = LayoutParams(),
+    params: LayoutParams = _DEFAULT_PARAMS,
     sizing: dict | None = None,
     out: str | Path = f"{CELL}_lvs.spice",
 ) -> Path:

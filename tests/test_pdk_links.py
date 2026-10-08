@@ -33,7 +33,7 @@ def _with_pdk(line: str) -> str:
     """This checkout's harness.yaml with its `pdk:` line replaced by `line` ("" drops it). A design
     that has not added `pdk:` yet (CHANGELOG v2.14, Taking it, step 2) gets the line appended, so
     these tests do not depend on that step."""
-    out, n = re.subn(r"^pdk:.*$", line, TEMPLATE_YAML, count=1, flags=re.M)
+    out, n = re.subn(r"^pdk:.*$", line, TEMPLATE_YAML, count=1, flags=re.MULTILINE)
     if n == 0:
         out = TEMPLATE_YAML.rstrip("\n") + "\n" + (line + "\n" if line else "")
     return out

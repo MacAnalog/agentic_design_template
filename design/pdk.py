@@ -129,7 +129,7 @@ def lib_envs() -> tuple[str, ...]:
 # above it pins the revision — which is what makes the deck reproducible without carrying the path.
 TOKEN = f"${LIB_ENV}"
 
-__all__ = [
+__all__ = [  # noqa: RUF022 - kept in declaration order
     "REVISION",
     "SECTIONS",
     "MODEL_GROUPS",

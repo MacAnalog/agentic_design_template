@@ -84,7 +84,7 @@ def main() -> int:
     try:
         sys.stdout.write(pack())
         sys.stdout.flush()
-    except BaseException:  # noqa: BLE001 - a session start is never blocked or told about it
+    except BaseException:  # noqa: BLE001, S110 - a session start is never blocked or told about it
         pass
     return 0
 

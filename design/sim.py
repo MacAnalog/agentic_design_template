@@ -44,7 +44,7 @@ REPO = Path(__file__).resolve().parents[1]
 LANES: dict[str, str] = {"ngspice": "sim_ngspice", "bridge": "sim_bridge"}
 DEFAULT_LANE = "ngspice"
 
-__all__ = ["LANES", "DEFAULT_LANE", "LANE", "lane_name", "module_name"]
+__all__ = ["LANES", "DEFAULT_LANE", "LANE", "lane_name", "module_name"]  # noqa: RUF022 - declaration order
 
 
 def module_name(lane: str) -> str:

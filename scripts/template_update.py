@@ -69,7 +69,7 @@ PKG_EXCLUDE = (":!dut.py",)
 
 
 def sh(*args: str, cwd: Path = REPO, check: bool = True) -> str:
-    r = subprocess.run(args, cwd=cwd, capture_output=True, text=True)
+    r = subprocess.run(args, cwd=cwd, capture_output=True, check=False, text=True)
     if check and r.returncode:
         raise SystemExit(f"$ {' '.join(args)}\n{r.stdout}{r.stderr}")
     return r.stdout
@@ -153,7 +153,7 @@ def _apply_one(diff: str, directory: str | None) -> tuple[bool, str]:
     cmd = ["git", "apply", "--3way", "--whitespace=nowarn"]
     if directory:
         cmd += [f"--directory={directory}"]
-    r = subprocess.run(cmd, cwd=REPO, input=diff, capture_output=True, text=True)
+    r = subprocess.run(cmd, cwd=REPO, input=diff, capture_output=True, check=False, text=True)
     return r.returncode == 0, (r.stdout + r.stderr).strip()
 
 

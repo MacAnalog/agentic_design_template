@@ -54,7 +54,9 @@ QUOTE_FIXED = ("{:.3f}", "{:.2f}")
 NUMBER = re.compile(r"-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?")
 # An include/library line naming an ABSOLUTE path: what `deck_portable` refuses in a frozen deck.
 # `$VAR` and repo-relative spellings are the portable forms and never match.
-_ABS_INCLUDE = re.compile(r'^\s*\.?(?:include|lib)\b[^\n]*?["\'\s](/[^"\'\s]+)', re.I | re.M)
+_ABS_INCLUDE = re.compile(
+    r'^\s*\.?(?:include|lib)\b[^\n]*?["\'\s](/[^"\'\s]+)', re.IGNORECASE | re.MULTILINE
+)
 
 
 def _frozen_dirs(L: Lint) -> list[Path]:
@@ -99,9 +101,10 @@ def _token(name: str) -> re.Pattern[str]:
 
 # The header lines a section can be declared on, and the section each one names.
 _SECTION_OF = re.compile(
-    r'^\s*\.?(?:include|lib)\b[^\n]*?\bsection\s*=\s*["\']?([A-Za-z0-9_.-]+)', re.I | re.M
+    r'^\s*\.?(?:include|lib)\b[^\n]*?\bsection\s*=\s*["\']?([A-Za-z0-9_.-]+)',
+    re.IGNORECASE | re.MULTILINE,
 )
-_INCLUDE_LINE = re.compile(r"^\s*\.?(?:include|lib)\b", re.I)
+_INCLUDE_LINE = re.compile(r"^\s*\.?(?:include|lib)\b", re.IGNORECASE)
 # Comment spellings both deck dialects use. `*` only in the first column, which is the SPICE rule.
 _COMMENT_LINE = re.compile(r"^\s*(?:\*|//|;)|^\*")
 
@@ -141,7 +144,7 @@ def _points(L: Lint) -> list[tuple[str, object]]:
     for d in _frozen_dirs(L):
         try:
             point = dut.Design.from_dict(json.loads((d / "design.json").read_text()))
-        except Exception:  # noqa: BLE001 - `deck_rebuild` reports an unloadable design.json
+        except Exception:  # noqa: BLE001, S112 - `deck_rebuild` reports an unloadable design.json
             continue
         out.append((d.relative_to(L.h.root).as_posix(), point))
     ref = getattr(dut, "REFERENCE", None)
@@ -204,14 +207,14 @@ def deck_models(L: Lint) -> None:
     for where, point in _points(L):
         try:
             benches = list(point.benches())
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001, S112 - `deck_rebuild` reports a broken bench list
             continue
         for bench in benches:
             try:
                 deck = point.deck(bench)
             except NotImplementedError:
                 continue  # a bare template: `Design.deck` is still the stub
-            except Exception:  # noqa: BLE001 - `deck_rebuild` reports a builder that raises
+            except Exception:  # noqa: BLE001, S112 - `deck_rebuild` reports a builder that raises
                 continue
             have = header_sections(deck)
             body = instantiating_body(deck)
@@ -287,7 +290,7 @@ def spec_quotes(L: Lint) -> None:
     doc = h.text(h.spec_doc).replace("**", "").replace("−", "-")
     for row in h.spec:
         v = card.get(row.key)
-        if not isinstance(v, (int, float)) or isinstance(v, bool) or v != v:
+        if not isinstance(v, (int, float)) or isinstance(v, bool) or v != v:  # noqa: PLR0124 - NaN
             continue
         written = [f.format(v) for f in QUOTE_FORMATS]
         written += [f.format(v) for f in QUOTE_FIXED] if abs(v) >= 1 else []
@@ -349,7 +352,10 @@ def sx_links(L: Lint) -> None:
         sets.append(pdk_set)  # after `design`, in the order `make init` links them
     for name in sets:
         r = subprocess.run(
-            [str(tool), str(root), "--set", name, "--check"], capture_output=True, text=True
+            [str(tool), str(root), "--set", name, "--check"],
+            capture_output=True,
+            check=False,
+            text=True,
         )
         if r.returncode:
             first = next(
@@ -400,7 +406,9 @@ def artifact_home(L: Lint) -> None:
     import subprocess  # noqa: PLC0415 - local: a design's lint.py may not import it at module level
 
     root = L.h.root
-    r = subprocess.run(["git", "ls-files", "-z"], cwd=root, capture_output=True, text=True)
+    r = subprocess.run(
+        ["git", "ls-files", "-z"], cwd=root, capture_output=True, check=False, text=True
+    )
     if r.returncode:
         return  # not a git checkout (a template copied by hand): nothing to check
     # Grouped by top-level directory, because that is the unit you DECLARE. Reporting one failure

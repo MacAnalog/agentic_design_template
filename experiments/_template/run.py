@@ -21,7 +21,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from design import bench, exp, metrics, plot  # noqa: E402
+from design import bench, exp, metrics, plot  # noqa: E402, F401 - `bench` on purpose, see below
 from design.dut import Design  # noqa: E402
 
 # `bench` is imported on purpose: an experiment that post-processes a run reports through

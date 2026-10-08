@@ -51,6 +51,7 @@ def git(root: Path, *args: str) -> subprocess.CompletedProcess:
         ["git", "-c", "user.email=t@t", "-c", "user.name=t", "-c", "commit.gpgsign=false", *args],
         cwd=root,
         capture_output=True,
+        check=False,
         text=True,
         env=_env(),
     )
@@ -58,7 +59,12 @@ def git(root: Path, *args: str) -> subprocess.CompletedProcess:
 
 def make(root: Path, *args: str, **env: str) -> subprocess.CompletedProcess:
     return subprocess.run(
-        ["make", *args], cwd=root, capture_output=True, text=True, env={**_env(), **env}
+        ["make", *args],
+        cwd=root,
+        capture_output=True,
+        check=False,
+        text=True,
+        env={**_env(), **env},
     )
 
 
@@ -239,6 +245,7 @@ def test_guard_skip_test_reaches_the_hook_through_the_environment(pushable):
         ["git", "push", "--dry-run", "origin", "main"],
         cwd=root,
         capture_output=True,
+        check=False,
         text=True,
         env={**_env(), "GUARD_SKIP_TEST": "1"},
     )

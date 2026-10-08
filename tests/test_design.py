@@ -9,6 +9,7 @@ import sys
 import types
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from typing import ClassVar
 
 import numpy as np
 import pytest
@@ -483,8 +484,13 @@ def _certify_env(monkeypatch):
     from design import metrics
 
     class _R:
-        measures = {"gain_db": 61.0, "pm_deg": 70.0, "power_uw": 9.0, "dead": float("nan")}
-        failed: list[str] = []
+        measures: ClassVar[dict[str, float]] = {
+            "gain_db": 61.0,
+            "pm_deg": 70.0,
+            "power_uw": 9.0,
+            "dead": float("nan"),
+        }
+        failed: ClassVar[list[str]] = []
         wall = 0.1
 
     rows: list[dict] = []
@@ -501,7 +507,7 @@ def _certify_env(monkeypatch):
 
 
 def test_certify_unsigned_writes_no_provenance_block(_certify_env, tmp_path):
-    metrics, rows = _certify_env
+    metrics, _rows = _certify_env
     doc = metrics.certify(_D(), tag="t", out=tmp_path).doc  # a CertifyResult now, not a dict
     # The shared lifecycle ALWAYS writes the provenance block, and always logs the row that backs
     # it — `evidence: awaiting`, the delivery claim. That is the difference from the copy this

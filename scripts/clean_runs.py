@@ -67,7 +67,7 @@ BUSY = ".busy"
 _RUN_HASH = re.compile(r"-[0-9a-f]{8}$")
 _SLUG = re.compile(r"[^A-Za-z0-9_.-]+")
 
-__all__ = [
+__all__ = [  # noqa: RUF022 - kept in declaration order
     "AGE_HOURS",
     "WARN_GB_ENV",
     "DEFAULT_WARN_GB",

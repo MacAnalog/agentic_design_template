@@ -61,7 +61,7 @@ exit 1
 
 
 def _git(repo: Path, *args: str) -> str:
-    r = subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True)
+    r = subprocess.run(["git", "-C", str(repo), *args], capture_output=True, check=False, text=True)
     if r.returncode:
         raise SystemExit(f"git {' '.join(args)} failed in {repo}: {r.stderr.strip()}")
     return r.stdout.strip()

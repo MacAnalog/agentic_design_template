@@ -50,7 +50,7 @@ def fmt(v, p: int = 2) -> str:
     if isinstance(v, bool):
         return str(v)
     if isinstance(v, (int, float)):
-        if v != v:
+        if v != v:  # noqa: PLR0124 - NaN check that also covers numpy scalars
             return "nan"
         return f"{v:.{p}f}" if abs(v) < 1e4 else f"{v:.3g}"
     return "—" if v is None else str(v)

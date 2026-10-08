@@ -69,7 +69,7 @@ MODE = ""
 PROBE = _doctor.PROBE
 PROBE_KEYS = _doctor.PROBE_KEYS
 
-__all__ = [
+__all__ = [  # noqa: RUF022 - kept in declaration order
     "H",
     "REPO",
     "CHECKOUT",
