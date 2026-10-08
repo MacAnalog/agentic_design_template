@@ -1409,6 +1409,24 @@ def test_every_signoff_stage_names_its_pdk(fake_lanes, monkeypatch, tmp_path):
         assert fake_lanes[stage].get("pdk") == "some-pdk", stage
 
 
+def test_current_density_prints_a_skip_as_skipped(fake_lanes, monkeypatch, tmp_path, capsys):
+    """An empty `BUDGETS` comes back `skipped=True` with `passed=False`: the console line must say
+    skipped, not read like a failed check (issue #48)."""
+    signoff = _load("layout/signoff.py")
+    monkeypatch.setenv(signoff.PDK_ENV, "some-pdk")
+    skipped = types.SimpleNamespace(
+        passed=False, skipped=True, n_checked=0, worst_over_factor=0.0,
+        reason="no budget was given", to_dict=lambda: {"passed": False, "skipped": True})
+    monkeypatch.setattr(sys.modules["spicexplorer_signoff"], "check_current_density",
+                        lambda budgets, **kw: skipped)
+    assert signoff.BUDGETS == []
+    rec = signoff.current_density(tmp_path)
+    line = capsys.readouterr().out
+    assert "Jmax: skipped (no budget was given)" in line
+    assert "passed=False" not in line
+    assert rec["skipped"] is True
+
+
 def test_pdk_has_no_silent_default(monkeypatch):
     signoff = _load("layout/signoff.py")
     monkeypatch.delenv(signoff.PDK_ENV, raising=False)
