@@ -47,9 +47,9 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
-from spicexplorer_harness import ledger as LG  # noqa: E402
-from spicexplorer_harness import load  # noqa: E402
-from spicexplorer_harness.retention import human_bytes  # noqa: E402
+from spicexplorer_harness import ledger as LG
+from spicexplorer_harness import load
+from spicexplorer_harness.retention import human_bytes
 
 #: Default age gate, in hours: a record whose log was written more recently is still warm.
 AGE_HOURS = 24.0

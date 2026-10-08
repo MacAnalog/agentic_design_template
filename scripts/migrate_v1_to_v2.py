@@ -499,7 +499,7 @@ def propagate(plan: Plan, cur: str) -> list[tuple[str, str, str]]:
     """
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     try:
-        import template_update as tu  # noqa: PLC0415
+        import template_update as tu
     except ModuleNotFoundError:
         raise SystemExit(
             "scripts/template_update.py is missing, so there is no way to take 2.00's content "
