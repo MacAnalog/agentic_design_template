@@ -53,9 +53,9 @@ H = load(Path(__file__).resolve().parents[1])
 REPO = H.root
 CHECKOUT = hashlib.sha256(str(REPO).encode()).hexdigest()[:8]
 
-LANE_ENV = H.sim_env      # a launcher carrying the tool environment; unset = the lane's own name
-WORK_ENV = H.work_env     # the work root; else $SX_SCRATCH/<design>-<checkout>
-DECK_NAME = _lane.DECK_NAME   # the deck every run dir holds, under the name the tool's logs quote
+LANE_ENV = H.sim_env  # a launcher carrying the tool environment; unset = the lane's own name
+WORK_ENV = H.work_env  # the work root; else $SX_SCRATCH/<design>-<checkout>
+DECK_NAME = _lane.DECK_NAME  # the deck every run dir holds, under the name the tool's logs quote
 
 # The mode args every bench in this design runs under, as the platform lane's `mode_args` spells
 # them. `""` — the default here — passes no mode flags, so the simulator runs in its own default
@@ -69,12 +69,33 @@ MODE = ""
 PROBE = _doctor.PROBE
 PROBE_KEYS = _doctor.PROBE_KEYS
 
-__all__ = ["H", "REPO", "CHECKOUT", "LANE_ENV", "WORK_ENV", "DECK_NAME", "MODE", "PROBE",
-           "PROBE_KEYS", "LaneNotConfigured", "SimError", "Run", "work", "simulator", "run",
-           "psf", "psf_dir", "scalars", "wall_time", "preflight", "main"]
+__all__ = [
+    "H",
+    "REPO",
+    "CHECKOUT",
+    "LANE_ENV",
+    "WORK_ENV",
+    "DECK_NAME",
+    "MODE",
+    "PROBE",
+    "PROBE_KEYS",
+    "LaneNotConfigured",
+    "SimError",
+    "Run",
+    "work",
+    "simulator",
+    "run",
+    "psf",
+    "psf_dir",
+    "scalars",
+    "wall_time",
+    "preflight",
+    "main",
+]
 
 
 # ------------------------------------------------------------------ where and what ----
+
 
 def work() -> Path:
     """`$<work_env>`, else `$SX_SCRATCH/<design>-<checkout>` (else `~/sx-scratch/...`).
@@ -111,8 +132,16 @@ _psf_dirs = _results.psf_dirs
 
 # ------------------------------------------------------------------ run ---------------
 
-def run(deck: str, label: str, *, timeout: int = 3600, extra_files: dict[str, str] | None = None,
-        include_files: list[str] | None = None, spectre_args: list[str] | None = None) -> Run:
+
+def run(
+    deck: str,
+    label: str,
+    *,
+    timeout: int = 3600,
+    extra_files: dict[str, str] | None = None,
+    include_files: list[str] | None = None,
+    spectre_args: list[str] | None = None,
+) -> Run:
     """Simulate `deck` in `work()/runs/<label>-<deck hash>/` on the remote lane.
 
     `extra_files` are written beside the deck (a side file the deck `include`s, a stimulus file);
@@ -137,15 +166,24 @@ def run(deck: str, label: str, *, timeout: int = 3600, extra_files: dict[str, st
     args = mode_args() if spectre_args is None else list(spectre_args)
     binary = simulator()
     named = {"simulator": binary} if binary else {}
-    return _lane.run_deck(pdk.restore(deck), label, work=work(), timeout=timeout,
-                          extra_files=extra_files, include_files=include_files,
-                          spectre_args=args, **named)
+    return _lane.run_deck(
+        pdk.restore(deck),
+        label,
+        work=work(),
+        timeout=timeout,
+        extra_files=extra_files,
+        include_files=include_files,
+        spectre_args=args,
+        **named,
+    )
 
 
 # ------------------------------------------------------------------ doctor ------------
 
-def preflight(deck: str = PROBE,
-              expect: tuple[tuple[str, ...], float, float] = (PROBE_KEYS, 1.0, 1e-3)) -> dict:
+
+def preflight(
+    deck: str = PROBE, expect: tuple[tuple[str, ...], float, float] = (PROBE_KEYS, 1.0, 1e-3)
+) -> dict:
     """Simulate `deck` and check `expect` = (candidate scalar keys, |value| in mA, tol).
 
     Reports rather than raises, and on a key miss the platform doctor lists the scalars the run DID
@@ -157,9 +195,15 @@ def preflight(deck: str = PROBE,
     alive however well the probe simulates — the same rule the open lane applies to an unset
     `DECK_VARS`. Neither message names the value, only the variables that supply it.
     """
-    info: dict = {"lane": "remote commercial simulator through the lab's bridge",
-                  "simulator": simulator() or "(the lane's own name, resolved on the server)",
-                  "mode": MODE, "work": "", "ok": False, "note": "", "scalars": []}
+    info: dict = {
+        "lane": "remote commercial simulator through the lab's bridge",
+        "simulator": simulator() or "(the lane's own name, resolved on the server)",
+        "mode": MODE,
+        "work": "",
+        "ok": False,
+        "note": "",
+        "scalars": [],
+    }
     try:
         info["work"] = str(work())
     except ValueError as exc:
@@ -171,10 +215,16 @@ def preflight(deck: str = PROBE,
     if blocked:
         info["note"] = blocked
         return info
-    rep = _doctor.preflight(work=work(), run=lambda d, label: run(d, label, timeout=300),
-                            deck=deck, expect=expect)
-    info.update({k: rep[k] for k in ("ok", "note", "scalars", "psf", "wall_s", "not_configured")
-                 if k in rep})
+    rep = _doctor.preflight(
+        work=work(), run=lambda d, label: run(d, label, timeout=300), deck=deck, expect=expect
+    )
+    info.update(
+        {
+            k: rep[k]
+            for k in ("ok", "note", "scalars", "psf", "wall_s", "not_configured")
+            if k in rep
+        }
+    )
     return info
 
 
@@ -183,9 +233,12 @@ def main() -> int:
     rep = preflight()
     print(json.dumps(rep, indent=2, default=str))
     if rep.get("not_configured"):
-        print("lane not configured: no bridge profile on this machine, or no bridge in this "
-              "interpreter (uv sync). Not a stop — everything that does not need the simulator "
-              "still runs.", file=sys.stderr)
+        print(
+            "lane not configured: no bridge profile on this machine, or no bridge in this "
+            "interpreter (uv sync). Not a stop — everything that does not need the simulator "
+            "still runs.",
+            file=sys.stderr,
+        )
         return 2
     return 0 if rep.get("ok") else 1
 

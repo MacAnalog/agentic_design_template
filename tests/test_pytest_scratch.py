@@ -36,4 +36,4 @@ def test_two_checkouts_with_the_same_folder_name_get_different_base_folders(tmp_
     assert one != two
     for base in (one, two):
         assert base.parent == tmp_path / "scratch" / "pytest"
-        assert re.fullmatch(r"fresh-[0-9a-f]{8}", base.name), base.name   # still readable
+        assert re.fullmatch(r"fresh-[0-9a-f]{8}", base.name), base.name  # still readable

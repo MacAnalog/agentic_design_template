@@ -24,7 +24,7 @@ import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
-TIMEOUT = 20.0          # seconds; the hook's own timeout in .claude/settings.json is 30
+TIMEOUT = 20.0  # seconds; the hook's own timeout in .claude/settings.json is 30
 FALLBACK_BUDGET = 20000  # bytes, when harness.yaml declares no memory.pack_budget
 
 # Run by the venv interpreter: the budget on the first line, then the pack `make pack` prints.
@@ -42,8 +42,10 @@ def fit(text: str, budget: int) -> str:
     data = text.encode()
     if len(data) <= budget:
         return text
-    note = (f"[the pack is cut here at memory.pack_budget = {budget} bytes; "
-            f"`make pack` prints all of it]\n")
+    note = (
+        f"[the pack is cut here at memory.pack_budget = {budget} bytes; "
+        f"`make pack` prints all of it]\n"
+    )
     room = budget - len(note.encode())
     if room <= 0:
         return ""
@@ -57,8 +59,15 @@ def pack(root: Path = REPO, timeout: float = TIMEOUT) -> str:
     if not (root / "harness.yaml").is_file() or not os.access(py, os.X_OK):
         return ""
     try:
-        r = subprocess.run([str(py), "-c", _RENDER, str(root)], cwd=root, capture_output=True,
-                           text=True, timeout=timeout, stdin=subprocess.DEVNULL, check=False)
+        r = subprocess.run(
+            [str(py), "-c", _RENDER, str(root)],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            stdin=subprocess.DEVNULL,
+            check=False,
+        )
     except (OSError, subprocess.SubprocessError):
         return ""
     if r.returncode != 0:

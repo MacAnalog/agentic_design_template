@@ -81,7 +81,8 @@ def require_harness() -> None:
         f"    FIX: nothing here is urgent — a repo outside the harness contract stays outside it. "
         f"To bring it in, adopt the template first (write harness.yaml, `.sx/template-version`, "
         f"and the package layout) and then run migrations normally. Moving its directories "
-        f"without that leaves it neither shape.")
+        f"without that leaves it neither shape."
+    )
 
 
 def tracked_text_files() -> list[Path]:
@@ -112,20 +113,37 @@ def rename_papers(plan: Plan) -> None:
     y = REPO / "harness.yaml"
     text = y.read_text()
     if "papers_dir" not in text:
-        plan.do("harness.yaml: papers_dir/papers_index -> references/",
-                lambda: y.write_text(text.replace(
-                    "\nfrozen:", "\npapers_dir: references\npapers_index: references/INDEX.md\n\nfrozen:", 1)))
+        plan.do(
+            "harness.yaml: papers_dir/papers_index -> references/",
+            lambda: y.write_text(
+                text.replace(
+                    "\nfrozen:",
+                    "\npapers_dir: references\npapers_index: references/INDEX.md\n\nfrozen:",
+                    1,
+                )
+            ),
+        )
     elif "pdf" in text.split("papers_dir")[1].split("\n")[0]:
-        plan.do("harness.yaml: papers_dir/papers_index pdf -> references",
-                lambda: y.write_text(text.replace("papers_dir: pdf", "papers_dir: references")
-                                         .replace("papers_index: pdf/", "papers_index: references/")))
+        plan.do(
+            "harness.yaml: papers_dir/papers_index pdf -> references",
+            lambda: y.write_text(
+                text.replace("papers_dir: pdf", "papers_dir: references").replace(
+                    "papers_index: pdf/", "papers_index: references/"
+                )
+            ),
+        )
 
-    hits = [p for p in tracked_text_files()
-            if p.resolve() != me and "pdf/INDEX.md" in p.read_text(errors="ignore")]
+    hits = [
+        p
+        for p in tracked_text_files()
+        if p.resolve() != me and "pdf/INDEX.md" in p.read_text(errors="ignore")
+    ]
     for p in hits:
         rel = p.relative_to(REPO).as_posix()
-        plan.do(f"repoint pdf/INDEX.md -> references/INDEX.md in {rel}",
-                lambda p=p: p.write_text(p.read_text().replace("pdf/INDEX.md", "references/INDEX.md")))
+        plan.do(
+            f"repoint pdf/INDEX.md -> references/INDEX.md in {rel}",
+            lambda p=p: p.write_text(p.read_text().replace("pdf/INDEX.md", "references/INDEX.md")),
+        )
 
 
 REMOTE = "template"
@@ -172,7 +190,11 @@ def template_file(rel: str, dry: bool = False) -> str | None:
 
 def make_signoff(plan: Plan, template: Path | None) -> None:
     root = REPO / "signoff"
-    for sub in ("schematic", "layout", *[f"{f}/{d}" for f in FIDELITIES for d in ("figs", "tables")]):
+    for sub in (
+        "schematic",
+        "layout",
+        *[f"{f}/{d}" for f in FIDELITIES for d in ("figs", "tables")],
+    ):
         d = root / sub
         if d.is_dir():
             continue
@@ -180,10 +202,16 @@ def make_signoff(plan: Plan, template: Path | None) -> None:
         # produces a tree that `signoff/README.md` describes and the repo does not actually have.
         # Measured on two migrated designs, which ended up with no `figs/` or `tables/` at all.
         keep = d / ".gitkeep"
-        plan.do(f"mkdir signoff/{sub} (+ .gitkeep, so git keeps it)",
-                lambda d=d, k=keep: (d.mkdir(parents=True, exist_ok=True), k.touch()))
-    for rel in ["README.md", "schematic/README.md", "layout/README.md",
-                *[f"{f}/REPORT.md" for f in FIDELITIES]]:
+        plan.do(
+            f"mkdir signoff/{sub} (+ .gitkeep, so git keeps it)",
+            lambda d=d, k=keep: (d.mkdir(parents=True, exist_ok=True), k.touch()),
+        )
+    for rel in [
+        "README.md",
+        "schematic/README.md",
+        "layout/README.md",
+        *[f"{f}/REPORT.md" for f in FIDELITIES],
+    ]:
         dst = root / rel
         if dst.exists():
             plan.note(f"signoff/{rel} already exists")
@@ -191,11 +219,18 @@ def make_signoff(plan: Plan, template: Path | None) -> None:
         src = (template / "signoff" / rel) if template else None
         body = src.read_text() if (src and src.is_file()) else template_file(rel, plan.dry)
         if body is None:
-            plan.note(f"signoff/{rel} could not be fetched from the template — copy it by hand "
-                      f"from a v{TARGET} checkout")
+            plan.note(
+                f"signoff/{rel} could not be fetched from the template — copy it by hand "
+                f"from a v{TARGET} checkout"
+            )
         else:
-            plan.do(f"write signoff/{rel} from template v{TARGET}",
-                    lambda d=dst, b=body: (d.parent.mkdir(parents=True, exist_ok=True), d.write_text(b)))
+            plan.do(
+                f"write signoff/{rel} from template v{TARGET}",
+                lambda d=dst, b=body: (
+                    d.parent.mkdir(parents=True, exist_ok=True),
+                    d.write_text(b),
+                ),
+            )
 
 
 PROV_PATH_KEYS = ("script", "raw")
@@ -230,9 +265,8 @@ def _relocatable(src: str) -> tuple[bool, list[str], str]:
     except ValueError as exc:
         return False, [], f"{src}/scorecard.json is not JSON ({exc})"
     if not isinstance(prov, dict) or not prov:
-        return True, [], ""            # a scorecard with no provenance block records no paths
-    keys = [k for k in PROV_PATH_KEYS
-            if (prov.get(k) or "").startswith(src.rstrip("/") + "/")]
+        return True, [], ""  # a scorecard with no provenance block records no paths
+    keys = [k for k in PROV_PATH_KEYS if (prov.get(k) or "").startswith(src.rstrip("/") + "/")]
     return True, keys, ""
 
 
@@ -245,19 +279,26 @@ def relocate(plan: Plan, src: str, dst: str) -> None:
     (REPO / dst).parent.mkdir(parents=True, exist_ok=True)
     plan.do(f"git mv {src} {dst}", lambda: sh("git", "mv", src, dst))
     if keys:
+
         def rewrite(src=src, dst=dst, keys=keys):
             f = REPO / dst / "scorecard.json"
             doc = json.loads(f.read_text())
             for k in keys:
-                doc["provenance"][k] = doc["provenance"][k].replace(src.rstrip("/") + "/",
-                                                                    dst.rstrip("/") + "/", 1)
+                doc["provenance"][k] = doc["provenance"][k].replace(
+                    src.rstrip("/") + "/", dst.rstrip("/") + "/", 1
+                )
             f.write_text(json.dumps(doc, indent=1) + "\n")
-        plan.do(f"{dst}/scorecard.json: repoint provenance {'+'.join(keys)} at the new path "
-                f"(the sha of each file's CONTENTS is unchanged, so every hash still re-derives)",
-                rewrite)
+
+        plan.do(
+            f"{dst}/scorecard.json: repoint provenance {'+'.join(keys)} at the new path "
+            f"(the sha of each file's CONTENTS is unchanged, so every hash still re-derives)",
+            rewrite,
+        )
     y = REPO / "harness.yaml"
-    plan.do(f"harness.yaml: frozen/reference_scorecard {src} -> {dst}",
-            lambda: y.write_text(y.read_text().replace(src.rstrip("/"), dst.rstrip("/"))))
+    plan.do(
+        f"harness.yaml: frozen/reference_scorecard {src} -> {dst}",
+        lambda: y.write_text(y.read_text().replace(src.rstrip("/"), dst.rstrip("/"))),
+    )
 
 
 def move_reference(plan: Plan, record: str | None) -> None:
@@ -275,8 +316,10 @@ def move_reference(plan: Plan, record: str | None) -> None:
     """
     entries, card = _frozen_entries()
     if not entries:
-        plan.note("nothing is frozen yet — certify straight into signoff/prelayout/decks when you "
-                  "do, and the provenance block names the right path from the start")
+        plan.note(
+            "nothing is frozen yet — certify straight into signoff/prelayout/decks when you "
+            "do, and the provenance block names the right path from the start"
+        )
         return
     if not record:
         plan.note(
@@ -286,7 +329,8 @@ def move_reference(plan: Plan, record: str | None) -> None:
             f"not let `reference_scorecard: {card or '(unset)'}` decide: that key means 'the "
             f"scorecard `make check` reproduces', which may legitimately be a prior-art yardstick.\n"
             f"      A yardstick, a control or a withdrawn row STAYS in `decks/` — `signoff/` is "
-            f"for this design's own results. Name each one's role in signoff/README.md.")
+            f"for this design's own results. Name each one's role in signoff/README.md."
+        )
         return
     record = record.rstrip("/")
     if record not in entries:
@@ -307,36 +351,61 @@ def move_reference(plan: Plan, record: str | None) -> None:
             f"      Consequence: `scorecard-recompute` reports 'raw {record}/decks.sha256 is "
             f"missing' for those rows IN THIS CHECKOUT. The ledger is git-ignored and per "
             f"checkout, so a fresh clone never sees it. It clears at the next certification, which "
-            f"logs a row at the new path.")
+            f"logs a row at the new path."
+        )
 
     rest = [e for e in entries if e != record]
     if rest:
-        plan.note(f"left in place (not this design's result): {rest} — give each a role row in "
-                  f"signoff/README.md")
+        plan.note(
+            f"left in place (not this design's result): {rest} — give each a role row in "
+            f"signoff/README.md"
+        )
 
 
 def move_layout_artifacts(plan: Plan) -> None:
     d = REPO / "layout"
     if not d.is_dir():
         return
-    pats = ("*.gds", "*.gds.gz", "*.png", "*.svg", "drc*.txt", "lvs*.txt", "*.pex.sp", "params.json")
+    pats = (
+        "*.gds",
+        "*.gds.gz",
+        "*.png",
+        "*.svg",
+        "drc*.txt",
+        "lvs*.txt",
+        "*.pex.sp",
+        "params.json",
+    )
     for pat in pats:
         for p in sorted(d.glob(pat)):
             rel = p.relative_to(REPO).as_posix()
-            plan.do(f"git mv {rel} signoff/layout/{p.name}",
-                    lambda rel=rel, p=p: sh("git", "mv", rel, f"signoff/layout/{p.name}"))
+            plan.do(
+                f"git mv {rel} signoff/layout/{p.name}",
+                lambda rel=rel, p=p: sh("git", "mv", rel, f"signoff/layout/{p.name}"),
+            )
 
 
 def phase_rows(plan: Plan) -> None:
     y = REPO / "harness.yaml"
     text = y.read_text()
     if "experiments_rows" not in text:
-        plan.do("harness.yaml: experiments_rows: [Phase, Paper, Hypothesis, Verdict]",
-                lambda: y.write_text(text.replace(
-                    "\nfrozen:", "\nexperiments_rows: [Phase, Paper, Hypothesis, Verdict]\n\nfrozen:", 1)))
+        plan.do(
+            "harness.yaml: experiments_rows: [Phase, Paper, Hypothesis, Verdict]",
+            lambda: y.write_text(
+                text.replace(
+                    "\nfrozen:",
+                    "\nexperiments_rows: [Phase, Paper, Hypothesis, Verdict]\n\nfrozen:",
+                    1,
+                )
+            ),
+        )
     elif "Phase" not in text.split("experiments_rows")[1].split("\n")[0]:
-        plan.do("harness.yaml: add Phase to experiments_rows", lambda: y.write_text(
-            re.sub(r"^experiments_rows:\s*\[", "experiments_rows: [Phase, ", text, flags=re.M)))
+        plan.do(
+            "harness.yaml: add Phase to experiments_rows",
+            lambda: y.write_text(
+                re.sub(r"^experiments_rows:\s*\[", "experiments_rows: [Phase, ", text, flags=re.M)
+            ),
+        )
 
     for readme in sorted((REPO / "experiments").glob("*/README.md")):
         if readme.parent.name == "_template":
@@ -354,16 +423,31 @@ def phase_rows(plan: Plan) -> None:
         if not m:
             plan.note(f"{rel}: no **Paper row to anchor **Phase** to — add it by hand")
             continue
-        row = ("| **Phase** | <unset — system \\| topology \\| sizing \\| improve \\| layout> |\n"
-               if m.group(1) else
-               "**Phase:** <unset — system | topology | sizing | improve | layout>\n")
-        plan.do(f"insert a **Phase** row in {rel} ({'table' if m.group(1) else 'bold-line'} form)",
-                lambda p=readme, t=t, i=m.start(): p.write_text(t[:i] + row + t[i:]))
+        row = (
+            "| **Phase** | <unset — system \\| topology \\| sizing \\| improve \\| layout> |\n"
+            if m.group(1)
+            else "**Phase:** <unset — system | topology | sizing | improve | layout>\n"
+        )
+        plan.do(
+            f"insert a **Phase** row in {rel} ({'table' if m.group(1) else 'bold-line'} form)",
+            lambda p=readme, t=t, i=m.start(): p.write_text(t[:i] + row + t[i:]),
+        )
 
 
 SUFFIXES = (".png", ".svg", ".pdf", ".csv", ".gds", ".gds.gz")
-HOMES = ("signoff/", "experiments/", "layout/", "decks/", "references/", "doc/", "notebooks/",
-         ".claude/", ".sx/", ".github/", "pdf/")
+HOMES = (
+    "signoff/",
+    "experiments/",
+    "layout/",
+    "decks/",
+    "references/",
+    "doc/",
+    "notebooks/",
+    ".claude/",
+    ".sx/",
+    ".github/",
+    "pdf/",
+)
 
 
 def artifact_survey(plan: Plan) -> None:
@@ -381,17 +465,21 @@ def artifact_survey(plan: Plan) -> None:
         plan.note("artifact-home: nothing to declare — every committed artefact already has a home")
         return
     where = ", ".join(f"{d}/ ({n})" for d, n in sorted(out.items(), key=lambda kv: -kv[1]))
-    plan.note(f"artifact-home would flag {sum(out.values())} committed artefact(s) in: {where}. "
-              f"Move them, or add each directory to ARTIFACT_HOMES in scripts/lint.py with one "
-              f"line saying what lives there")
+    plan.note(
+        f"artifact-home would flag {sum(out.values())} committed artefact(s) in: {where}. "
+        f"Move them, or add each directory to ARTIFACT_HOMES in scripts/lint.py with one "
+        f"line saying what lives there"
+    )
 
 
 def shim_warning(plan: Plan) -> None:
     pkg = package()
     for mod in ("eye", "stimulus"):
         if (REPO / pkg / f"{mod}.py").is_file():
-            plan.note(f"{pkg}/{mod}.py stays: 2.00 stopped SHIPPING it in the template, and deletes "
-                      f"nothing here. To drop it, import spicexplorer_waveview.{mod} directly")
+            plan.note(
+                f"{pkg}/{mod}.py stays: 2.00 stopped SHIPPING it in the template, and deletes "
+                f"nothing here. To drop it, import spicexplorer_waveview.{mod} directly"
+            )
 
 
 def propagate(plan: Plan, cur: str) -> list[tuple[str, str, str]]:
@@ -424,20 +512,31 @@ def propagate(plan: Plan, cur: str) -> list[tuple[str, str, str]]:
             "three-way apply this migration reuses was added.\n"
             "    FIX: `make template-update` first (it will take you to the newest 1.xx), then re-run "
             "this script. Crossing 1.00 -> 2.00 in one step would apply the whole patch atomically, "
-            "and one missing file would silently roll back every file that had merged.")
+            "and one missing file would silently roll back every file that had merged."
+        )
     # `have_target` already fetched, with --force; tu.fetch() would repeat it without.
     tags = [x[1:] for x in sh("git", "tag", "--list", "v*").split() if tu.VER_RE.match(x[1:])]
     if TARGET not in tags:
-        plan.note(f"template v{TARGET} is not among the release tags {tags}: content changes not "
-                  f"propagated. Fetch the template remote and re-run.")
+        plan.note(
+            f"template v{TARGET} is not among the release tags {tags}: content changes not "
+            f"propagated. Fetch the template remote and re-run."
+        )
         return []
     if plan.dry:
         plan.note(f"would three-way merge the content changes of {cur} -> {TARGET}")
         return []
     pkg_exclude = [*tu.PKG_EXCLUDE, ":!eye.py", ":!stimulus.py"]
-    exclude = [*tu.EXCLUDE, ":!pdf", ":!references", ":!signoff", ":!.sx/template-version",
-               ":!scripts/migrate_v1_to_v2.py"]  # never let the running script rewrite itself
-    rows = tu._apply(cur, TARGET, ["design/", *pkg_exclude], directory=package(), relative="design/")
+    exclude = [
+        *tu.EXCLUDE,
+        ":!pdf",
+        ":!references",
+        ":!signoff",
+        ":!.sx/template-version",
+        ":!scripts/migrate_v1_to_v2.py",
+    ]  # never let the running script rewrite itself
+    rows = tu._apply(
+        cur, TARGET, ["design/", *pkg_exclude], directory=package(), relative="design/"
+    )
     rows += tu._apply(cur, TARGET, [".", ":!design", *exclude])
     return rows
 
@@ -445,17 +544,27 @@ def propagate(plan: Plan, cur: str) -> list[tuple[str, str, str]]:
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="migrate_v1_to_v2")
     ap.add_argument("--dry-run", action="store_true", help="print the plan, change nothing")
-    ap.add_argument("--design-of-record", metavar="DIR", help="the frozen dir holding THIS "
-                    "design's own certified benches; it moves to signoff/prelayout/decks. Never "
-                    "inferred — a yardstick and a control are frozen too")
-    ap.add_argument("--template", type=Path, help="a local checkout of agentic_design_template at "
-                                                  "v2.00. Optional: without it the templates come "
-                                                  "from the `template` git remote's v2.00 tag")
+    ap.add_argument(
+        "--design-of-record",
+        metavar="DIR",
+        help="the frozen dir holding THIS "
+        "design's own certified benches; it moves to signoff/prelayout/decks. Never "
+        "inferred — a yardstick and a control are frozen too",
+    )
+    ap.add_argument(
+        "--template",
+        type=Path,
+        help="a local checkout of agentic_design_template at "
+        "v2.00. Optional: without it the templates come "
+        "from the `template` git remote's v2.00 tag",
+    )
     a = ap.parse_args(argv)
 
     if not a.dry_run and sh("git", "status", "--porcelain").strip():
-        raise SystemExit("the worktree is dirty. This migration MOVES files — commit or stash "
-                         "first, so `git status` afterwards shows only what it did.")
+        raise SystemExit(
+            "the worktree is dirty. This migration MOVES files — commit or stash "
+            "first, so `git status` afterwards shows only what it did."
+        )
     require_harness()
     cur = VERSION_FILE.read_text().strip() if VERSION_FILE.is_file() else "(unrecorded)"
     print(f"template {cur} -> {TARGET}   package: {package()}\n")
@@ -465,12 +574,15 @@ def main(argv=None) -> int:
                 f"template v{TARGET} is not reachable, so this migration would move directories and "
                 f"then have nothing to fill them with.\n"
                 f"    FIX: `git fetch --tags {REMOTE}` (the remote is added automatically; it is "
-                f"{URL}), or pass --template <a v{TARGET} checkout>.")
+                f"{URL}), or pass --template <a v{TARGET} checkout>."
+            )
         # a dry run adds no remote and fetches nothing, so it cannot answer "is it reachable" —
         # only "is it already here". It reports the plan anyway; the real run does the fetch.
-        print(f"note: template v{TARGET} is not in this checkout (a --dry-run neither adds the "
-              f"`{REMOTE}` remote nor fetches). The real run fetches it and refuses if it cannot; "
-              f"the content-merge and template-file rows below are unknown until then.\n")
+        print(
+            f"note: template v{TARGET} is not in this checkout (a --dry-run neither adds the "
+            f"`{REMOTE}` remote nor fetches). The real run fetches it and refuses if it cannot; "
+            f"the content-merge and template-file rows below are unknown until then.\n"
+        )
 
     plan = Plan(a.dry_run)
     # Content FIRST, on a clean tree: `git apply --3way` reads the index for its preimage, so a

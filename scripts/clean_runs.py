@@ -67,12 +67,32 @@ BUSY = ".busy"
 _RUN_HASH = re.compile(r"-[0-9a-f]{8}$")
 _SLUG = re.compile(r"[^A-Za-z0-9_.-]+")
 
-__all__ = ["AGE_HOURS", "WARN_GB_ENV", "DEFAULT_WARN_GB", "LOG_GLOBS", "BUSY", "slug",
-           "label_of", "rows_by_label", "reduced", "log_age_s", "dir_bytes", "decide", "scan",
-           "refuse", "remove", "work_dir", "usage", "warn_gb", "report", "main"]
+__all__ = [
+    "AGE_HOURS",
+    "WARN_GB_ENV",
+    "DEFAULT_WARN_GB",
+    "LOG_GLOBS",
+    "BUSY",
+    "slug",
+    "label_of",
+    "rows_by_label",
+    "reduced",
+    "log_age_s",
+    "dir_bytes",
+    "decide",
+    "scan",
+    "refuse",
+    "remove",
+    "work_dir",
+    "usage",
+    "warn_gb",
+    "report",
+    "main",
+]
 
 
 # ------------------------------------------------------------------ pure --------------
+
 
 def slug(s: str) -> str:
     """A label as both lanes spell it in a directory name (`[^A-Za-z0-9_.-]` -> `_`)."""
@@ -146,18 +166,28 @@ def decide(*, busy: bool, age_s: float | None, rows: list[dict], age_h: float) -
     if not rows:
         return False, "no ledger row names this label — nothing has recorded a reduction of it"
     if not reduced(rows):
-        return False, (f"the ledger says this label only ever failed to simulate "
-                       f"({len(rows)} row(s), all sim_error) — the record is the evidence")
+        return False, (
+            f"the ledger says this label only ever failed to simulate "
+            f"({len(rows)} row(s), all sim_error) — the record is the evidence"
+        )
     if age_s is None:
         return False, f"no simulator log ({' or '.join(LOG_GLOBS)}) — the run did not finish"
     if age_s < age_h * 3600.0:
         return False, f"the simulator log is {age_s / 3600.0:.1f} h old (< AGE={age_h:g} h)"
-    return True, (f"reduced ({len(rows)} ledger row(s)) and its log is "
-                  f"{age_s / 3600.0:.1f} h old (>= AGE={age_h:g} h)")
+    return True, (
+        f"reduced ({len(rows)} ledger row(s)) and its log is "
+        f"{age_s / 3600.0:.1f} h old (>= AGE={age_h:g} h)"
+    )
 
 
-def scan(runs: Path, by_label: dict[str, list[dict]], *, age_h: float = AGE_HOURS,
-         now: float | None = None, sizes: bool = True) -> list[dict]:
+def scan(
+    runs: Path,
+    by_label: dict[str, list[dict]],
+    *,
+    age_h: float = AGE_HOURS,
+    now: float | None = None,
+    sizes: bool = True,
+) -> list[dict]:
     """One entry per run directory under `runs`:
     `{path, name, label, delete, why, rows, reduced, bytes}`."""
     now = time.time() if now is None else now
@@ -171,13 +201,23 @@ def scan(runs: Path, by_label: dict[str, list[dict]], *, age_h: float = AGE_HOUR
         rows = by_label.get(label, [])
         age = log_age_s(d, now)
         delete, why = decide(busy=(d / BUSY).exists(), age_s=age, rows=rows, age_h=age_h)
-        out.append({"path": d, "name": d.name, "label": label, "delete": delete, "why": why,
-                    "rows": len(rows), "reduced": reduced(rows),
-                    "bytes": dir_bytes(d) if sizes else 0})
+        out.append(
+            {
+                "path": d,
+                "name": d.name,
+                "label": label,
+                "delete": delete,
+                "why": why,
+                "rows": len(rows),
+                "reduced": reduced(rows),
+                "bytes": dir_bytes(d) if sizes else 0,
+            }
+        )
     return out
 
 
 # ------------------------------------------------------------------ deleting ----------
+
 
 def refuse(path: Path, runs: Path, repo: Path = REPO) -> str | None:
     """Why `path` must not be removed, or `None`. The same shape as the platform's retention rules:
@@ -199,8 +239,9 @@ def refuse(path: Path, runs: Path, repo: Path = REPO) -> str | None:
     return None
 
 
-def remove(entries: list[dict], runs: Path, *, dry_run: bool = False,
-           repo: Path = REPO) -> tuple[list[dict], list[str]]:
+def remove(
+    entries: list[dict], runs: Path, *, dry_run: bool = False, repo: Path = REPO
+) -> tuple[list[dict], list[str]]:
     """Remove every entry marked `delete`; returns `(removed, refused)`."""
     removed: list[dict] = []
     refused: list[str] = []
@@ -222,6 +263,7 @@ def remove(entries: list[dict], runs: Path, *, dry_run: bool = False,
 
 
 # ------------------------------------------------------------------ this checkout -----
+
 
 def work_dir() -> tuple[Path | None, str]:
     """This checkout's work root, from the lane itself (`<package>.sim.work()`), and a note.
@@ -249,15 +291,22 @@ def warn_gb() -> float:
 def usage(work: Path | None) -> dict:
     """`{work, bytes, human, runs, over, warn_gb}` for one work root (missing dir -> zeroes)."""
     limit = warn_gb()
-    rep = {"work": str(work or ""), "bytes": 0, "human": human_bytes(0), "runs": 0,
-           "warn_gb": limit, "over": False}
+    rep = {
+        "work": str(work or ""),
+        "bytes": 0,
+        "human": human_bytes(0),
+        "runs": 0,
+        "warn_gb": limit,
+        "over": False,
+    }
     if work is None or not Path(work).is_dir():
         return rep
     runs = Path(work) / "runs"
     n = sum(1 for d in runs.iterdir() if d.is_dir()) if runs.is_dir() else 0
     total = dir_bytes(Path(work))
-    rep.update(bytes=total, human=human_bytes(total), runs=n,
-               over=bool(limit and total > limit * 1e9))
+    rep.update(
+        bytes=total, human=human_bytes(total), runs=n, over=bool(limit and total > limit * 1e9)
+    )
     return rep
 
 
@@ -267,26 +316,40 @@ def report(rep: dict, note: str = "") -> str:
         return f"scratch: unknown — {note}" if note else "scratch: unknown"
     if not Path(rep["work"]).is_dir():
         return f"scratch: {rep['work']} does not exist yet (nothing has simulated in this checkout)"
-    line = (f"scratch: {rep['work']} — {rep['human']} in {rep['runs']} run dir(s) "
-            f"(warn above {rep['warn_gb']:g} GB, ${WARN_GB_ENV})")
+    line = (
+        f"scratch: {rep['work']} — {rep['human']} in {rep['runs']} run dir(s) "
+        f"(warn above {rep['warn_gb']:g} GB, ${WARN_GB_ENV})"
+    )
     if rep["over"]:
-        line += ("\nWARNING: this checkout's scratch is over the threshold. A raw simulation "
-                 "record is scratch, not evidence: reduce it, commit the reduction, then "
-                 "`make clean-runs` (it keeps anything unreduced, running, or younger than AGE).")
+        line += (
+            "\nWARNING: this checkout's scratch is over the threshold. A raw simulation "
+            "record is scratch, not evidence: reduce it, commit the reduction, then "
+            "`make clean-runs` (it keeps anything unreduced, running, or younger than AGE)."
+        )
     return line
 
 
 # ------------------------------------------------------------------ CLI ---------------
 
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
         prog="clean_runs.py",
-        description="delete the run dirs whose reduction is recorded and whose log has gone cold")
-    ap.add_argument("--age", type=float, default=AGE_HOURS, metavar="HOURS",
-                    help=f"keep a run whose simulator log is younger than this (default {AGE_HOURS:g})")
+        description="delete the run dirs whose reduction is recorded and whose log has gone cold",
+    )
+    ap.add_argument(
+        "--age",
+        type=float,
+        default=AGE_HOURS,
+        metavar="HOURS",
+        help=f"keep a run whose simulator log is younger than this (default {AGE_HOURS:g})",
+    )
     ap.add_argument("--dry-run", action="store_true", help="print the plan, delete nothing")
-    ap.add_argument("--report", action="store_true",
-                    help="print this checkout's scratch usage and exit (what `make doctor` runs)")
+    ap.add_argument(
+        "--report",
+        action="store_true",
+        help="print this checkout's scratch usage and exit (what `make doctor` runs)",
+    )
     ap.add_argument("--json", action="store_true", help="machine-readable output")
     a = ap.parse_args(argv)
 
@@ -306,25 +369,39 @@ def main(argv: list[str] | None = None) -> int:
     removed, refused = remove(entries, runs, dry_run=a.dry_run)
     kept = [e for e in entries if not e["delete"]]
     if a.json:
-        print(json.dumps({"work": str(work), "age_h": a.age, "dry_run": a.dry_run,
-                          "removed": [e["name"] for e in removed],
-                          "kept": [{"name": e["name"], "why": e["why"], "bytes": e["bytes"]}
-                                   for e in kept],
-                          "refused": refused,
-                          "freed_bytes": sum(e["bytes"] for e in removed)}, indent=2))
+        print(
+            json.dumps(
+                {
+                    "work": str(work),
+                    "age_h": a.age,
+                    "dry_run": a.dry_run,
+                    "removed": [e["name"] for e in removed],
+                    "kept": [
+                        {"name": e["name"], "why": e["why"], "bytes": e["bytes"]} for e in kept
+                    ],
+                    "refused": refused,
+                    "freed_bytes": sum(e["bytes"] for e in removed),
+                },
+                indent=2,
+            )
+        )
         return 0
     verb = "WOULD DELETE" if a.dry_run else "deleted"
-    print(f"clean-runs: {runs} — {len(entries)} run dir(s), "
-          f"{human_bytes(sum(e['bytes'] for e in entries))}, AGE={a.age:g} h")
+    print(
+        f"clean-runs: {runs} — {len(entries)} run dir(s), "
+        f"{human_bytes(sum(e['bytes'] for e in entries))}, AGE={a.age:g} h"
+    )
     for e in entries:
         mark = verb if e["delete"] else "kept"
         print(f"  {mark:12s} {e['name']:44s} {human_bytes(e['bytes']):>9s}  {e['why']}")
     for why in refused:
         print(f"  spared      {why}")
     freed = sum(e["bytes"] for e in removed)
-    print(f"{len(removed)} dir(s) {'reclaimable' if a.dry_run else 'removed'} "
-          f"({human_bytes(freed)}); {len(kept)} kept "
-          f"({human_bytes(sum(e['bytes'] for e in kept))})")
+    print(
+        f"{len(removed)} dir(s) {'reclaimable' if a.dry_run else 'removed'} "
+        f"({human_bytes(freed)}); {len(kept)} kept "
+        f"({human_bytes(sum(e['bytes'] for e in kept))})"
+    )
     return 0
 
 

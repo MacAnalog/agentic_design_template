@@ -33,8 +33,15 @@ def _load_lint():
     return mod
 
 
-def _run_dir(runs: Path, name: str, *, log: str = "ngspice.out", age_h: float = 48.0,
-             size: int = 1024, busy: bool = False) -> Path:
+def _run_dir(
+    runs: Path,
+    name: str,
+    *,
+    log: str = "ngspice.out",
+    age_h: float = 48.0,
+    size: int = 1024,
+    busy: bool = False,
+) -> Path:
     """One plausible run directory: a deck, a rawfile, and a simulator log of a chosen age."""
     d = runs / name
     d.mkdir(parents=True)
@@ -52,35 +59,39 @@ def _run_dir(runs: Path, name: str, *, log: str = "ngspice.out", age_h: float = 
 
 # ------------------------------------------------------------------ pure ---------------
 
+
 def test_label_of_strips_only_the_run_hash():
     assert cr.label_of("ac__gain-1a2b3c4d") == "ac__gain"
     assert cr.label_of("sweep_tt-deadbeef") == "sweep_tt"
-    assert cr.label_of("ac-gain") == "ac-gain"            # not 8 hex: not a run hash
-    assert cr.label_of("ac__gain-1A2B3C4D") == "ac__gain-1A2B3C4D"   # the lanes write lower case
+    assert cr.label_of("ac-gain") == "ac-gain"  # not 8 hex: not a run hash
+    assert cr.label_of("ac__gain-1A2B3C4D") == "ac__gain-1A2B3C4D"  # the lanes write lower case
 
 
 def test_rows_are_grouped_by_the_label_a_directory_name_carries():
     rows = [{"tag": "op check", "status": "ok"}, {"tag": "op_check"}, {"tag": ""}]
     by = cr.rows_by_label(rows)
-    assert set(by) == {"op_check"} and len(by["op_check"]) == 2   # `slug` folds the space
+    assert set(by) == {"op_check"} and len(by["op_check"]) == 2  # `slug` folds the space
 
 
 def test_reduced_is_a_row_that_is_not_a_bare_sim_error():
     assert not cr.reduced([])
     assert not cr.reduced([{"status": "sim_error"}, {"status": "sim_error"}])
     assert cr.reduced([{"status": "sim_error"}, {"status": "ok"}])
-    assert cr.reduced([{"status": "meas_error"}])      # it measured SOMETHING; that is a reduction
+    assert cr.reduced([{"status": "meas_error"}])  # it measured SOMETHING; that is a reduction
     assert cr.reduced([{"tag": "t", "gain_db": 62.4}])  # an evaluate row has no status column
 
 
-@pytest.mark.parametrize("kw, delete, phrase", [
-    (dict(busy=True, age_s=99 * HOUR, rows=[{"status": "ok"}]), False, "in progress"),
-    (dict(busy=False, age_s=99 * HOUR, rows=[]), False, "no ledger row"),
-    (dict(busy=False, age_s=99 * HOUR, rows=[{"status": "sim_error"}]), False, "the evidence"),
-    (dict(busy=False, age_s=None, rows=[{"status": "ok"}]), False, "no simulator log"),
-    (dict(busy=False, age_s=2 * HOUR, rows=[{"status": "ok"}]), False, "AGE=24"),
-    (dict(busy=False, age_s=99 * HOUR, rows=[{"status": "ok"}]), True, "reduced"),
-])
+@pytest.mark.parametrize(
+    "kw, delete, phrase",
+    [
+        (dict(busy=True, age_s=99 * HOUR, rows=[{"status": "ok"}]), False, "in progress"),
+        (dict(busy=False, age_s=99 * HOUR, rows=[]), False, "no ledger row"),
+        (dict(busy=False, age_s=99 * HOUR, rows=[{"status": "sim_error"}]), False, "the evidence"),
+        (dict(busy=False, age_s=None, rows=[{"status": "ok"}]), False, "no simulator log"),
+        (dict(busy=False, age_s=2 * HOUR, rows=[{"status": "ok"}]), False, "AGE=24"),
+        (dict(busy=False, age_s=99 * HOUR, rows=[{"status": "ok"}]), True, "reduced"),
+    ],
+)
 def test_decide_keeps_everything_it_cannot_prove_is_spent(kw, delete, phrase):
     got, why = cr.decide(age_h=24.0, **kw)
     assert got is delete and phrase in why
@@ -95,16 +106,20 @@ def test_decide_reports_the_protecting_reason_before_the_age_one():
 
 # ------------------------------------------------------------------ sweeping -----------
 
+
 def test_scan_and_remove_delete_only_the_spent_records(tmp_path):
     runs = tmp_path / "work" / "runs"
-    _run_dir(runs, "ac__gain-11111111", age_h=48)                 # reduced + cold  -> goes
-    _run_dir(runs, "tran__eye-22222222", age_h=2)                 # still warm      -> kept
-    _run_dir(runs, "tran__eye-33333333", age_h=48, busy=True)     # running         -> kept
-    _run_dir(runs, "probe-44444444", age_h=99)                    # no ledger row   -> kept
-    _run_dir(runs, "dead__op-55555555", age_h=99)                 # only sim_error  -> kept
-    _run_dir(runs, "unfinished-66666666", log="", age_h=0)        # no log          -> kept
-    rows = [{"tag": "ac__gain", "status": "ok"}, {"tag": "tran__eye", "status": "ok"},
-            {"tag": "dead__op", "status": "sim_error"}]
+    _run_dir(runs, "ac__gain-11111111", age_h=48)  # reduced + cold  -> goes
+    _run_dir(runs, "tran__eye-22222222", age_h=2)  # still warm      -> kept
+    _run_dir(runs, "tran__eye-33333333", age_h=48, busy=True)  # running         -> kept
+    _run_dir(runs, "probe-44444444", age_h=99)  # no ledger row   -> kept
+    _run_dir(runs, "dead__op-55555555", age_h=99)  # only sim_error  -> kept
+    _run_dir(runs, "unfinished-66666666", log="", age_h=0)  # no log          -> kept
+    rows = [
+        {"tag": "ac__gain", "status": "ok"},
+        {"tag": "tran__eye", "status": "ok"},
+        {"tag": "dead__op", "status": "sim_error"},
+    ]
 
     entries = cr.scan(runs, cr.rows_by_label(rows), age_h=24.0)
     assert [e["name"] for e in entries if e["delete"]] == ["ac__gain-11111111"]
@@ -149,13 +164,15 @@ def test_remove_refuses_rather_than_deleting_what_the_rules_spare(tmp_path):
     runs.mkdir(parents=True)
     outside = tmp_path / "elsewhere"
     outside.mkdir()
-    removed, refused = cr.remove([{"path": outside, "name": "elsewhere", "delete": True}], runs,
-                                 repo=REPO)
+    removed, refused = cr.remove(
+        [{"path": outside, "name": "elsewhere", "delete": True}], runs, repo=REPO
+    )
     assert removed == [] and refused and "not a run directory" in refused[0]
     assert outside.is_dir()
 
 
 # ------------------------------------------------------------------ the report ---------
+
 
 def test_usage_warns_above_the_threshold_and_the_threshold_is_an_env_var(tmp_path, monkeypatch):
     runs = tmp_path / "work" / "runs"
@@ -164,7 +181,7 @@ def test_usage_warns_above_the_threshold_and_the_threshold_is_an_env_var(tmp_pat
     rep = cr.usage(tmp_path / "work")
     assert rep["runs"] == 1 and rep["bytes"] >= 4096 and rep["warn_gb"] == cr.DEFAULT_WARN_GB
     assert rep["over"] is False
-    monkeypatch.setenv(cr.WARN_GB_ENV, "0.000001")          # 1 kB
+    monkeypatch.setenv(cr.WARN_GB_ENV, "0.000001")  # 1 kB
     rep = cr.usage(tmp_path / "work")
     assert rep["over"] is True
     assert "WARNING" in cr.report(rep) and "clean-runs" in cr.report(rep)
@@ -180,8 +197,11 @@ def test_the_cli_reports_and_sweeps(tmp_path, monkeypatch, capsys):
     _run_dir(work / "runs", "ac__gain-11111111", age_h=48)
     _run_dir(work / "runs", "tran__eye-22222222", age_h=1)
     monkeypatch.setattr(cr, "work_dir", lambda: (work, ""))
-    monkeypatch.setattr(cr.LG, "read", lambda h: [{"tag": "ac__gain", "status": "ok"},
-                                                  {"tag": "tran__eye", "status": "ok"}])
+    monkeypatch.setattr(
+        cr.LG,
+        "read",
+        lambda h: [{"tag": "ac__gain", "status": "ok"}, {"tag": "tran__eye", "status": "ok"}],
+    )
     assert cr.main(["--report"]) == 0
     assert "scratch:" in capsys.readouterr().out
 
@@ -198,13 +218,14 @@ def test_the_cli_reports_and_sweeps(tmp_path, monkeypatch, capsys):
 
 # ------------------------------------------------------------------ the soft lint ------
 
+
 def _lint_over_threshold(work, rows, monkeypatch):
     from spicexplorer_harness import load
     from spicexplorer_harness.lint import Lint
 
     mod = _load_lint()
     monkeypatch.setattr(cr, "work_dir", lambda: (work, ""))
-    monkeypatch.setenv(cr.WARN_GB_ENV, "0.000001")          # 1 kB, so the fixture is "over"
+    monkeypatch.setenv(cr.WARN_GB_ENV, "0.000001")  # 1 kB, so the fixture is "over"
     L = Lint(load(REPO))
     L._rows = rows
     mod.scratch_budget(L)
@@ -216,7 +237,7 @@ def test_scratch_budget_warns_and_never_fails(tmp_path, monkeypatch):
     _run_dir(work / "runs", "big__tran-11111111", size=8192, age_h=48)
     _run_dir(work / "runs", "ac__gain-22222222", size=16, age_h=48)
     L = _lint_over_threshold(work, [{"tag": "ac__gain", "status": "ok"}], monkeypatch)
-    assert L.fails == []                                   # NEVER a failure (template#37)
+    assert L.fails == []  # NEVER a failure (template#37)
     assert len(L.warns) == 1 and "big__tran-11111111" in L.warns[0]
     assert "no reduction row" in L.warns[0] and "clean-runs" in L.warns[0]
 

@@ -93,16 +93,20 @@ def install(repo: Path = REPO) -> int:
     p, how = hook_path(repo), state(repo)
     if how == "foreign":
         print(f"REFUSING: {p} already exists and this script did not write it.")
-        print("  Nothing was changed. Merge `make guard` into that hook yourself, or move it "
-              "aside and re-run `make hook-install`.")
+        print(
+            "  Nothing was changed. Merge `make guard` into that hook yourself, or move it "
+            "aside and re-run `make hook-install`."
+        )
         return 2
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(SCRIPT)
     p.chmod(p.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
     verb = "re-installed" if how == "ours" else "installed"
     print(f"pre-push guard {verb}: {p}")
-    print("  it runs `make guard` before every push; `git push --no-verify` bypasses it "
-          "deliberately, `GUARD_SKIP_TEST=1 git push` drops only the test clause.")
+    print(
+        "  it runs `make guard` before every push; `git push --no-verify` bypasses it "
+        "deliberately, `GUARD_SKIP_TEST=1 git push` drops only the test clause."
+    )
     if p.parent != (repo / ".git" / "hooks").resolve():
         print("  (core.hooksPath points here; linked worktrees of this repo share it)")
     return 0
@@ -128,7 +132,9 @@ def main(argv: list[str]) -> int:
     if cmd == "remove":
         return remove()
     print(__doc__.splitlines()[0])
-    print("usage: scripts/githook.py install|remove   (via `make hook-install` / `make hook-remove`)")
+    print(
+        "usage: scripts/githook.py install|remove   (via `make hook-install` / `make hook-remove`)"
+    )
     return 2
 
 

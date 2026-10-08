@@ -25,6 +25,7 @@ from design import sim
 
 # ------------------------------------------------------------------ selection ---------
 
+
 def test_the_shipped_lane_is_the_open_one_and_sim_IS_that_module():
     assert sim.LANE == "ngspice", "the template ships with `lane:` absent"
     assert sim.__name__ == "design.sim_ngspice"
@@ -52,7 +53,7 @@ def test_the_key_is_read_through_getattr_so_an_older_platform_still_loads(monkey
     A platform whose `Harness` has no such field therefore does not break the open lane — it
     refuses the KEY itself, in `load()`, which is the loud failure and not a silent default.
     """
-    ns = sim.lane_name.__globals__          # the dispatcher's namespace, alive behind the swap
+    ns = sim.lane_name.__globals__  # the dispatcher's namespace, alive behind the swap
     monkeypatch.setitem(ns, "load", lambda root: types.SimpleNamespace(lane="bridge"))
     assert sim.lane_name() == "bridge"
     monkeypatch.setitem(ns, "load", lambda root: types.SimpleNamespace())
@@ -69,6 +70,7 @@ def test_an_unknown_lane_is_refused_and_names_the_ones_that_ship():
 
 
 # ------------------------------------------------------------------ the stub ----------
+
 
 class _Run:
     """What the platform lane returns; only the fields this wrapper touches."""
@@ -120,9 +122,12 @@ def bridge(monkeypatch, tmp_path):
 
     pkg = types.ModuleType("spicexplorer_spectre")
     pkg.lane, pkg.results, pkg.doctor = lane, results, doctor
-    for name, mod in (("spicexplorer_spectre", pkg), ("spicexplorer_spectre.lane", lane),
-                      ("spicexplorer_spectre.results", results),
-                      ("spicexplorer_spectre.doctor", doctor)):
+    for name, mod in (
+        ("spicexplorer_spectre", pkg),
+        ("spicexplorer_spectre.lane", lane),
+        ("spicexplorer_spectre.results", results),
+        ("spicexplorer_spectre.doctor", doctor),
+    ):
         monkeypatch.setitem(sys.modules, name, mod)
     for name in ("design.sim_bridge", "design.pdk"):
         monkeypatch.delitem(sys.modules, name, raising=False)
@@ -136,8 +141,12 @@ def bridge(monkeypatch, tmp_path):
     monkeypatch.setattr(pdk, "LIB_ENV", "PFX_PDK_LIB")
     monkeypatch.setattr(pdk, "LIB_ENV_SCOPED", "XY001_PDK_LIB")
     monkeypatch.setattr(pdk, "TOKEN", "$PFX_PDK_LIB")
-    for n in ("XY001_PDK_LIB", "PFX_PDK_LIB", "XY001_PDK_LIB_ALLOW_MISMATCH",
-              "PFX_PDK_LIB_ALLOW_MISMATCH"):
+    for n in (
+        "XY001_PDK_LIB",
+        "PFX_PDK_LIB",
+        "XY001_PDK_LIB_ALLOW_MISMATCH",
+        "PFX_PDK_LIB_ALLOW_MISMATCH",
+    ):
         monkeypatch.delenv(n, raising=False)
     ns = types.SimpleNamespace(sim=sim_bridge, pdk=pdk, calls=calls, work=tmp_path / "work")
     yield ns
@@ -146,6 +155,7 @@ def bridge(monkeypatch, tmp_path):
 
 
 # ------------------------------------------------------------------ where and what ----
+
 
 def test_the_bridge_work_root_is_the_platforms_not_a_copy(bridge):
     assert bridge.sim.work() == bridge.work
@@ -177,12 +187,18 @@ def test_run_rejects_an_empty_label(bridge):
 
 # ------------------------------------------------------------------ the token ---------
 
+
 def test_run_restores_the_token_only_as_the_simulator_receives_it(bridge, monkeypatch):
     monkeypatch.setenv("XY001_PDK_LIB", "/srv/models/proc_rev_v1d0/lib.scs")
     portable = 'include "$PFX_PDK_LIB" section=tt\n'
     bridge.sim.run(portable, "op")
-    assert bridge.calls["run_deck"]["deck"] == 'include "/srv/models/proc_rev_v1d0/lib.scs" section=tt\n'
-    assert "$PFX_PDK_LIB" in portable, "the caller's text is untouched: what is committed stays portable"
+    assert (
+        bridge.calls["run_deck"]["deck"]
+        == 'include "/srv/models/proc_rev_v1d0/lib.scs" section=tt\n'
+    )
+    assert "$PFX_PDK_LIB" in portable, (
+        "the caller's text is untouched: what is committed stays portable"
+    )
 
 
 def test_a_deck_without_the_token_never_asks_where_the_library_is(bridge):
@@ -192,14 +208,16 @@ def test_a_deck_without_the_token_never_asks_where_the_library_is(bridge):
 
 def test_models_block_names_the_token_not_a_path(bridge):
     assert bridge.pdk.models_block("tt", "core") == 'include "$PFX_PDK_LIB" section=tt'
-    every = bridge.pdk.models_block()          # no groups = every declared one
+    every = bridge.pdk.models_block()  # no groups = every declared one
     assert every.count("include") == 2 and "/" not in every
 
 
 def test_a_corner_swaps_only_a_typical_section(bridge):
     assert bridge.pdk.section("core", "tt") == "tt"
     assert bridge.pdk.section("core", "ss") == "ss"
-    assert bridge.pdk.section("stat", "ss") == "mis", "a statistical section carries no corner prefix"
+    assert bridge.pdk.section("stat", "ss") == "mis", (
+        "a statistical section carries no corner prefix"
+    )
     with pytest.raises(bridge.pdk.PdkError):
         bridge.pdk.section("core", "zz")
     with pytest.raises(bridge.pdk.PdkError):
@@ -207,6 +225,7 @@ def test_a_corner_swaps_only_a_typical_section(bridge):
 
 
 # ------------------------------------------------------------------ the pin -----------
+
 
 def test_the_design_scoped_variable_is_read_before_the_deck_name(bridge, monkeypatch):
     monkeypatch.setenv("PFX_PDK_LIB", "/srv/shared/proc_rev_v1d0/lib.scs")
@@ -256,6 +275,7 @@ def test_nothing_is_scanned_for_and_the_failure_names_every_variable(bridge, mon
 
 # ------------------------------------------------------------------ doctor ------------
 
+
 def test_preflight_reports_an_unresolved_library_without_simulating(bridge):
     rep = bridge.sim.preflight()
     assert rep["ok"] is False and "XY001_PDK_LIB" in rep["note"]
@@ -280,7 +300,9 @@ def test_preflight_runs_the_probe_through_this_wrapper(bridge, monkeypatch):
 
 
 def test_main_separates_a_missing_profile_from_a_failing_lane(bridge, monkeypatch, capsys):
-    monkeypatch.setattr(bridge.sim, "preflight", lambda *a, **k: {"ok": False, "not_configured": True})
+    monkeypatch.setattr(
+        bridge.sim, "preflight", lambda *a, **k: {"ok": False, "not_configured": True}
+    )
     assert bridge.sim.main() == 2, "no bridge profile is not a stop: exit 2, and say so"
     monkeypatch.setattr(bridge.sim, "preflight", lambda *a, **k: {"ok": False, "note": "x"})
     assert bridge.sim.main() == 1
@@ -298,8 +320,9 @@ def test_the_dispatcher_really_selects_the_bridge_module_when_the_key_says_so(br
 
     import spicexplorer_harness
 
-    monkeypatch.setattr(spicexplorer_harness, "load",
-                        lambda root: types.SimpleNamespace(lane="bridge"))
+    monkeypatch.setattr(
+        spicexplorer_harness, "load", lambda root: types.SimpleNamespace(lane="bridge")
+    )
     src = Path(__file__).resolve().parents[1] / "design" / "sim.py"
     spec = importlib.util.spec_from_file_location("design._lane_probe", src)
     mod = importlib.util.module_from_spec(spec)

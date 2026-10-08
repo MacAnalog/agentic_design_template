@@ -24,8 +24,11 @@ REPO = Path(__file__).resolve().parents[1]
 
 
 def _env() -> dict[str, str]:
-    env = {k: v for k, v in os.environ.items()
-           if not k.startswith("GIT_") and k not in ("MAKEFLAGS", "MAKELEVEL", "MFLAGS")}
+    env = {
+        k: v
+        for k, v in os.environ.items()
+        if not k.startswith("GIT_") and k not in ("MAKEFLAGS", "MAKELEVEL", "MFLAGS")
+    }
     return {**env, "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": os.devnull}
 
 
@@ -34,8 +37,9 @@ def _run(cwd: Path, *cmd: str) -> subprocess.CompletedProcess:
 
 
 def git(cwd: Path, *args: str) -> str:
-    r = _run(cwd, "git", "-c", "user.email=t@t", "-c", "user.name=t", "-c", "commit.gpgsign=false",
-             *args)
+    r = _run(
+        cwd, "git", "-c", "user.email=t@t", "-c", "user.name=t", "-c", "commit.gpgsign=false", *args
+    )
     assert r.returncode == 0, f"git {' '.join(args)}\n{r.stdout}{r.stderr}"
     return r.stdout.strip()
 
@@ -49,9 +53,23 @@ def design(tmp_path: Path, *extra: str) -> Path:
     so a checkout of `origin/main` would move HEAD. `.sx/skills` is an empty directory. The
     recipe's link step runs `scripts/pdk_links.py`, so that is copied too; `extra` names more
     tracked paths to copy in."""
-    ls = subprocess.run(["git", "ls-files", "-z", "--", "Makefile", ".gitmodules", ".claude",
-                         "scripts/pdk_links.py", *extra],
-                        cwd=REPO, capture_output=True, text=True, check=False)
+    ls = subprocess.run(
+        [
+            "git",
+            "ls-files",
+            "-z",
+            "--",
+            "Makefile",
+            ".gitmodules",
+            ".claude",
+            "scripts/pdk_links.py",
+            *extra,
+        ],
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
     if ls.returncode:
         pytest.skip("not a git checkout: there are no tracked files to copy")
     root = tmp_path / "design"
@@ -98,8 +116,14 @@ def test_skills_update_accepts_a_submodule_whose_git_is_a_file(tmp_path):
     git(lib, "commit", "-qm", "pinned")
     skills = root / ".sx" / "skills"
     skills.rmdir()
-    git(tmp_path, "clone", "-q", f"--separate-git-dir={tmp_path / 'skills.git'}", str(lib),
-        str(skills))
+    git(
+        tmp_path,
+        "clone",
+        "-q",
+        f"--separate-git-dir={tmp_path / 'skills.git'}",
+        str(lib),
+        str(skills),
+    )
     assert (skills / ".git").is_file()
     git(lib, "commit", "-q", "--allow-empty", "-m", "the library's main moves")
     before = head(root)
@@ -110,16 +134,21 @@ def test_skills_update_accepts_a_submodule_whose_git_is_a_file(tmp_path):
     assert git(skills, "rev-parse", "HEAD") == git(lib, "rev-parse", "HEAD"), out
 
 
-@pytest.mark.parametrize(("pdk", "want"), [
-    ("ihp-sg13g2", ["--set design", "--set pdk-ihp-sg13g2"]),
-    ("", ["--set design"]),
-])
+@pytest.mark.parametrize(
+    ("pdk", "want"),
+    [
+        ("ihp-sg13g2", ["--set design", "--set pdk-ihp-sg13g2"]),
+        ("", ["--set design"]),
+    ],
+)
 def test_skills_update_links_the_pdk_set_harness_yaml_declares(tmp_path, pdk, want):
     """The recipe's link step is the `design` set, then the `pdk-<id>` set when `pdk:` names one
     the library ships (scripts/pdk_links.py). Keyed on the declaration: with `pdk:` empty, the
     library's `pdk-ihp-sg13g2` set is not linked."""
     root = design(tmp_path, "harness.yaml")
-    lines = [ln for ln in (root / "harness.yaml").read_text().splitlines() if not ln.startswith("pdk:")]
+    lines = [
+        ln for ln in (root / "harness.yaml").read_text().splitlines() if not ln.startswith("pdk:")
+    ]
     (root / "harness.yaml").write_text("\n".join([*lines, f"pdk: {pdk}"]) + "\n")
     git(root, "commit", "-qam", "pdk")
     lib = tmp_path / "library"
@@ -134,8 +163,14 @@ def test_skills_update_links_the_pdk_set_harness_yaml_declares(tmp_path, pdk, wa
     git(lib, "commit", "-qm", "pinned")
     skills = root / ".sx" / "skills"
     skills.rmdir()
-    git(tmp_path, "clone", "-q", f"--separate-git-dir={tmp_path / 'skills.git'}", str(lib),
-        str(skills))
+    git(
+        tmp_path,
+        "clone",
+        "-q",
+        f"--separate-git-dir={tmp_path / 'skills.git'}",
+        str(lib),
+        str(skills),
+    )
     r = _run(root, "make", "skills-update")
     assert r.returncode == 0, r.stdout + r.stderr
     assert log.read_text().splitlines() == want

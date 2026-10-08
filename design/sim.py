@@ -60,7 +60,8 @@ def module_name(lane: str) -> str:
         raise ValueError(
             f"harness.yaml says `lane: {lane}`, which is not a lane this design ships. Known "
             f"lanes: {', '.join(sorted(LANES))}. Leave `lane:` out for the default "
-            f"({DEFAULT_LANE}).")
+            f"({DEFAULT_LANE})."
+        )
     return LANES[key]
 
 
@@ -77,7 +78,7 @@ _mod = import_module(f".{module_name(LANE)}", __package__)
 for _n in ("LANE", "LANES", "DEFAULT_LANE", "lane_name", "module_name"):
     setattr(_mod, _n, globals()[_n])
 
-if __name__ == "__main__":          # `make doctor` = `python -m design.sim`
+if __name__ == "__main__":  # `make doctor` = `python -m design.sim`
     sys.exit(_mod.main())
 
 # THE swap. The import system re-reads `sys.modules[__name__]` after this module's body has run

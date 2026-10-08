@@ -15,7 +15,6 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
-
 from spicexplorer_waveview.eye import fold, rx_bandwidth  # noqa: E402
 from spicexplorer_waveview.stimulus import Data  # noqa: E402
 
@@ -51,38 +50,70 @@ def spec_text(metrics: dict, keys) -> str:
     lines = []
     for k in keys:
         r, v = SPEC.get(k), metrics.get(k, float("nan"))
-        lines.append(f"{r.label if r else k} {v:.2f} {r.unit if r else ''}"
-                     + (f" ({r.op} {r.bound:g})" if r else ""))
+        lines.append(
+            f"{r.label if r else k} {v:.2f} {r.unit if r else ''}"
+            + (f" ({r.op} {r.bound:g})" if r else "")
+        )
     return "\n".join(lines)
 
 
-def eye(t: np.ndarray, x: np.ndarray, data: Data, out: Path, *, title: str = "",
-        metrics: dict | None = None, keys=(), ylabel: str = "signal") -> Path:
+def eye(
+    t: np.ndarray,
+    x: np.ndarray,
+    data: Data,
+    out: Path,
+    *,
+    title: str = "",
+    metrics: dict | None = None,
+    keys=(),
+    ylabel: str = "signal",
+) -> Path:
     """Two eye panels (unfiltered, after the reference receiver) with the spec box text drawn on."""
     fig, axs = plt.subplots(1, 2, figsize=(8, 3.2))
     bw = rx_bandwidth(data.fmt, data.rate_gbd) / (data.rate_gbd * 1e9)
-    for ax, filt, panel in ((axs[0], False, "unfiltered"), (axs[1], True, f"after ref Rx (BT4, {bw:g} x baud)")):
+    for ax, filt, panel in (
+        (axs[0], False, "unfiltered"),
+        (axs[1], True, f"after ref Rx (BT4, {bw:g} x baud)"),
+    ):
         ph, y = fold(t, x, data, filtered=filt)
         ax.plot(ph * 1e12, y, ",", color="navy", alpha=0.35)
         ax.set_xlabel("time within 2 UI [ps]")
         ax.set_ylabel(ylabel)
         ax.set_title(panel, fontsize=8)
     if metrics and keys:
-        axs[1].text(0.02, 0.98, spec_text(metrics, keys), transform=axs[1].transAxes, va="top",
-                    fontsize=7, bbox={"boxstyle": "round", "fc": "white", "alpha": 0.8})
+        axs[1].text(
+            0.02,
+            0.98,
+            spec_text(metrics, keys),
+            transform=axs[1].transAxes,
+            va="top",
+            fontsize=7,
+            bbox={"boxstyle": "round", "fc": "white", "alpha": 0.8},
+        )
     fig.suptitle(f"{title} — {data.fmt.upper()} {data.rate_gbd:g} GBd PRBS{data.order}", fontsize=9)
     return save(fig, out)
 
 
-def series(rows: list[dict], out: Path, *, x: str, ys, by: str = "label", title: str = "",
-           logx: bool = False) -> Path:
+def series(
+    rows: list[dict],
+    out: Path,
+    *,
+    x: str,
+    ys,
+    by: str = "label",
+    title: str = "",
+    logx: bool = False,
+) -> Path:
     """One panel per metric in `ys`: metric vs `x` per `by` series, the spec band on every panel; rows are ledger dicts."""
     fig, axs = plt.subplots(1, len(ys), figsize=(3.2 * len(ys), 3.2), squeeze=False)
     labels = sorted({r.get(by, "") for r in rows}, key=str)
     for ax, y in zip(axs[0], ys):
         for name in labels:
-            pts = sorted((r[x], r[y]) for r in rows
-                         if r.get(by) == name and isinstance(r.get(y), (int, float)))
+            pts = sorted(
+                (r[x], r[y])
+                for r in rows
+                if r.get(by) == name and isinstance(r.get(y), (int, float))
+            )
             if pts:
                 ax.plot([p[0] for p in pts], [p[1] for p in pts], "o-", ms=3, label=str(name))
         spec_band(ax, y)
@@ -96,7 +127,14 @@ def series(rows: list[dict], out: Path, *, x: str, ys, by: str = "label", title:
     return save(fig, out)
 
 
-def frontier(rows: list[dict], out: Path, *, x: str = "rate_gbd", ys, by: str = "label",
-             title: str = "frontier") -> Path:
+def frontier(
+    rows: list[dict],
+    out: Path,
+    *,
+    x: str = "rate_gbd",
+    ys,
+    by: str = "label",
+    title: str = "frontier",
+) -> Path:
     """`series` on a log x axis: the metric-vs-rate frontier of every candidate."""
     return series(rows, out, x=x, ys=ys, by=by, title=title, logx=True)

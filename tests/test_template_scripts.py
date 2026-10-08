@@ -23,8 +23,13 @@ SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
 
 
 def git(*args: str, cwd: Path) -> str:
-    r = subprocess.run(["git", "-c", "user.email=t@t", "-c", "user.name=t", *args],
-                       cwd=cwd, capture_output=True, text=True, check=False)
+    r = subprocess.run(
+        ["git", "-c", "user.email=t@t", "-c", "user.name=t", *args],
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
     assert r.returncode == 0, f"git {' '.join(args)}\n{r.stdout}{r.stderr}"
     return r.stdout
 
@@ -58,8 +63,13 @@ def make_template(root: Path, later: dict[str, str] | None = None) -> Path:
     return t
 
 
-def make_design(root: Path, files: dict[str, str], *, version: str = "1.00",
-                scripts: tuple[str, ...] = ("template_update",)) -> Path:
+def make_design(
+    root: Path,
+    files: dict[str, str],
+    *,
+    version: str = "1.00",
+    scripts: tuple[str, ...] = ("template_update",),
+) -> Path:
     d = root / "design"
     (d / "scripts").mkdir(parents=True)
     for name in scripts:
@@ -79,6 +89,7 @@ def make_design(root: Path, files: dict[str, str], *, version: str = "1.00",
 
 # ------------------------------------------------------------------ AT-02 --------------
 
+
 def test_a_conflicting_update_does_not_advance_the_recorded_version(tmp_path):
     """AT-02: the version file was written BEFORE the conflict scan, so an update that left
     conflict markers still recorded the new release — and the next update, believing the design is
@@ -90,14 +101,15 @@ def test_a_conflicting_update_does_not_advance_the_recorded_version(tmp_path):
 
     rc = tu.update(None)
     assert rc == 1, "a conflicted apply must exit non-zero"
-    assert (design / ".sx" / "template-version").read_text().strip() == "1.00", \
+    assert (design / ".sx" / "template-version").read_text().strip() == "1.00", (
         "the release was recorded although its change did not land"
+    )
 
 
 def test_a_clean_update_does_advance_the_recorded_version(tmp_path):
     """The other half: nothing may stop recording a release that actually applied."""
     tmpl = make_template(tmp_path)
-    design = make_design(tmp_path, {"Makefile": "test:\n\techo one\n"})   # untouched: merges clean
+    design = make_design(tmp_path, {"Makefile": "test:\n\techo one\n"})  # untouched: merges clean
     tu = load_from(design, "template_update")
     tu.URL = str(tmpl)
 
@@ -124,14 +136,18 @@ def test_a_new_file_that_would_not_apply_is_not_reported_as_skipped(tmp_path):
 
 # ------------------------------------------------------------------ AT-03 --------------
 
+
 def test_migrate_dry_run_changes_nothing_in_the_repo(tmp_path):
     """AT-03: `main()` called `have_target()` before consulting `--dry-run`, and that adds the
     `template` remote and runs `git fetch --tags --force` — a dry run that writes refs (and can
     move a tag) into the repo it claims not to touch."""
     tmpl = make_template(tmp_path)
     git("tag", "v2.00", cwd=tmpl)
-    design = make_design(tmp_path, {"Makefile": "test:\n\techo one\n"},
-                         scripts=("template_update", "migrate_v1_to_v2"))
+    design = make_design(
+        tmp_path,
+        {"Makefile": "test:\n\techo one\n"},
+        scripts=("template_update", "migrate_v1_to_v2"),
+    )
     # the remote already exists and points at the local template: the fetch would work, so what
     # this test measures is whether a dry run performs it at all
     git("remote", "add", "template", str(tmpl), cwd=design)
@@ -142,11 +158,15 @@ def test_migrate_dry_run_changes_nothing_in_the_repo(tmp_path):
     rc = mig.main(["--dry-run"])
 
     assert rc == 0
-    assert git("tag", "--list", cwd=design).split() == [], \
+    assert git("tag", "--list", cwd=design).split() == [], (
         "the dry run fetched tags into the design repo"
+    )
     # `__pycache__` is this test importing the script from inside the repo, not the migration
-    left = [ln for ln in git("status", "--porcelain", cwd=design).splitlines()
-            if "__pycache__" not in ln]
+    left = [
+        ln
+        for ln in git("status", "--porcelain", cwd=design).splitlines()
+        if "__pycache__" not in ln
+    ]
     assert left == [], f"the dry run left changes in the tree: {left}"
     assert git("rev-parse", "HEAD", cwd=design) == before
     assert (design / ".sx" / "template-version").read_text().strip() == "1.00"
@@ -156,8 +176,11 @@ def test_migrate_dry_run_does_not_add_the_template_remote(tmp_path):
     """The same rule for a design that has never fetched the template: a dry run adds no remote."""
     tmpl = make_template(tmp_path)
     git("tag", "v2.00", cwd=tmpl)
-    design = make_design(tmp_path, {"Makefile": "test:\n\techo one\n"},
-                         scripts=("template_update", "migrate_v1_to_v2"))
+    design = make_design(
+        tmp_path,
+        {"Makefile": "test:\n\techo one\n"},
+        scripts=("template_update", "migrate_v1_to_v2"),
+    )
     mig = load_from(design, "migrate_v1_to_v2")
     mig.URL = str(tmpl)
 

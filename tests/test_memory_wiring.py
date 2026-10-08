@@ -29,8 +29,10 @@ def _h(root: Path = REPO):
 def test_the_template_declares_a_budget_an_archive_and_a_fleet_index():
     h = _h()
     if h.name != "<design>":
-        pytest.skip(f"harness.yaml is this design's own (name: {h.name}): the template's values "
-                    "are not asserted on it")
+        pytest.skip(
+            f"harness.yaml is this design's own (name: {h.name}): the template's values "
+            "are not asserted on it"
+        )
     assert h.memory_pack_budget == 20000
     assert h.archived_dirs == ["doc/memory/archive"]
     assert h.memory_fleet_index == "../../registry/fleet-lessons.json"
@@ -41,8 +43,10 @@ def test_the_template_declares_a_budget_an_archive_and_a_fleet_index():
 
 def _entry(i: int, word: str = "") -> str:
     body = f"line {i} of a lesson about the compensation network {word} " * 6
-    return (f"# 2026-09-{1 + i % 28:02d} — lesson {i:03d}\n\n"
-            f"KIND: journal entry | type: semantic | status: live\n\n{body.strip()}\n")
+    return (
+        f"# 2026-09-{1 + i % 28:02d} — lesson {i:03d}\n\n"
+        f"KIND: journal entry | type: semantic | status: live\n\n{body.strip()}\n"
+    )
 
 
 @pytest.fixture
@@ -70,7 +74,7 @@ def test_the_pack_says_what_the_budget_dropped_and_skips_the_archive(placed):
         pytest.skip("harness.yaml declares no memory.pack_budget (template v2.14 sets 20000)")
     loaded = placed / h.load_dirs[0]
     loaded.mkdir(parents=True, exist_ok=True)
-    for i in range(h.memory_pack_budget // 100):        # about 2.5x the budget in lesson lines
+    for i in range(h.memory_pack_budget // 100):  # about 2.5x the budget in lesson lines
         (loaded / f"lesson-{i:04d}.md").write_text(_entry(i))
     for rel in h.archived_dirs:
         (placed / rel).mkdir(parents=True, exist_ok=True)
@@ -84,20 +88,37 @@ def test_the_pack_says_what_the_budget_dropped_and_skips_the_archive(placed):
 def test_the_pack_reads_the_fleet_index_beside_a_placed_clone(placed):
     h = _h(placed)
     if not h.memory_fleet_index or Path(h.memory_fleet_index).is_absolute():
-        pytest.skip("harness.yaml declares no relative memory.fleet_index (template v2.14 sets "
-                    "../../registry/fleet-lessons.json)")
-    assert "## Fleet lessons" not in _pack(placed)       # no index file yet: no section
+        pytest.skip(
+            "harness.yaml declares no relative memory.fleet_index (template v2.14 sets "
+            "../../registry/fleet-lessons.json)"
+        )
+    assert "## Fleet lessons" not in _pack(placed)  # no index file yet: no section
     index = (placed / h.memory_fleet_index).resolve()
-    assert placed.parents[1] in index.parents, index     # the test writes only in its own dir
+    assert placed.parents[1] in index.parents, index  # the test writes only in its own dir
     index.parent.mkdir(parents=True, exist_ok=True)
-    index.write_text(json.dumps({
-        "version": 1, "generated_at": "2026-09-20", "commits": {},
-        "entries": [{"design": "another-design", "file": "doc/journal/tail-current.md",
-                     "title": "2026-09-19 — tail current sets the slew rate",
-                     "hook": "tail current sets the slew rate", "type": "semantic",
-                     "date": "2026-09-19", "pdk": "", "scope": "design", "summary": "",
-                     "keys": []}],
-    }))
+    index.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "generated_at": "2026-09-20",
+                "commits": {},
+                "entries": [
+                    {
+                        "design": "another-design",
+                        "file": "doc/journal/tail-current.md",
+                        "title": "2026-09-19 — tail current sets the slew rate",
+                        "hook": "tail current sets the slew rate",
+                        "type": "semantic",
+                        "date": "2026-09-19",
+                        "pdk": "",
+                        "scope": "design",
+                        "summary": "",
+                        "keys": [],
+                    }
+                ],
+            }
+        )
+    )
     text = _pack(placed)
     assert "## Fleet lessons" in text
     assert "tail current sets the slew rate" in text

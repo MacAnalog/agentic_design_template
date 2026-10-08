@@ -34,6 +34,7 @@ The five lessons baked into the stage functions:
    PEX models resistance: none of them asks whether the metal carrying the load current is wide
    enough. The LDO cell of record passed all three at 12-28x over the Metal1 limit.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -89,7 +90,8 @@ def pdk() -> str:
             f"no PDK named: set `PDK` in layout/signoff.py (got {PDK!r}) or export {PDK_ENV}=<name>."
             f"\n    FIX: every runner (run_drc/run_lvs/run_pex/render_png/check_current_density) "
             "otherwise falls back to ITS OWN default process — the rule deck and the current-"
-            "density limits of a technology this design may not be built in")
+            "density limits of a technology this design may not be built in"
+        )
     return p
 
 
@@ -100,23 +102,30 @@ def gds_python() -> str:
         raise SystemExit(
             f"{GDS_PYTHON_ENV} must name the interpreter that has gdsfactory and the PDK cells "
             f"(got {p!r}).\n    FIX: export {GDS_PYTHON_ENV}=/path/to/that/python — record the "
-            "path in doc/environment.md, never hard-code someone's home directory here")
+            "path in doc/environment.md, never hard-code someone's home directory here"
+        )
     return p  # NOT `None`: GdsBuilder(python=None) falls back to sys.executable, i.e. THIS venv
 
 
 # ------------------------------------------------------------------ build / render ----
+
 
 def build(out: Path, sizing: Path | None = None, params: dict | None = None) -> dict:
     """GDS + the LVS reference netlist, built in the generator's own interpreter."""
     from spicexplorer_layout import GdsBuilder
 
     out.mkdir(parents=True, exist_ok=True)
-    builder = GdsBuilder(GEN, out, cell=CELL, sizing_json=str(sizing) if sizing else None,
-                         python=gds_python())
+    builder = GdsBuilder(
+        GEN, out, cell=CELL, sizing_json=str(sizing) if sizing else None, python=gds_python()
+    )
     gds = builder(params or {})
     b = builder.last
-    return {"gds": str(gds), "area_um2": getattr(b, "area_um2", None),
-            "sha": getattr(b, "sha", ""), "params": dict(params or {})}
+    return {
+        "gds": str(gds),
+        "area_um2": getattr(b, "area_um2", None),
+        "sha": getattr(b, "sha", ""),
+        "params": dict(params or {}),
+    }
 
 
 def render(gds: Path, png: Path) -> dict:
@@ -130,6 +139,7 @@ def render(gds: Path, png: Path) -> dict:
 
 
 # ------------------------------------------------------------------ sign-off ----------
+
 
 def violation_counts(violations) -> dict[str, int]:
     """Violations -> {rule: how many}, the per-rule split a reviewer reads.
@@ -166,8 +176,9 @@ def drc(gds: Path, out: Path, *, density: bool = False) -> dict:
 
     r = run_drc(str(gds), CELL, str(out), no_density=not density, pdk=pdk())
     print(f"  DRC: passed={r.passed} violations={r.n_violations}")
-    return _record(r, density=bool(density), pdk=pdk(),
-                   violations_per_rule=violation_counts(r.violations))
+    return _record(
+        r, density=bool(density), pdk=pdk(), violations_per_rule=violation_counts(r.violations)
+    )
 
 
 def current_density(out: Path) -> dict:
@@ -207,8 +218,12 @@ def pex(gds: Path, netlist: Path, out: Path, *, mode: str = "CC") -> dict:
     r = run_pex(gds, CELL, netlist, out, mode=mode, pdk=pdk())
     print(f"  PEX: ok={r.ok} n_C={r.n_c} n_R={r.n_r}")
     top = sorted(((v, k) for k, v in (r.per_net_c_ff or {}).items()), reverse=True)[:12]
-    return _record(r, pdk=pdk(), top_c_ff={k: round(v, 3) for v, k in top},
-                   log_tail="" if r.ok else (r.log or "")[-1500:])
+    return _record(
+        r,
+        pdk=pdk(),
+        top_c_ff={k: round(v, 3) for v, k in top},
+        log_tail="" if r.ok else (r.log or "")[-1500:],
+    )
 
 
 def benches(pex_netlist: Path, out: Path, tag: str = "postlayout") -> dict:
@@ -222,15 +237,18 @@ def benches(pex_netlist: Path, out: Path, tag: str = "postlayout") -> dict:
     block = prep_pex_subckt(pex_netlist, CELL)
     (out / "extracted_subckt.spice").write_text(block)
     pre_decks = {b: REFERENCE.deck(b) for b in REFERENCE.benches()}
-    post_decks = {b: splice_subckt(pre_decks[b], block, CELL, check_pins=False)
-                  for b in pre_decks}
+    post_decks = {b: splice_subckt(pre_decks[b], block, CELL, check_pins=False) for b in pre_decks}
     pre, _ = M.run_decks(pre_decks, f"{tag}_pre")
     post, post_rec = M.run_decks(post_decks, f"{tag}_post")
     from spicexplorer_harness import violations as _viol
 
-    rec = {"pre": pre, "post": post, "pre_violations": _viol(H.spec, pre),
-           "post_violations": _viol(H.spec, post),
-           "bench_status": {b: r["status"] for b, r in sorted(post_rec.items())}}
+    rec = {
+        "pre": pre,
+        "post": post,
+        "pre_violations": _viol(H.spec, pre),
+        "post_violations": _viol(H.spec, post),
+        "bench_status": {b: r["status"] for b, r in sorted(post_rec.items())},
+    }
     table = M.table({"pre-layout (schematic)": pre, "post-layout (extracted)": post})
     (out / "scorecard.md").write_text(table + "\n")
     print("\n" + table)

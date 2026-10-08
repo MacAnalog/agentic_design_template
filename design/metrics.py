@@ -97,23 +97,37 @@ def run_decks(decks: dict[str, str], tag: str, *, record: bool = True) -> tuple[
             # iterates the CERTIFIED keys: an `ok` here is how a spec column leaves the frozen
             # reference and is never missed again. `meas_error` keeps the numbers that DID come out
             # (below) while refusing to pass as a complete bench.
-            rec.update(status="ok" if not failed else "meas_error",
-                       measures={**r.measures, **bench_mod.reduce(bench, r)},
-                       failed=failed, wall=r.wall)
+            rec.update(
+                status="ok" if not failed else "meas_error",
+                measures={**r.measures, **bench_mod.reduce(bench, r)},
+                failed=failed,
+                wall=r.wall,
+            )
         except sim.SimError as exc:
-            rec.update(status="sim_error", error=str(exc)[:800], measures={}, failed=[],
-                       wall=time.perf_counter() - t0)
+            rec.update(
+                status="sim_error",
+                error=str(exc)[:800],
+                measures={},
+                failed=[],
+                wall=time.perf_counter() - t0,
+            )
         return bench, rec
 
     records = dict(batch(list(named), one, env=H.jobs_env, on_error="raise"))
     values: dict = {}
     for bench, rec in records.items():
-        if rec["status"] != "sim_error":                    # a bench that ran: promote what it has
+        if rec["status"] != "sim_error":  # a bench that ran: promote what it has
             values.update(promote(bench, rec["measures"]))
             values.update(promote(bench, {m: float("nan") for m in rec["failed"]}))
         if record:
-            log_run(H, f"{tag}__{bench}", {"bench": bench, "status": rec["status"]},
-                    kind="bench", deck=rec["deck"], wall=rec["wall"])
+            log_run(
+                H,
+                f"{tag}__{bench}",
+                {"bench": bench, "status": rec["status"]},
+                kind="bench",
+                deck=rec["deck"],
+                wall=rec["wall"],
+            )
     return values, records
 
 

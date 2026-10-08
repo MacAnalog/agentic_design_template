@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import json
-import sys
-import types
 import math
 import re
+import sys
+import types
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -27,11 +27,17 @@ def _have_ngspice() -> bool:
 live = pytest.mark.skipif(not _have_ngspice(), reason="no ngspice binary on this host")
 
 # Real ngspice-45 batch log excerpts (probe decks under $SX_SCRATCH), verbatim.
-LOG_INVALID_LINE = "Warning: 'r1 a 0' is not a valid resistor instance line, ignored!\ni_ma = -0.000000e+00\n"
-LOG_FAILED_MEAS = ("Error: measure  bad  when(WHEN) : out of interval\n"
-                   " meas tran bad when v(a)=5 failed!\n\ngood                =  1.500000e-09\n")
-LOG_BAD_LET = ("Warning from checkvalid: vector nowhere is not available or has zero length.\n"
-               "Error: RHS \"v(nowhere)*2\" invalid\n")
+LOG_INVALID_LINE = (
+    "Warning: 'r1 a 0' is not a valid resistor instance line, ignored!\ni_ma = -0.000000e+00\n"
+)
+LOG_FAILED_MEAS = (
+    "Error: measure  bad  when(WHEN) : out of interval\n"
+    " meas tran bad when v(a)=5 failed!\n\ngood                =  1.500000e-09\n"
+)
+LOG_BAD_LET = (
+    "Warning from checkvalid: vector nowhere is not available or has zero length.\n"
+    'Error: RHS "v(nowhere)*2" invalid\n'
+)
 
 
 @pytest.fixture
@@ -43,11 +49,14 @@ def scratch(tmp_path, monkeypatch):
 
 # ------------------------------------------------------------------ lane: the log -----
 
+
 def test_parse_measures_real_failed_meas_form():
     m, failed = sim.parse_measures(LOG_FAILED_MEAS)
     assert m == {"good": 1.5e-09} and failed == ["bad"]
-    m, failed = sim.parse_measures("i_ma = 1.000000e+00\nugf = 1.2345e+06 at=  3.2\n"
-                                   "Total analysis time (seconds) = 0.001\nDoing analysis at TEMP = 27.0\n")
+    m, failed = sim.parse_measures(
+        "i_ma = 1.000000e+00\nugf = 1.2345e+06 at=  3.2\n"
+        "Total analysis time (seconds) = 0.001\nDoing analysis at TEMP = 27.0\n"
+    )
     assert m == {"i_ma": 1.0, "ugf": 1.2345e6} and failed == []
 
 
@@ -57,8 +66,10 @@ def test_fatal_lines_classification():
     assert sim.fatal_lines("doAnalyses: iteration limit reached")
     assert sim.fatal_lines("Error on line 12 : xm1 ... Unknown model type xyz")
     assert not sim.fatal_lines(LOG_FAILED_MEAS), "a failed .meas is Run.failed, not a fatal run"
-    assert not sim.fatal_lines("Warning: singular matrix:  check nodes a and b\n"
-                               "Note: Starting dynamic gmin stepping\nWarning: vd: no DC value\n")
+    assert not sim.fatal_lines(
+        "Warning: singular matrix:  check nodes a and b\n"
+        "Note: Starting dynamic gmin stepping\nWarning: vd: no DC value\n"
+    )
 
 
 def test_spiceinit_requires_userinit_dir(tmp_path, monkeypatch):
@@ -118,7 +129,7 @@ def test_the_design_scoped_variable_is_read_before_the_shared_one(monkeypatch):
     assert sim.deck_var_names("MODEL_LIB") == ("DN999_MODEL_LIB", "MODEL_LIB")
     assert "mine.file" in sim.resolve('include "$MODEL_LIB"\n')
 
-    monkeypatch.delenv("DN999_MODEL_LIB")          # every candidate is tried before failing
+    monkeypatch.delenv("DN999_MODEL_LIB")  # every candidate is tried before failing
     assert "other.file" in sim.resolve('include "$MODEL_LIB"\n')
 
     monkeypatch.delenv("MODEL_LIB")
@@ -138,7 +149,7 @@ def test_a_pinned_variable_may_not_point_at_another_revision(monkeypatch):
         sim.resolve(deck)
     assert "rev_v1d0" in str(e.value) and "rev_v9d9" not in str(e.value)  # never echo the value
 
-    monkeypatch.setenv("MODEL_LIB_ALLOW_MISMATCH", "1")   # deliberate, and it has to be typed
+    monkeypatch.setenv("MODEL_LIB_ALLOW_MISMATCH", "1")  # deliberate, and it has to be typed
     assert "rev_v9d9" in sim.resolve(deck)
 
     monkeypatch.delenv("MODEL_LIB_ALLOW_MISMATCH")
@@ -164,6 +175,7 @@ def test_run_resolves_the_deck_only_as_the_simulator_receives_it(scratch, monkey
     monkeypatch.setenv("MODEL_LIB", "/opt/site/models/lib.file")
     monkeypatch.setattr(sim, "spiceinit", lambda extra="": "set x\n")
     monkeypatch.setattr(sim, "ngspice", lambda: "/bin/true")
+
     def _fake_run_deck(deck, **kw):
         seen["deck"] = deck
         return _R()
@@ -211,23 +223,36 @@ def test_plot_smoke(scratch):
     t = np.arange(0, d.t_end + 2e-9, d.ui / 50)
     x = 0.5 + 0.5 * wv_stim.ideal_waveform(t, d)
     m = wv_eye.eye_metrics(t, x, d)
-    p = plot.eye(t, x, d, scratch / "fig" / "eye.png", title="t", metrics={**m, "gain_db": 61},
-                 keys=("gain_db", "er_db"))
-    rows = [{"label": "a", "rate_gbd": r, "gain_db": 60 + r / 10, "pm_deg": 70 - r} for r in (10, 20, 40)]
+    p = plot.eye(
+        t,
+        x,
+        d,
+        scratch / "fig" / "eye.png",
+        title="t",
+        metrics={**m, "gain_db": 61},
+        keys=("gain_db", "er_db"),
+    )
+    rows = [
+        {"label": "a", "rate_gbd": r, "gain_db": 60 + r / 10, "pm_deg": 70 - r}
+        for r in (10, 20, 40)
+    ]
     q = plot.frontier(rows, scratch / "fig" / "frontier.png", ys=("gain_db", "pm_deg"))
     assert p.stat().st_size > 1000 and q.stat().st_size > 1000
 
 
 # ------------------------------------------------------------------ lane: live --------
 
+
 @live
 def test_preflight_simulates_one_resistor(scratch):
     info = sim.preflight()
     assert info["ok"], info
     r = sim.run(sim.PROBE, "probe")
-    assert r.raw is not None and r.raw.exists() and abs(r.measures["i_ma"] - 1.0) < 1e-6 and r.rc == 0
+    assert (
+        r.raw is not None and r.raw.exists() and abs(r.measures["i_ma"] - 1.0) < 1e-6 and r.rc == 0
+    )
     assert Path(r).is_dir() and (Path(r) / ".spiceinit").exists() and r.wall > 0
-    assert str(r) == str(r.dir) == f"{r}"     # ledger rows store str(run); Path(run) reopens it
+    assert str(r) == str(r.dir) == f"{r}"  # ledger rows store str(run); Path(run) reopens it
     assert sim.raw(r).get_trace("v(a)").get_wave()[0] == pytest.approx(1.0)
 
 
@@ -239,12 +264,18 @@ def _deck(body: str) -> str:
 def test_run_raises_on_real_errors(scratch):
     with pytest.raises(sim.SimError, match="RHS"):
         sim.run(_deck("let x = v(nowhere)*2\nprint x"), "bad_let")
-    with pytest.raises(sim.SimError, match="ignored"):        # the silent-zero class
-        sim.run("* p\nv1 a 0 1\nr1 a 0\n.control\nop\nlet i_ma = -i(v1)*1e3\nprint i_ma\n"
-                "write sim.raw\nquit\n.endc\n.end\n", "invalid_line")
+    with pytest.raises(sim.SimError, match="ignored"):  # the silent-zero class
+        sim.run(
+            "* p\nv1 a 0 1\nr1 a 0\n.control\nop\nlet i_ma = -i(v1)*1e3\nprint i_ma\n"
+            "write sim.raw\nquit\n.endc\n.end\n",
+            "invalid_line",
+        )
     with pytest.raises(sim.SimError, match="rc=3"):
-        sim.run("* p\nv1 a 0 1\nr1 a 0 1k\n.control\nop\nlet i_ma = -i(v1)*1e3\nprint i_ma\n"
-                "write sim.raw\nquit 3\n.endc\n.end\n", "rc3")
+        sim.run(
+            "* p\nv1 a 0 1\nr1 a 0 1k\n.control\nop\nlet i_ma = -i(v1)*1e3\nprint i_ma\n"
+            "write sim.raw\nquit 3\n.endc\n.end\n",
+            "rc3",
+        )
     try:
         sim.run(_deck("let x = v(nowhere)*2\nprint x"), "bad_let")
     except sim.SimError as e:
@@ -253,9 +284,12 @@ def test_run_raises_on_real_errors(scratch):
 
 @live
 def test_failed_meas_becomes_run_failed(scratch):
-    r = sim.run("* p\nv1 a 0 pulse(0 1 1n 1n 1n 5n 10n)\nr1 a 0 1k\n.control\ntran 0.1n 20n\n"
-                "meas tran bad when v(a)=5\nmeas tran good when v(a)=0.5 rise=1\nwrite sim.raw\nquit\n"
-                ".endc\n.end\n", "failmeas")
+    r = sim.run(
+        "* p\nv1 a 0 pulse(0 1 1n 1n 1n 5n 10n)\nr1 a 0 1k\n.control\ntran 0.1n 20n\n"
+        "meas tran bad when v(a)=5\nmeas tran good when v(a)=0.5 rise=1\nwrite sim.raw\nquit\n"
+        ".endc\n.end\n",
+        "failmeas",
+    )
     assert r.failed == ["bad"] and r.measures["good"] == pytest.approx(1.5e-9, rel=1e-3)
 
 
@@ -267,10 +301,10 @@ def test_busy_marker_live_vs_stale(scratch):
 
     rd = sim.work() / "runs" / f"probe-{deck_hash(sim.PROBE)[:8]}"
     rd.mkdir(parents=True)
-    (rd / ".busy").write_text(str(os.getpid()))            # a live owner: refuse
+    (rd / ".busy").write_text(str(os.getpid()))  # a live owner: refuse
     with pytest.raises(sim.SimError, match="busy"):
         sim.run(sim.PROBE, "probe")
-    (rd / ".busy").write_text(str(2**22 - 1))              # a dead owner (killed session): reclaim
+    (rd / ".busy").write_text(str(2**22 - 1))  # a dead owner (killed session): reclaim
     assert sim.run(sim.PROBE, "probe").measures["i_ma"] == pytest.approx(1.0)
     assert not (rd / ".busy").exists()
 
@@ -278,8 +312,11 @@ def test_busy_marker_live_vs_stale(scratch):
 @live
 def test_concurrent_runs_same_label_do_not_clobber(scratch):
     def go(rval):
-        return sim.run(f"* p\nv1 a 0 1\nr1 a 0 {rval}\n.control\nop\nlet i_ma = -i(v1)*1e3\n"
-                       f"print i_ma\nwrite sim.raw\nquit\n.endc\n.end\n", "same").measures["i_ma"]
+        return sim.run(
+            f"* p\nv1 a 0 1\nr1 a 0 {rval}\n.control\nop\nlet i_ma = -i(v1)*1e3\n"
+            f"print i_ma\nwrite sim.raw\nquit\n.endc\n.end\n",
+            "same",
+        ).measures["i_ma"]
 
     with ThreadPoolExecutor(2) as pool:
         got = list(pool.map(go, ["1k", "2k"]))
@@ -287,6 +324,7 @@ def test_concurrent_runs_same_label_do_not_clobber(scratch):
 
 
 # ------------------------------------------------------------------ scorecard ---------
+
 
 class _D:
     """A two-bench Design stand-in: enough for the scorecard lifecycle, no simulator."""
@@ -318,8 +356,10 @@ def test_keymap_promotes_every_key_the_package_reduction_produces(monkeypatch):
     from design import bench
 
     monkeypatch.setattr(bench, "PRODUCES", {"stb": ("pm_deg", "ugf_mhz")})
-    assert bench.keymap() == {("stb", "pm_deg"): ("pm_deg", 1.0),
-                              ("stb", "ugf_mhz"): ("ugf_mhz", 1.0)}
+    assert bench.keymap() == {
+        ("stb", "pm_deg"): ("pm_deg", 1.0),
+        ("stb", "ugf_mhz"): ("ugf_mhz", 1.0),
+    }
     assert bench.reduce("stb", object()) == {}, "the bare template reduces nothing"
 
 
@@ -337,8 +377,8 @@ def test_run_decks_records_the_package_reduction_beside_the_printed_scalars(monk
     monkeypatch.setitem(metrics.KEYMAP, ("stb", "pm_deg"), ("pm_deg", 1.0))
 
     values, records = metrics.run_decks({"stb": "* stb\n.end\n"}, "t")
-    assert values["pm_deg"] == 61.0                      # promoted as a column
-    assert values["stb.i_supply"] == 5e-5                # printed scalar kept, namespaced
+    assert values["pm_deg"] == 61.0  # promoted as a column
+    assert values["stb.i_supply"] == 5e-5  # printed scalar kept, namespaced
     assert records["stb"]["measures"]["pm_deg"] == 61.0  # and it is in what certify freezes
 
 
@@ -395,8 +435,12 @@ def test_certify_refuses_a_reference_whose_measure_failed(monkeypatch, tmp_path)
 def test_table_reports_pass_and_fail():
     from design import metrics
 
-    md = metrics.table({"ok": {"gain_db": 61, "pm_deg": 70, "power_uw": 9},
-                        "bad": {"gain_db": 10, "pm_deg": 70, "power_uw": 9}})
+    md = metrics.table(
+        {
+            "ok": {"gain_db": 61, "pm_deg": 70, "power_uw": 9},
+            "bad": {"gain_db": 10, "pm_deg": 70, "power_uw": 9},
+        }
+    )
     assert "| PASS |" in md and "FAIL (1)" in md
 
 
@@ -413,10 +457,13 @@ def test_drift_flags_moved_and_missing_columns(monkeypatch):
     AT-01. `drift()` returns `Drift` records now (the lifecycle's), not tuples."""
     from design import metrics
 
-    monkeypatch.setattr(type(metrics.L), "certified_card",
-                        lambda self: {"scorecard": {"gain_db": 60.0, "pm_deg": 70.0}})
+    monkeypatch.setattr(
+        type(metrics.L),
+        "certified_card",
+        lambda self: {"scorecard": {"gain_db": 60.0, "pm_deg": 70.0}},
+    )
     got = {d.key: d.why for d in metrics.drift({"gain_db": 60.4, "pm_deg": float("nan")})}
-    assert "gain_db" not in got                       # inside the 0.5 band
+    assert "gain_db" not in got  # inside the 0.5 band
     assert got["pm_deg"] == "NOT MEASURED"
     assert [d.key for d in metrics.drift({"gain_db": 61.0, "pm_deg": 70.0})] == ["gain_db"]
 
@@ -448,14 +495,14 @@ def _certify_env(monkeypatch):
 
     monkeypatch.setattr(metrics.sim, "run", lambda deck, tag: _R())
     monkeypatch.setattr(metrics.bench_mod, "reduce", lambda bench, r: {})
-    monkeypatch.setattr(metrics, "log_run", lambda *a, **k: None)   # the per-bench rows
+    monkeypatch.setattr(metrics, "log_run", lambda *a, **k: None)  # the per-bench rows
     monkeypatch.setattr(LC, "log_run", _log)
     return metrics, rows
 
 
 def test_certify_unsigned_writes_no_provenance_block(_certify_env, tmp_path):
     metrics, rows = _certify_env
-    doc = metrics.certify(_D(), tag="t", out=tmp_path).doc     # a CertifyResult now, not a dict
+    doc = metrics.certify(_D(), tag="t", out=tmp_path).doc  # a CertifyResult now, not a dict
     # The shared lifecycle ALWAYS writes the provenance block, and always logs the row that backs
     # it — `evidence: awaiting`, the delivery claim. That is the difference from the copy this
     # replaced, and it is the fix for the trap the LDO hit: a block with no row behind it was a
@@ -465,8 +512,9 @@ def test_certify_unsigned_writes_no_provenance_block(_certify_env, tmp_path):
     assert "verified_by" not in doc["provenance"]
     # unlisted measures keep their `<bench>.<measure>` name (the template ships an empty KEYMAP),
     # and the NaN column — a measure that failed — never reaches the card
-    assert set(doc["scorecard"]) == {f"{b}.{m}" for b in ("b1", "b2")
-                                     for m in ("gain_db", "pm_deg", "power_uw")}
+    assert set(doc["scorecard"]) == {
+        f"{b}.{m}" for b in ("b1", "b2") for m in ("gain_db", "pm_deg", "power_uw")
+    }
     assert (tmp_path / "b1.spice").exists() and (tmp_path / "decks.sha256").exists()
 
 
@@ -474,10 +522,11 @@ def test_certify_signed_block_recomputes_and_matches_its_row(_certify_env, tmp_p
     from spicexplorer_harness import hashes
 
     metrics, rows = _certify_env
-    doc = metrics.certify(_D(), tag="t", out=tmp_path,
-                          author="designer", verified_by="verifier").doc
+    doc = metrics.certify(
+        _D(), tag="t", out=tmp_path, author="designer", verified_by="verifier"
+    ).doc
     prov = doc["provenance"]
-    assert doc["tag"] == "t" and doc["corner"] == "tt"           # the keys _backing_rows matches on
+    assert doc["tag"] == "t" and doc["corner"] == "tt"  # the keys _backing_rows matches on
     assert hashes.recompute(metrics.H.root, prov, values=doc["scorecard"]) == []
     row = rows[0]
     assert row["evidence"] == "signed" and row["verified_by"] == "verifier"
@@ -485,6 +534,7 @@ def test_certify_signed_block_recomputes_and_matches_its_row(_certify_env, tmp_p
 
 
 # ------------------------------------------------------------------ lint + layout -----
+
 
 def _load(rel: str):
     import importlib.util
@@ -496,7 +546,7 @@ def _load(rel: str):
     return mod
 
 
-_DUT_SRC = '''
+_DUT_SRC = """
 import dataclasses
 
 @dataclasses.dataclass(frozen=True)
@@ -515,7 +565,7 @@ class Design:
         return cls(**{k: v for k, v in d.items() if k in f})
 
 REFERENCE = Design()
-'''
+"""
 
 _HARNESS_SRC = """
 name: ldo
@@ -548,7 +598,12 @@ def renamed_repo(tmp_path_factory):
     (pkg / "__init__.py").write_text("")
     # `sim.py` is the lane DISPATCHER and imports the lane module `lane:` names — the open one
     # here, as in any repo that leaves the key out.
-    for f in ("sim.py", "sim_ngspice.py", "metrics.py", "bench.py"):  # metrics imports the reduction module
+    for f in (
+        "sim.py",
+        "sim_ngspice.py",
+        "metrics.py",
+        "bench.py",
+    ):  # metrics imports the reduction module
         shutil.copy(src / f, pkg / f)
     (pkg / "dut.py").write_text(_DUT_SRC)
     (root / "harness.yaml").write_text(_HARNESS_SRC)
@@ -575,14 +630,16 @@ def test_signed_certify_survives_the_rename(renamed_repo, monkeypatch, tmp_path)
     import dataclasses
 
     from spicexplorer_harness import lifecycle as LC
+
     monkeypatch.setattr(LC, "log_run", lambda h, tag, values, **kw: dict(values))
     from ldo.dut import Design
 
     # the lifecycle holds its inputs, so a test swaps THEM — patching `metrics.run_decks` would
     # replace a module attribute the shared implementation never reads
     lc = dataclasses.replace(metrics.L, score=_scored({"gain_db": 62.4}))
-    doc = lc.certify(Design(), tag="t", out=tmp_path,
-                     author="owner", verified_by="signoff-verifier").doc
+    doc = lc.certify(
+        Design(), tag="t", out=tmp_path, author="owner", verified_by="signoff-verifier"
+    ).doc
     assert doc["provenance"]["script_sha"]
 
 
@@ -594,14 +651,16 @@ def test_spec_quotes_needs_the_certified_precision_not_a_substring(renamed_repo)
     card = renamed_repo / "decks/reference/scorecard.json"
     card.write_text(json.dumps({"scorecard": {"gain_db": 62.4}}))
     doc = renamed_repo / "doc/target-spec.md"
-    for text, quoted in (("| gain | >= 60 dB | 62 | (over 1620 samples)", False),
-                         ("| gain | >= 60 dB | 62.4 |", True),
-                         ("| gain | >= 60 dB | 62.40 |", True)):   # {:.2f}, only at |v| >= 1
+    for text, quoted in (
+        ("| gain | >= 60 dB | 62 | (over 1620 samples)", False),
+        ("| gain | >= 60 dB | 62.4 |", True),
+        ("| gain | >= 60 dB | 62.40 |", True),
+    ):  # {:.2f}, only at |v| >= 1
         doc.write_text(text + "\n")
         L = Lint(load(renamed_repo))
         mod.spec_quotes(L)
         assert (L.fails == []) is quoted, text
-        assert quoted or L.fails[0].startswith("[spec-quotes]")      # not the platform's spec-sync
+        assert quoted or L.fails[0].startswith("[spec-quotes]")  # not the platform's spec-sync
 
 
 def test_spec_quotes_matches_the_rows_own_line_not_the_whole_document(renamed_repo):
@@ -612,14 +671,18 @@ def test_spec_quotes_matches_the_rows_own_line_not_the_whole_document(renamed_re
 
     mod = _load("scripts/lint.py")
     (renamed_repo / "decks/reference/scorecard.json").write_text(
-        json.dumps({"scorecard": {"gain_db": 62.4}}))
+        json.dumps({"scorecard": {"gain_db": 62.4}})
+    )
     doc = renamed_repo / "doc/target-spec.md"
-    doc.write_text("| gain | >= 60 dB | 58.1 |\n\n"
-                   "An earlier build measured 62.4 dB; the table above is the one that counts.\n")
+    doc.write_text(
+        "| gain | >= 60 dB | 58.1 |\n\n"
+        "An earlier build measured 62.4 dB; the table above is the one that counts.\n"
+    )
     L = Lint(load(renamed_repo))
     mod.spec_quotes(L)
-    assert L.fails and L.fails[0].startswith("[spec-quotes]"), \
+    assert L.fails and L.fails[0].startswith("[spec-quotes]"), (
         "62.4 appears only in prose; the gain row quotes 58.1"
+    )
 
 
 def test_spec_quotes_says_so_when_no_row_names_the_key(renamed_repo):
@@ -630,7 +693,8 @@ def test_spec_quotes_says_so_when_no_row_names_the_key(renamed_repo):
 
     mod = _load("scripts/lint.py")
     (renamed_repo / "decks/reference/scorecard.json").write_text(
-        json.dumps({"scorecard": {"gain_db": 62.4}}))
+        json.dumps({"scorecard": {"gain_db": 62.4}})
+    )
     (renamed_repo / "doc/target-spec.md").write_text("| S9 | slew rate | >= 1 V/us | 62.4 |\n")
     L = Lint(load(renamed_repo))
     mod.spec_quotes(L)
@@ -645,28 +709,43 @@ def test_certify_refuses_to_write_a_reference_missing_a_bench(_certify_env, monk
     metrics, _rows = _certify_env
 
     def score(decks, tag, record=True):
-        return ({"gain_db": 61.0},
-                {Path(b).stem: {"status": "ok" if Path(b).stem == "b1" else "sim_error",
-                                "measures": {}} for b in decks})
+        return (
+            {"gain_db": 61.0},
+            {
+                Path(b).stem: {
+                    "status": "ok" if Path(b).stem == "b1" else "sim_error",
+                    "measures": {},
+                }
+                for b in decks
+            },
+        )
 
     lc = dataclasses.replace(metrics.L, score=score, reference=_D())
     with pytest.raises(metrics.CertifyRefused, match="b2"):
         lc.certify(_D(), tag="t", out=tmp_path)
-    assert not list(tmp_path.glob("scorecard.json"))          # the card a drift check reads
+    assert not list(tmp_path.glob("scorecard.json"))  # the card a drift check reads
     monkeypatch.setattr(type(lc), "frozen_dir", lambda self: tmp_path)
-    assert lc.main(["--certify"]) == 1                        # and the CLI exits non-zero
-    assert lc.main(["--certify", "--force"]) == 0             # deliberately partial, on request
+    assert lc.main(["--certify"]) == 1  # and the CLI exits non-zero
+    assert lc.main(["--certify", "--force"]) == 0  # deliberately partial, on request
 
 
 def test_deck_portable_spots_a_committed_absolute_include():
     """Two designs froze a deck carrying a machine-specific library path; `$VAR` is the fix."""
     mod = _load("scripts/lint.py")
     assert mod.abs_includes('include "/opt/site/models/lib.file" section=tt\n') == [
-        "/opt/site/models/lib.file"]
-    assert mod.abs_includes('.include /opt/site/models/nmos.spice\n') == ["/opt/site/models/nmos.spice"]
-    assert mod.abs_includes('include "$MODEL_LIB" section=tt\n'
-                            '.include ../models/nmos.spice\n'
-                            '* /opt/site/models/lib.file named in a comment is not an include\n') == []
+        "/opt/site/models/lib.file"
+    ]
+    assert mod.abs_includes(".include /opt/site/models/nmos.spice\n") == [
+        "/opt/site/models/nmos.spice"
+    ]
+    assert (
+        mod.abs_includes(
+            'include "$MODEL_LIB" section=tt\n'
+            ".include ../models/nmos.spice\n"
+            "* /opt/site/models/lib.file named in a comment is not an include\n"
+        )
+        == []
+    )
 
 
 def _staged_repo(tmp_path, files: dict[str, str]):
@@ -694,19 +773,22 @@ def _lint_on(root):
 
 def test_artifact_home_refuses_an_undeclared_directory_and_accepts_the_declared_ones(tmp_path):
     """A figure nobody can find is a claim nobody can check (template 2.00)."""
-    root = _staged_repo(tmp_path, {
-        "experiments/003-sizing/figs/sweep.png": "x",     # the working space: fine
-        "experiments/003-sizing/scratch/look.png": "x",   # still inside experiments/: fine
-        "signoff/prelayout/figs/pm.png": "x",             # the design of record: fine
-        "doc/figs/block.svg": "x",
-        "layout/cell/iterations/it3.png": "x",            # the generator's own output: fine
-        "report/round4/eye.png": "x",                     # nobody declared `report/`
-    })
+    root = _staged_repo(
+        tmp_path,
+        {
+            "experiments/003-sizing/figs/sweep.png": "x",  # the working space: fine
+            "experiments/003-sizing/scratch/look.png": "x",  # still inside experiments/: fine
+            "signoff/prelayout/figs/pm.png": "x",  # the design of record: fine
+            "doc/figs/block.svg": "x",
+            "layout/cell/iterations/it3.png": "x",  # the generator's own output: fine
+            "report/round4/eye.png": "x",  # nobody declared `report/`
+        },
+    )
     mod, L = _lint_on(root)
     mod.artifact_home(L)
     assert len(L.fails) == 1, L.fails
     assert "report/" in str(L.fails[0]) and "report/round4/eye.png" in str(L.fails[0])
-    assert "ARTIFACT_HOMES" in str(L.fails[0])            # the fix names the escape hatch
+    assert "ARTIFACT_HOMES" in str(L.fails[0])  # the fix names the escape hatch
 
 
 def test_artifact_home_reports_one_failure_per_directory_not_per_file(tmp_path):
@@ -729,11 +811,14 @@ def test_artifact_home_declares_a_designs_own_home(tmp_path, monkeypatch):
 
 def test_signoff_index_refuses_an_undescribed_fidelity(tmp_path):
     """An unlisted directory in the trusted tree looks certified and says nothing."""
-    root = _staged_repo(tmp_path, {
-        "signoff/README.md": "| `prelayout` | schematic netlist | ... |\n",
-        "signoff/prelayout/REPORT.md": "x",
-        "signoff/postlayout-em/REPORT.md": "x",
-    })
+    root = _staged_repo(
+        tmp_path,
+        {
+            "signoff/README.md": "| `prelayout` | schematic netlist | ... |\n",
+            "signoff/prelayout/REPORT.md": "x",
+            "signoff/postlayout-em/REPORT.md": "x",
+        },
+    )
     mod, L = _lint_on(root)
     mod.signoff_index(L)
     assert len(L.fails) == 1 and "postlayout-em" in str(L.fails[0])
@@ -815,17 +900,20 @@ def kit_repo(tmp_path_factory):
     pkg = root / "kitdemo"
     pkg.mkdir()
     (pkg / "__init__.py").write_text("")
-    (pkg / "sim.py").write_text("from pathlib import Path\n"
-                                "from spicexplorer_harness import load\n"
-                                "H = load(Path(__file__).resolve().parents[1])\n")
+    (pkg / "sim.py").write_text(
+        "from pathlib import Path\n"
+        "from spicexplorer_harness import load\n"
+        "H = load(Path(__file__).resolve().parents[1])\n"
+    )
     shutil.copy(src / "pdk.py", pkg / "pdk.py")
     (pkg / "dut.py").write_text(_KIT_DUT_SRC)
     (root / "harness.yaml").write_text(_KIT_HARNESS_SRC)
     (root / "doc").mkdir()
     d = root / "decks" / "reference"
     d.mkdir(parents=True)
-    (d / "design.json").write_text(json.dumps({"flavour": "nmos_a", "corner": "tt",
-                                               "groups": ["core", "thick"]}))
+    (d / "design.json").write_text(
+        json.dumps({"flavour": "nmos_a", "corner": "tt", "groups": ["core", "thick"]})
+    )
     sys.path.insert(0, str(root))
     yield root
     sys.path.remove(str(root))
@@ -860,7 +948,7 @@ def test_deck_models_catches_a_model_whose_section_is_not_in_the_header(kit, kit
     monkeypatch.setattr(dut, "REFERENCE", dut.Design(flavour="pmos_b", groups=("core",)))
     L = _kit_lint(kit_repo)
     mod.deck_models(L)
-    assert len(L.fails) == 2, L.fails                      # both benches instantiate it
+    assert len(L.fails) == 2, L.fails  # both benches instantiate it
     for text, bench in zip(sorted(L.fails), ("ac", "op")):
         assert text.startswith(f"[deck-models] {bench}: instantiates pmos_b")
         assert "lacks the thick section" in text and "tt_core" in text
@@ -896,8 +984,9 @@ def test_deck_models_checks_the_frozen_points_too(kit, kit_repo, monkeypatch):
         mod.deck_models(L)
         assert len(L.fails) == 2 and "decks/reference" in L.fails[0]
     finally:
-        card.write_text(json.dumps({"flavour": "nmos_a", "corner": "tt",
-                                    "groups": ["core", "thick"]}))
+        card.write_text(
+            json.dumps({"flavour": "nmos_a", "corner": "tt", "groups": ["core", "thick"]})
+        )
 
 
 def test_deck_models_refuses_a_group_that_sections_does_not_declare(kit, kit_repo, monkeypatch):
@@ -910,8 +999,9 @@ def test_deck_models_refuses_a_group_that_sections_does_not_declare(kit, kit_rep
     assert "SECTIONS" in L.fails[0]
 
 
-def test_deck_models_is_an_info_not_a_failure_while_the_map_is_empty(kit, kit_repo, monkeypatch,
-                                                                    capsys):
+def test_deck_models_is_an_info_not_a_failure_while_the_map_is_empty(
+    kit, kit_repo, monkeypatch, capsys
+):
     """The map is the design's to write: an unfillable check may not colour the invariant list."""
     mod, pdk, _dut = kit
     monkeypatch.setattr(pdk, "MODEL_GROUPS", {})
@@ -925,10 +1015,12 @@ def test_deck_models_reads_the_header_and_the_body_apart():
     """A section name may spell a model name and a comment may name a model: neither instantiates
     anything, and an include line is never a device line."""
     mod = _load("scripts/lint.py")
-    deck = ('* op\n'
-            'include "$KIT_PDK_LIB" section=tt_core\n'
-            '* pmos_b was measured in an earlier build\n'
-            'm1 d g 0 0 nmos_a w=1u\n')
+    deck = (
+        "* op\n"
+        'include "$KIT_PDK_LIB" section=tt_core\n'
+        "* pmos_b was measured in an earlier build\n"
+        "m1 d g 0 0 nmos_a w=1u\n"
+    )
     assert mod.header_sections(deck) == {"tt_core"}
     body = mod.instantiating_body(deck)
     assert "nmos_a" in body and "pmos_b" not in body and "section=" not in body
@@ -986,8 +1078,11 @@ def _package_imports(module: str, name: str, seen: set | None = None) -> set[str
         f = node.func if isinstance(node, ast.Call) else None
         if isinstance(f, ast.Name) and f.id in fns:
             found |= _package_imports(module, f.id, seen)
-        elif (isinstance(f, ast.Attribute) and isinstance(f.value, ast.Name)
-              and (_REPO / "scripts" / f"{f.value.id}.py").is_file()):
+        elif (
+            isinstance(f, ast.Attribute)
+            and isinstance(f.value, ast.Name)
+            and (_REPO / "scripts" / f"{f.value.id}.py").is_file()
+        ):
             found |= _package_imports(f.value.id, f.attr, seen)
     return found
 
@@ -1004,15 +1099,20 @@ def test_own_tree_only_names_each_listed_checks_package_imports():
     listed = _own_tree_only_list()
     assert "deck_portable" in listed, "the own_tree_only docstring no longer lists the checks"
     tree = ast.parse((_REPO / "scripts" / "lint.py").read_text())
-    extra = next(n.value for n in tree.body if isinstance(n, ast.Assign)
-                 and any(isinstance(t, ast.Name) and t.id == "EXTRA" for t in n.targets))
+    extra = next(
+        n.value
+        for n in tree.body
+        if isinstance(n, ast.Assign)
+        and any(isinstance(t, ast.Name) and t.id == "EXTRA" for t in n.targets)
+    )
     in_extra = {e.id for e in extra.elts if isinstance(e, ast.Name)}
     for check, text in listed.items():
         assert check in in_extra, f"own_tree_only lists `{check}`, which is not in EXTRA"
         for mod in sorted(_package_imports("lint", check)):
             assert f"`<package>.{mod}`" in text, (
                 f"`{check}` imports `<package>.{mod}`: name it on that check's line of the "
-                f"own_tree_only docstring in scripts/lint.py")
+                f"own_tree_only docstring in scripts/lint.py"
+            )
 
 
 def test_lint_extras_are_green_on_the_bare_template():
@@ -1046,9 +1146,11 @@ def test_no_extra_check_repeats_a_generic_harness_check():
 _SETTINGS_DROP_IN = _REPO / ".sx" / "skills" / "settings" / "project-settings.json"
 
 
-@pytest.mark.skipif(not _SETTINGS_DROP_IN.is_file(),
-                    reason="no .sx/skills/settings/project-settings.json: `make init` has not run "
-                           "(the library is not checked out) or the library pin predates the file")
+@pytest.mark.skipif(
+    not _SETTINGS_DROP_IN.is_file(),
+    reason="no .sx/skills/settings/project-settings.json: `make init` has not run "
+    "(the library is not checked out) or the library pin predates the file",
+)
 def test_settings_json_is_the_library_drop_in_plus_the_session_start_hook():
     """`.claude/settings.json` is the library's settings file (the kit-tree ask hook and the
     permissions), plus this template's own `SessionStart` hook. Anything else the library changes
@@ -1058,13 +1160,16 @@ def test_settings_json_is_the_library_drop_in_plus_the_session_start_hook():
     ours.get("hooks", {}).pop("SessionStart", None)
     assert ours == json.loads(_SETTINGS_DROP_IN.read_text()), (
         "copy the library's file: cp .sx/skills/settings/project-settings.json .claude/settings.json"
-        ", then put this template's SessionStart hook back into it")
+        ", then put this template's SessionStart hook back into it"
+    )
 
 
-@pytest.mark.skipif(not _init_has_run(_REPO),
-                    reason="`make init` has not run in this checkout (no .sx/platform): sx_links "
-                           "judges what init creates; its logic runs hermetically in "
-                           "test_sx_links_* — `SX_ROOT=<workspace> make init` to run this one")
+@pytest.mark.skipif(
+    not _init_has_run(_REPO),
+    reason="`make init` has not run in this checkout (no .sx/platform): sx_links "
+    "judges what init creates; its logic runs hermetically in "
+    "test_sx_links_* — `SX_ROOT=<workspace> make init` to run this one",
+)
 def test_sx_links_is_green_on_an_initialised_checkout():
     """Once `make init` has run, a dangling `.sx/platform`, an uninitialised `.sx/skills` or a
     missing agent/skill link is a defect of this checkout, so this does NOT skip on those."""
@@ -1122,8 +1227,12 @@ def test_sx_links_is_green_on_an_initialised_tree_and_relays_the_link_check(tmp_
     argv = (root / ".sx/skills/bin/argv").read_text().split()
     assert argv == [str(root), "--set", "design", "--check"]
 
-    _sx_tree(root, platform=False, link_tool='echo "2 link(s) missing in .claude/agents"\n'
-                                             'echo "  schematic-builder.md"\nexit 1')
+    _sx_tree(
+        root,
+        platform=False,
+        link_tool='echo "2 link(s) missing in .claude/agents"\n'
+        'echo "  schematic-builder.md"\nexit 1',
+    )
     mod, L = _lint_on(root)
     mod.sx_links(L)
     assert len(L.fails) == 1 and "2 link(s) missing in .claude/agents" in L.fails[0], L.fails
@@ -1134,8 +1243,11 @@ def test_sx_links_relays_the_summary_line_past_blank_and_indented_ones(tmp_path)
     """The relayed line is the first NON-EMPTY, UN-INDENTED one wherever it sits in the output;
     a failing `sx-link --check` that prints nothing usable still fails, as `links missing`."""
     root = _staged_repo(tmp_path, {})
-    _sx_tree(root, link_tool='echo ""\necho "  layout-reviewer.md"\n'
-                             'echo "1 link(s) missing in .claude/skills"\nexit 1')
+    _sx_tree(
+        root,
+        link_tool='echo ""\necho "  layout-reviewer.md"\n'
+        'echo "1 link(s) missing in .claude/skills"\nexit 1',
+    )
     mod, L = _lint_on(root)
     mod.sx_links(L)
     assert len(L.fails) == 1 and "1 link(s) missing in .claude/skills" in L.fails[0], L.fails
@@ -1182,12 +1294,12 @@ def test_init_has_run_counts_a_dangling_platform_link_as_initialised(tmp_path):
     (tmp_path / ".sx").mkdir()
     assert _init_has_run(tmp_path) is False  # `.sx/` alone is tracked (template-version)
     (tmp_path / ".sx" / "platform").symlink_to(tmp_path / "gone")
-    assert _init_has_run(tmp_path) is True   # dangling
+    assert _init_has_run(tmp_path) is True  # dangling
     (tmp_path / "gone").mkdir()
-    assert _init_has_run(tmp_path) is True   # resolving
+    assert _init_has_run(tmp_path) is True  # resolving
     (tmp_path / ".sx" / "platform").unlink()
     (tmp_path / ".sx" / "platform").mkdir()
-    assert _init_has_run(tmp_path) is True   # a plain directory
+    assert _init_has_run(tmp_path) is True  # a plain directory
 
 
 def _clean_export(dst: Path) -> Path:
@@ -1199,8 +1311,7 @@ def _clean_export(dst: Path) -> Path:
     import shutil
     import subprocess as sp
 
-    ls = sp.run(["git", "ls-files", "-z"], cwd=_REPO, capture_output=True, text=True,
-                check=False)
+    ls = sp.run(["git", "ls-files", "-z"], cwd=_REPO, capture_output=True, text=True, check=False)
     if ls.returncode:
         pytest.skip("not a git checkout: there is no clean clone to reproduce")
     for rel in filter(None, ls.stdout.split("\0")):
@@ -1229,13 +1340,30 @@ def test_a_clean_export_is_green_before_init_and_red_once_a_link_dangles(tmp_pat
     env = {k: v for k, v in os.environ.items() if not k.startswith(("PYTEST_", "COV_CORE_"))}
 
     def pytest_in_clone(*names: str) -> sp.CompletedProcess:
-        return sp.run([sys.executable, "-m", "pytest", "-q", "-rs", "-p", "no:cacheprovider",
-                       "-o", "addopts=", *(f"tests/test_design.py::{n}" for n in names)],
-                      cwd=dst, capture_output=True, text=True, env={**env, "NO_COLOR": "1"},
-                      check=False)
+        return sp.run(
+            [
+                sys.executable,
+                "-m",
+                "pytest",
+                "-q",
+                "-rs",
+                "-p",
+                "no:cacheprovider",
+                "-o",
+                "addopts=",
+                *(f"tests/test_design.py::{n}" for n in names),
+            ],
+            cwd=dst,
+            capture_output=True,
+            text=True,
+            env={**env, "NO_COLOR": "1"},
+            check=False,
+        )
 
-    r = pytest_in_clone("test_lint_extras_are_green_on_the_bare_template",
-                        "test_sx_links_is_green_on_an_initialised_checkout")
+    r = pytest_in_clone(
+        "test_lint_extras_are_green_on_the_bare_template",
+        "test_sx_links_is_green_on_an_initialised_checkout",
+    )
     assert r.returncode == 0, r.stdout + r.stderr
     assert "1 passed, 1 skipped" in r.stdout, r.stdout
     assert "`make init` has not run" in r.stdout, r.stdout
@@ -1247,9 +1375,11 @@ def test_a_clean_export_is_green_before_init_and_red_once_a_link_dangles(tmp_pat
     assert ".sx/platform does not resolve" in r.stdout, r.stdout
 
 
-@pytest.mark.skipif(not (_REPO / ".sx/platform/packages/spicexplorer-harness/pyproject.toml")
-                    .is_file(), reason="no resolving .sx/platform (`make init` has not run): "
-                                       "uv.lock resolves the platform packages through it")
+@pytest.mark.skipif(
+    not (_REPO / ".sx/platform/packages/spicexplorer-harness/pyproject.toml").is_file(),
+    reason="no resolving .sx/platform (`make init` has not run): "
+    "uv.lock resolves the platform packages through it",
+)
 def test_uv_lock_is_current_against_the_linked_platform():
     """uv.lock matches the linked platform. `make init` runs `uv sync`, which rewrites a stale
     uv.lock, so a stale one means every checkout starts with uv.lock modified. `uv lock --check`
@@ -1261,8 +1391,14 @@ def test_uv_lock_is_current_against_the_linked_platform():
 
     if shutil.which("uv") is None:
         pytest.skip("no `uv` on PATH")
-    r = sp.run(["uv", "lock", "--check", "--offline"], cwd=_REPO, capture_output=True,
-               text=True, env={**os.environ, "NO_COLOR": "1"}, check=False)
+    r = sp.run(
+        ["uv", "lock", "--check", "--offline"],
+        cwd=_REPO,
+        capture_output=True,
+        text=True,
+        env={**os.environ, "NO_COLOR": "1"},
+        check=False,
+    )
     assert r.returncode == 0, r.stdout + r.stderr
 
 
@@ -1302,12 +1438,13 @@ def _drc_types():
 def test_drc_violation_counts_sum_the_aggregated_rows():
     DrcResult, DrcViolation = _drc_types()
     viol = [DrcViolation(rule="M1.a", count=17), DrcViolation(rule="M2.b", count=3)]
-    r = DrcResult(passed=False, available=True, n_violations=sum(v.count for v in viol),
-                  violations=viol)
+    r = DrcResult(
+        passed=False, available=True, n_violations=sum(v.count for v in viol), violations=viol
+    )
     signoff = _load("layout/signoff.py")
     counts = signoff.violation_counts(r.violations)
     assert counts == {"M1.a": 17, "M2.b": 3}
-    assert sum(counts.values()) == r.n_violations == 20   # the record must not read as near-clean
+    assert sum(counts.values()) == r.n_violations == 20  # the record must not read as near-clean
     assert json.loads(json.dumps(counts)) == counts
     assert signoff.violation_counts([{"rule": "V1.a", "count": 2}, object()]) == {"V1.a": 2, "?": 1}
     assert signoff.violation_counts([]) == {} and signoff.violation_counts(None) == {}
@@ -1317,9 +1454,15 @@ def test_stage_records_come_from_the_runners_own_to_dict():
     """`_record` keeps every field the platform returns (minus the raw log) — no hand-retyping."""
     DrcResult, DrcViolation = _drc_types()
     signoff = _load("layout/signoff.py")
-    r = DrcResult(passed=False, available=True, n_violations=5,
-                  violations=[DrcViolation(rule="M1.a", count=5)],
-                  report_path="drc.lyrdb", log="x" * 9000, reason="")
+    r = DrcResult(
+        passed=False,
+        available=True,
+        n_violations=5,
+        violations=[DrcViolation(rule="M1.a", count=5)],
+        report_path="drc.lyrdb",
+        log="x" * 9000,
+        reason="",
+    )
     rec = signoff._record(r, pdk="p", density=False)
     assert rec["report_path"] == "drc.lyrdb" and rec["n_violations"] == 5
     assert "log" not in rec and rec["pdk"] == "p"
@@ -1370,6 +1513,7 @@ def fake_lanes(monkeypatch):
         def fn(*a, **kw):
             seen[name] = kw
             return R()
+
         return fn
 
     layout = types.ModuleType("spicexplorer_layout")
@@ -1415,10 +1559,16 @@ def test_current_density_prints_a_skip_as_skipped(fake_lanes, monkeypatch, tmp_p
     signoff = _load("layout/signoff.py")
     monkeypatch.setenv(signoff.PDK_ENV, "some-pdk")
     skipped = types.SimpleNamespace(
-        passed=False, skipped=True, n_checked=0, worst_over_factor=0.0,
-        reason="no budget was given", to_dict=lambda: {"passed": False, "skipped": True})
-    monkeypatch.setattr(sys.modules["spicexplorer_signoff"], "check_current_density",
-                        lambda budgets, **kw: skipped)
+        passed=False,
+        skipped=True,
+        n_checked=0,
+        worst_over_factor=0.0,
+        reason="no budget was given",
+        to_dict=lambda: {"passed": False, "skipped": True},
+    )
+    monkeypatch.setattr(
+        sys.modules["spicexplorer_signoff"], "check_current_density", lambda budgets, **kw: skipped
+    )
     assert signoff.BUDGETS == []
     rec = signoff.current_density(tmp_path)
     line = capsys.readouterr().out
@@ -1430,7 +1580,7 @@ def test_current_density_prints_a_skip_as_skipped(fake_lanes, monkeypatch, tmp_p
 def test_pdk_has_no_silent_default(monkeypatch):
     signoff = _load("layout/signoff.py")
     monkeypatch.delenv(signoff.PDK_ENV, raising=False)
-    assert signoff.PDK.startswith("<")            # the template ships a placeholder, not a process
+    assert signoff.PDK.startswith("<")  # the template ships a placeholder, not a process
     with pytest.raises(SystemExit) as e:
         signoff.pdk()
     assert signoff.PDK_ENV in str(e.value) and "FIX:" in str(e.value)
@@ -1475,13 +1625,19 @@ def test_a_signed_certification_greens_scorecard_recompute(monkeypatch, tmp_path
         "name: t\nfrozen: [decks/reference]\n"
         "reference_scorecard: decks/reference/scorecard.json\n"
         "verifiers: [verifier]\n"
-        'spec:\n  - {key: gain_db, label: gain, op: ">=", bound: 60, unit: dB}\n')
+        'spec:\n  - {key: gain_db, label: gain, op: ">=", bound: 60, unit: dB}\n'
+    )
     import dataclasses
 
     h = load(tmp_path)
     lc = dataclasses.replace(metrics.L, h=h, score=_scored({"gain_db": 61.0}))
-    lc.certify(_D(), tag="ref", out=tmp_path / "decks" / "reference",
-               author="designer", verified_by="verifier")
+    lc.certify(
+        _D(),
+        tag="ref",
+        out=tmp_path / "decks" / "reference",
+        author="designer",
+        verified_by="verifier",
+    )
 
     L = Lint(h)
     scorecard_recompute(L)
