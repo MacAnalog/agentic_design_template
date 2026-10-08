@@ -46,16 +46,16 @@ VER_RE = re.compile(r"^(\d+)\.(\d{2})$")
 # Never propagated: what a design owns the moment it is instantiated. Everything else — including a
 # module the template grows later — comes across, and the three-way merge protects local edits.
 EXCLUDE = (
-    ":!harness.yaml",          # this design's spec, benches, denylist
+    ":!harness.yaml",  # this design's spec, benches, denylist
     ":!README.md",
-    ":!doc",                   # the design's own reference/journal/spec prose
+    ":!doc",  # the design's own reference/journal/spec prose
     ":!references",
-    ":!signoff",       # the design of record: this design's own measurements
+    ":!signoff",  # the design of record: this design's own measurements
     ":!uv.lock",
-    ":!pyproject.toml",        # its dependency set (the template's is a starting point)
-    ":!.sx/skills",            # the library pin: `make skills-update` owns it
+    ":!pyproject.toml",  # its dependency set (the template's is a starting point)
+    ":!.sx/skills",  # the library pin: `make skills-update` owns it
     ":!.sx/template-version",  # written here, at the end
-    ":!experiments",           # `experiments/_template/` included: a design edits its own copy
+    ":!experiments",  # `experiments/_template/` included: a design edits its own copy
     ":!decks",
     ":!layout",
 )
@@ -69,7 +69,7 @@ PKG_EXCLUDE = (":!dut.py",)
 
 
 def sh(*args: str, cwd: Path = REPO, check: bool = True) -> str:
-    r = subprocess.run(args, cwd=cwd, capture_output=True, text=True)
+    r = subprocess.run(args, cwd=cwd, capture_output=True, check=False, text=True)
     if check and r.returncode:
         raise SystemExit(f"$ {' '.join(args)}\n{r.stdout}{r.stderr}")
     return r.stdout
@@ -82,10 +82,13 @@ def recorded() -> str:
             f"versioning. Write the version it was cut from (e.g. `echo 1.00 > "
             f"{VERSION_FILE.relative_to(REPO)}`) and commit it; `status` then works. If you do not "
             f"know, 1.00 is the first tagged release: a later `update` may raise conflicts you "
-            f"resolve by hand, never a silent overwrite.")
+            f"resolve by hand, never a silent overwrite."
+        )
     v = VERSION_FILE.read_text().strip()
     if not VER_RE.match(v):
-        raise SystemExit(f"{VERSION_FILE.relative_to(REPO)} holds {v!r}; expected MAJOR.MINOR, e.g. 1.01")
+        raise SystemExit(
+            f"{VERSION_FILE.relative_to(REPO)} holds {v!r}; expected MAJOR.MINOR, e.g. 1.01"
+        )
     return v
 
 
@@ -137,8 +140,10 @@ def status() -> int:
         print(f"MINOR updates available: {cur} -> {nxt}   run `make template-update`")
         print(changelog(cur, nxt) or "  (no changelog entries)")
     elif newest.split(".")[0] != cur.split(".")[0]:
-        print(f"a MAJOR release exists ({newest}): a migration, not a propagation — read its "
-              f"CHANGELOG.md entry and decide deliberately")
+        print(
+            f"a MAJOR release exists ({newest}): a migration, not a propagation — read its "
+            f"CHANGELOG.md entry and decide deliberately"
+        )
     else:
         print("up to date")
     return 0
@@ -148,12 +153,13 @@ def _apply_one(diff: str, directory: str | None) -> tuple[bool, str]:
     cmd = ["git", "apply", "--3way", "--whitespace=nowarn"]
     if directory:
         cmd += [f"--directory={directory}"]
-    r = subprocess.run(cmd, cwd=REPO, input=diff, capture_output=True, text=True)
+    r = subprocess.run(cmd, cwd=REPO, input=diff, capture_output=True, check=False, text=True)
     return r.returncode == 0, (r.stdout + r.stderr).strip()
 
 
-def _apply(a: str, b: str, paths: list[str], directory: str | None = None,
-           relative: str | None = None) -> list[tuple[str, str, str]]:
+def _apply(
+    a: str, b: str, paths: list[str], directory: str | None = None, relative: str | None = None
+) -> list[tuple[str, str, str]]:
     """Apply the diff FILE BY FILE and report each one.
 
     `git apply` is atomic: one file the design does not have (a test module it dropped, a script it
@@ -179,7 +185,9 @@ def _apply(a: str, b: str, paths: list[str], directory: str | None = None,
         if ok:
             out.append((str(target), "merged" if exists else "added", ""))
         elif not exists and not creates:
-            out.append((str(target), "skipped", "this design does not carry the file the change edits"))
+            out.append(
+                (str(target), "skipped", "this design does not carry the file the change edits")
+            )
         else:
             out.append((str(target), "CONFLICT" if "conflict" in msg.lower() else "REJECTED", msg))
     return out
@@ -197,13 +205,17 @@ def update(target: str | None) -> int:
     if not VER_RE.match(want) or want not in tags:
         raise SystemExit(f"{want!r} is not a template release; tags: {', '.join(tags)}")
     if want.split(".")[0] != cur.split(".")[0]:
-        print(f"REFUSED: {cur} -> {want} crosses a MAJOR version. The scaffold's shape changed, so "
-              f"this is a migration, not a propagation:\n\n{changelog(cur, want)}\n\n"
-              f"    FIX: follow the migration note, then write the new version into "
-              f"{VERSION_FILE.relative_to(REPO)} yourself.")
+        print(
+            f"REFUSED: {cur} -> {want} crosses a MAJOR version. The scaffold's shape changed, so "
+            f"this is a migration, not a propagation:\n\n{changelog(cur, want)}\n\n"
+            f"    FIX: follow the migration note, then write the new version into "
+            f"{VERSION_FILE.relative_to(REPO)} yourself."
+        )
         return 2
     pkg = package()
-    print(f"template {cur} -> {want}   package: {pkg}\n{changelog(cur, want) or '(no changelog entries)'}\n")
+    print(
+        f"template {cur} -> {want}   package: {pkg}\n{changelog(cur, want) or '(no changelog entries)'}\n"
+    )
 
     # 1) the package, re-rooted from the template's `design/` onto this design's package dir
     rows = _apply(cur, want, ["design/", *PKG_EXCLUDE], directory=pkg, relative="design/")
@@ -230,29 +242,41 @@ def update(target: str | None) -> int:
         rej = [r[0] for r in bad if r[1] == "REJECTED"]
         print(f"\n.sx/template-version stays at {cur}: {len(bad)} file(s) did not land.")
         if conf:
-            print(f"  CONFLICT ({', '.join(conf)}): resolve in place, `make lint && make test`, "
-                  f"commit, then record the release yourself — `echo {want} > "
-                  f".sx/template-version` (the same line records a deliberate DECLINE). Do NOT "
-                  f"re-run: `git apply --3way` reads the INDEX, so a resolved hunk conflicts again "
-                  f"and your resolution comes back wrapped in fresh markers.")
+            print(
+                f"  CONFLICT ({', '.join(conf)}): resolve in place, `make lint && make test`, "
+                f"commit, then record the release yourself — `echo {want} > "
+                f".sx/template-version` (the same line records a deliberate DECLINE). Do NOT "
+                f"re-run: `git apply --3way` reads the INDEX, so a resolved hunk conflicts again "
+                f"and your resolution comes back wrapped in fresh markers."
+            )
         if rej:
-            print(f"  REJECTED ({', '.join(rej)}): fix the reason git printed above, `git add` "
-                  f"anything you hand-edited (a merged file edited but not staged is rejected "
-                  f"too), then re-run — it records {want} once the release applies cleanly.")
+            print(
+                f"  REJECTED ({', '.join(rej)}): fix the reason git printed above, `git add` "
+                f"anything you hand-edited (a merged file edited but not staged is rejected "
+                f"too), then re-run — it records {want} once the release applies cleanly."
+            )
         if conf and rej:
-            print("  Both in one run: take the CONFLICT path and apply the REJECTED change by "
-                  "hand; a re-run would clobber the resolution.")
-    print("NOW: read every merged file, resolve each CONFLICT (they are decisions: the template's "
-          "generic change meeting your design's own lines), then `make lint && make test`.")
-    print("A hunk whose TEXT names the template's `design.` package arrives spelled that way — fix "
-          "those by hand; that is why this prints a report instead of committing.")
+            print(
+                "  Both in one run: take the CONFLICT path and apply the REJECTED change by "
+                "hand; a re-run would clobber the resolution."
+            )
+    print(
+        "NOW: read every merged file, resolve each CONFLICT (they are decisions: the template's "
+        "generic change meeting your design's own lines), then `make lint && make test`."
+    )
+    print(
+        "A hunk whose TEXT names the template's `design.` package arrives spelled that way — fix "
+        "those by hand; that is why this prints a report instead of committing."
+    )
     return 1 if bad else 0
 
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="template_update")
     ap.add_argument("action", choices=("status", "update"))
-    ap.add_argument("version", nargs="?", help="update: the release to go to (default: latest minor)")
+    ap.add_argument(
+        "version", nargs="?", help="update: the release to go to (default: latest minor)"
+    )
     a = ap.parse_args(argv)
     return status() if a.action == "status" else update(a.version)
 

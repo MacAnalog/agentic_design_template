@@ -129,9 +129,24 @@ def lib_envs() -> tuple[str, ...]:
 # above it pins the revision — which is what makes the deck reproducible without carrying the path.
 TOKEN = f"${LIB_ENV}"
 
-__all__ = ["REVISION", "SECTIONS", "MODEL_GROUPS", "CORNERS", "TYPICAL", "LIB_ENV", "LIB_ENV_SCOPED", "TOKEN",
-           "PdkError", "machine_env", "lib_envs", "library", "restore", "section", "models_block",
-           "unresolved"]
+__all__ = [  # noqa: RUF022 - kept in declaration order
+    "REVISION",
+    "SECTIONS",
+    "MODEL_GROUPS",
+    "CORNERS",
+    "TYPICAL",
+    "LIB_ENV",
+    "LIB_ENV_SCOPED",
+    "TOKEN",
+    "PdkError",
+    "machine_env",
+    "lib_envs",
+    "library",
+    "restore",
+    "section",
+    "models_block",
+    "unresolved",
+]
 
 
 class PdkError(RuntimeError):
@@ -146,19 +161,27 @@ def unresolved() -> str:
     alive. Names variables and placeholders, never a value.
     """
     if REVISION.startswith("<"):
-        return ("design/pdk.py still carries the template's REVISION placeholder — set it to the "
-                "model-library revision doc/environment.md pins")
+        return (
+            "design/pdk.py still carries the template's REVISION placeholder — set it to the "
+            "model-library revision doc/environment.md pins"
+        )
     if any(v.startswith("<") for v in SECTIONS.values()) or not SECTIONS:
-        return ("design/pdk.py still carries the template's SECTIONS placeholder — map this "
-                "design's device groups onto the library's section names")
+        return (
+            "design/pdk.py still carries the template's SECTIONS placeholder — map this "
+            "design's device groups onto the library's section names"
+        )
     names = lib_envs()
     if not names:
-        return ("design/pdk.py names no model-library variable: set LIB_ENV / LIB_ENV_SCOPED (and "
-                "declare `pdk:` in harness.yaml for the per-machine one)")
+        return (
+            "design/pdk.py names no model-library variable: set LIB_ENV / LIB_ENV_SCOPED (and "
+            "declare `pdk:` in harness.yaml for the per-machine one)"
+        )
     if not any((os.environ.get(n) or "").strip() for n in names):
-        return (f"the model library is unset: export one of {' / '.join(names)} to the path it "
-                f"stands for (per machine, never committed; doc/environment.md pins WHICH library "
-                f"by revision name)")
+        return (
+            f"the model library is unset: export one of {' / '.join(names)} to the path it "
+            f"stands for (per machine, never committed; doc/environment.md pins WHICH library "
+            f"by revision name)"
+        )
     return ""
 
 
@@ -179,20 +202,21 @@ def library() -> str:
         value = (os.environ.get(name) or "").strip()
         if not value:
             continue
-        if REVISION not in value and not any(
-                os.environ.get(f"{n}_ALLOW_MISMATCH") for n in names):
+        if REVISION not in value and not any(os.environ.get(f"{n}_ALLOW_MISMATCH") for n in names):
             raise PdkError(
                 f"{name} points at a library that is not this design's pinned revision "
                 f"({REVISION}). Re-pin REVISION and doc/environment.md together, or set "
                 f"{name}_ALLOW_MISMATCH=1 for a deliberate one-off — a silent revision change "
-                f"invalidates every certified number.")
+                f"invalidates every certified number."
+            )
         return value
     raise PdkError(
         f"cannot locate the model library for revision {REVISION}: export {names[0] if names else LIB_ENV_SCOPED}"
         f" to it{'' if len(names) < 2 else ' (or ' + ' / '.join(names[1:]) + ')'}, or re-pin "
         f"REVISION and doc/environment.md together. None of these is set, and nothing is scanned "
         f"for: the path is per machine, so it comes from the environment — doc/environment.md says "
-        f"which file the lab keeps it in.")
+        f"which file the lab keeps it in."
+    )
 
 
 def restore(deck: str) -> str:
@@ -216,7 +240,7 @@ def section(group: str, corner: str = TYPICAL) -> str:
     # swapping its first characters would ask for a section that does not exist.
     if corner == TYPICAL or not s.startswith(TYPICAL):
         return s
-    return corner + s[len(TYPICAL):]
+    return corner + s[len(TYPICAL) :]
 
 
 def models_block(corner: str = TYPICAL, *groups: str) -> str:

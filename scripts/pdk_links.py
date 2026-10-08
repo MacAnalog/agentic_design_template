@@ -61,11 +61,14 @@ def main(root: Path = REPO) -> int:
         return 0
     name = linkset(root, pdk)
     if name is None:
-        print(f"INFO: harness.yaml declares pdk: {pdk}; the library at .sx/skills has no "
-              f"linksets/pdk-{pdk}.txt, so no per-PDK skill is linked")
+        print(
+            f"INFO: harness.yaml declares pdk: {pdk}; the library at .sx/skills has no "
+            f"linksets/pdk-{pdk}.txt, so no per-PDK skill is linked"
+        )
         return 0
-    return subprocess.run([str(root / ".sx" / "skills" / "bin" / "sx-link"), str(root),
-                           "--set", name], check=False).returncode
+    return subprocess.run(
+        [str(root / ".sx" / "skills" / "bin" / "sx-link"), str(root), "--set", name], check=False
+    ).returncode
 
 
 if __name__ == "__main__":

@@ -6,6 +6,7 @@ produced it, and nobody can tell when it did.
 
     uv run --no-sync python experiments/NNN-<technique>/mk_readme.py
 """
+
 from __future__ import annotations
 
 import sys
@@ -16,13 +17,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from design import exp  # noqa: E402
 
 EXP = Path(__file__).resolve().parent
-KEYS = ["label"]        # + the scorecard columns this experiment reports
-HEAD: dict[str, str] = {}   # {key: column heading} where the raw key reads badly
+KEYS = ["label"]  # + the scorecard columns this experiment reports
+HEAD: dict[str, str] = {}  # {key: column heading} where the raw key reads badly
 
 
 def main() -> int:
     rows = exp.load(EXP / "out")
-    md = f"""# {EXP.name.split('-')[0]} — <technique>
+    md = f"""# {EXP.name.split("-")[0]} — <technique>
 
 **Phase:** <system | topology | sizing | improve | layout>
 **Paper(s):** <handles from references/INDEX.md, or none>
@@ -30,8 +31,8 @@ def main() -> int:
 **Control:** <what is held or re-allocated so the effect is attributable>
 **Verdict:** <CONFIRMED | FALSIFIED | PARTLY … — the sentence, with the numbers interpolated>
 
-Reproduce: `<PREFIX>_EXP={EXP.name.split('-')[0]} uv run --no-sync python {EXP.name}/run.py`,
-then `mk_readme.py`. Every row below is a ledger row (`make runs ARGS="--exp {EXP.name.split('-')[0]}"`).
+Reproduce: `<PREFIX>_EXP={EXP.name.split("-")[0]} uv run --no-sync python {EXP.name}/run.py`,
+then `mk_readme.py`. Every row below is a ledger row (`make runs ARGS="--exp {EXP.name.split("-")[0]}"`).
 
 ## Results
 

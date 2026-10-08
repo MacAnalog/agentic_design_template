@@ -42,8 +42,10 @@ denylist:
 """.replace("TOKEN", TOKEN)
 # A scorecard with a provenance block whose script hash matches no file: `scorecard-recompute`
 # fails it wherever its search for `scorecard.json` finds it.
-STALE_CARD = {"scorecard": {"gain_db": 62.4},
-              "provenance": {"script": "design/metrics.py", "script_sha": "0" * 64}}
+STALE_CARD = {
+    "scorecard": {"gain_db": 62.4},
+    "provenance": {"script": "design/metrics.py", "script_sha": "0" * 64},
+}
 
 
 def _load_lint():
@@ -56,8 +58,12 @@ def _load_lint():
 
 
 def _git(root: Path, *args: str) -> None:
-    subprocess.run(["git", "-c", "user.name=fixture", "-c", "user.email=fixture@example.invalid",
-                    *args], cwd=root, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "-c", "user.name=fixture", "-c", "user.email=fixture@example.invalid", *args],
+        cwd=root,
+        check=True,
+        capture_output=True,
+    )
 
 
 @pytest.fixture
@@ -119,8 +125,9 @@ def test_a_nested_worktree_changes_nothing_in_the_parent_report(mod, repo, capsy
     assert ".claude/worktrees" not in after[1]
 
 
-def test_a_nested_worktree_is_skipped_on_a_harness_that_walks_into_it(mod, repo, capsys,
-                                                                      monkeypatch):
+def test_a_nested_worktree_is_skipped_on_a_harness_that_walks_into_it(
+    mod, repo, capsys, monkeypatch
+):
     """Before platform #269 the harness had no nested-checkout skip and walked every directory.
     `SX_ROOT` decides which platform a design runs, so the template cannot assume the newer one."""
     monkeypatch.setattr(harness_lint, "_is_nested_checkout", lambda d: False, raising=False)
@@ -155,7 +162,8 @@ def test_the_worktree_still_fails_its_own_lint(mod, repo, capsys):
 
 
 def test_a_design_check_skips_the_worktree_only_when_it_walks_with_own_tree_walk(
-        mod, repo, capsys, monkeypatch):
+    mod, repo, capsys, monkeypatch
+):
     """A check a design adds to EXTRA runs inside `main`, as the scripts/lint.py docstring says.
 
     `own_tree_walk` skips the worktree. `os` in scripts/lint.py is not replaced, so `os.walk`
@@ -166,8 +174,7 @@ def test_a_design_check_skips_the_worktree_only_when_it_walks_with_own_tree_walk
     def design_check(L) -> None:
         for label, walk in (("own_tree_walk", mod.own_tree_walk), ("os.walk", mod.os.walk)):
             for root, _dirs, names in walk(L.h.root):
-                seen[label].update((Path(root) / n).relative_to(L.h.root).as_posix()
-                                   for n in names)
+                seen[label].update((Path(root) / n).relative_to(L.h.root).as_posix() for n in names)
 
     monkeypatch.setattr(mod, "EXTRA", (*mod.EXTRA, design_check))
     _plant(_worktree(repo))
@@ -212,8 +219,11 @@ def test_own_tree_walk_stops_at_a_nested_checkout_but_not_at_the_top(tmp_path, m
     (wt / "b.md").write_text("x")
 
     def files(walk):
-        return {(Path(r) / f).relative_to(tmp_path).as_posix()
-                for r, _dirs, names in walk(tmp_path) for f in names}
+        return {
+            (Path(r) / f).relative_to(tmp_path).as_posix()
+            for r, _dirs, names in walk(tmp_path)
+            for f in names
+        }
 
     assert files(os.walk) == {"doc/a.md", ".claude/worktrees/w/.git", ".claude/worktrees/w/b.md"}
     assert files(mod.own_tree_walk) == {"doc/a.md"}
@@ -224,11 +234,11 @@ def test_own_tree_only_replaces_os_walk_for_the_run_and_restores_it(mod):
     fake.os = os
     with mod.own_tree_only(fake):
         assert fake.os.walk is mod.own_tree_walk
-        assert fake.os.path is os.path and fake.os.sep == os.sep   # every other name is `os`'s
+        assert fake.os.path is os.path and fake.os.sep == os.sep  # every other name is `os`'s
     assert fake.os is os
     with pytest.raises(RuntimeError), mod.own_tree_only(fake):
         raise RuntimeError("a check crashed")
-    assert fake.os is os                                           # restored after an error too
+    assert fake.os is os  # restored after an error too
 
 
 def test_own_tree_only_leaves_a_module_without_os_alone(mod):

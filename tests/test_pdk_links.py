@@ -33,23 +33,26 @@ def _with_pdk(line: str) -> str:
     """This checkout's harness.yaml with its `pdk:` line replaced by `line` ("" drops it). A design
     that has not added `pdk:` yet (CHANGELOG v2.14, Taking it, step 2) gets the line appended, so
     these tests do not depend on that step."""
-    out, n = re.subn(r"^pdk:.*$", line, TEMPLATE_YAML, count=1, flags=re.M)
+    out, n = re.subn(r"^pdk:.*$", line, TEMPLATE_YAML, count=1, flags=re.MULTILINE)
     if n == 0:
         out = TEMPLATE_YAML.rstrip("\n") + "\n" + (line + "\n" if line else "")
     return out
 
 
-@pytest.mark.parametrize(("line", "want"), [
-    ('pdk: ""   # declare it', ""),
-    ("pdk: ihp-sg13g2", "ihp-sg13g2"),
-    ('pdk: "ihp-sg13g2"   # the open kit', "ihp-sg13g2"),
-    ("pdk: 'ihp-sg13g2'", "ihp-sg13g2"),
-    ("pdk: ihp-sg13g2   # the open kit", "ihp-sg13g2"),
-    ("pdk:", ""),
-    ("pdk: ~", ""),
-    ("# pdk: ihp-sg13g2", ""),
-    ("", ""),
-])
+@pytest.mark.parametrize(
+    ("line", "want"),
+    [
+        ('pdk: ""   # declare it', ""),
+        ("pdk: ihp-sg13g2", "ihp-sg13g2"),
+        ('pdk: "ihp-sg13g2"   # the open kit', "ihp-sg13g2"),
+        ("pdk: 'ihp-sg13g2'", "ihp-sg13g2"),
+        ("pdk: ihp-sg13g2   # the open kit", "ihp-sg13g2"),
+        ("pdk:", ""),
+        ("pdk: ~", ""),
+        ("# pdk: ihp-sg13g2", ""),
+        ("", ""),
+    ],
+)
 def test_declared_pdk_agrees_with_the_harness_loader(tmp_path, line, want):
     from spicexplorer_harness import load
 
@@ -73,8 +76,11 @@ def _library(root: Path, *, sets: tuple[str, ...] = ("design",), fail: str = "")
     tool = lib / "bin" / "sx-link"
     tool.parent.mkdir(parents=True, exist_ok=True)
     log = lib / "argv.log"
-    rc = (f'case "$*" in *{fail}*) echo "MISSING  .claude/skills/{fail}"; exit 1;; esac\n'
-          if fail else "")
+    rc = (
+        f'case "$*" in *{fail}*) echo "MISSING  .claude/skills/{fail}"; exit 1;; esac\n'
+        if fail
+        else ""
+    )
     tool.write_text(f'#!/bin/sh\necho "$*" >> "{log}"\n{rc}exit 0\n')
     tool.chmod(0o755)
     return log
@@ -116,11 +122,18 @@ def test_init_and_skills_update_run_the_same_link_step():
     """Both recipes expand `$(LINK)`: the `design` set, then scripts/pdk_links.py."""
     env = {k: v for k, v in os.environ.items() if k not in ("MAKEFLAGS", "MAKELEVEL", "MFLAGS")}
     for target in ("init", "skills-update"):
-        r = subprocess.run(["make", "-n", target, "SX_ROOT=/nonexistent"], cwd=REPO,
-                           capture_output=True, text=True, env=env, check=False)
+        r = subprocess.run(
+            ["make", "-n", target, "SX_ROOT=/nonexistent"],
+            cwd=REPO,
+            capture_output=True,
+            text=True,
+            env=env,
+            check=False,
+        )
         link = [ln for ln in r.stdout.splitlines() if "sx-link" in ln]
-        assert link and all("--set design && " in ln and ln.endswith("scripts/pdk_links.py")
-                            for ln in link), (target, r.stdout)
+        assert link and all(
+            "--set design && " in ln and ln.endswith("scripts/pdk_links.py") for ln in link
+        ), (target, r.stdout)
 
 
 def _lint_repo(tmp_path: Path, pdk_line: str, fail: str = ""):

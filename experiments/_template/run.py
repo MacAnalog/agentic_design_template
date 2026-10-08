@@ -13,6 +13,7 @@ Those three directories are also the only places an experiment may leave a commi
 (`artifact-home` in `scripts/lint.py`). Raw simulator output — rawfiles, work directories, logs —
 never enters the repo at all; it stays in the scratch root.
 """
+
 from __future__ import annotations
 
 import sys
@@ -20,7 +21,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from design import bench, exp, metrics, plot  # noqa: E402
+from design import bench, exp, metrics, plot  # noqa: E402, F401 - `bench` on purpose, see below
 from design.dut import Design  # noqa: E402
 
 # `bench` is imported on purpose: an experiment that post-processes a run reports through
@@ -40,12 +41,17 @@ def designs() -> dict[str, Design]:
 
 
 def main() -> int:
-    exp.set_exp(EXP.name.split("-")[0])          # stamps every ledger row with NNN
+    exp.set_exp(EXP.name.split("-")[0])  # stamps every ledger row with NNN
     rows = exp.run_batch(designs(), metrics.evaluate, prefix=f"{EXP.name}_")
-    exp.save(rows, OUT)                          # out/rows.json — mk_readme.py reads this
-    exp.csv(rows, TABLES / "rows.csv")           # the same numbers a later run can diff
-    plot.series(rows, FIGS / "sweep.png", x="<knob>", ys=[r.key for r in plot.SPEC.values()][:3],
-                title=EXP.name)
+    exp.save(rows, OUT)  # out/rows.json — mk_readme.py reads this
+    exp.csv(rows, TABLES / "rows.csv")  # the same numbers a later run can diff
+    plot.series(
+        rows,
+        FIGS / "sweep.png",
+        x="<knob>",
+        ys=[r.key for r in plot.SPEC.values()][:3],
+        title=EXP.name,
+    )
     print(exp.md(rows, ["label", *[r.key for r in plot.SPEC.values()]]))
     print()
     print(exp.verdicts(rows))

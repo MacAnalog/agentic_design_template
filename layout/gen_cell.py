@@ -27,6 +27,7 @@ the CLI (`spicexplorer-layout build|knobs|snapshot`) and an optimizer all rely o
 Run it with the interpreter that has gdsfactory + the PDK cells (`$<PREFIX>_GDS_PYTHON`,
 `doc/environment.md`), never the repo venv.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -42,16 +43,19 @@ GRID = 0.005  # PDK manufacturing grid (um); snap every coordinate
 class LayoutParams:
     """Free layout constants (um) — the layout-optimizer search space. No device sizes here."""
 
-    dev_gap: float = 3.0      # x gap between devices in a row
+    dev_gap: float = 3.0  # x gap between devices in a row
     track_pitch: float = 0.7  # routing-channel track pitch
-    rail_w: float = 0.8       # supply rail width
-    rail_gap: float = 1.6     # active edge -> rail centre
-    blk_gap: float = 6.0      # gap between the device stack and the passive blocks
+    rail_w: float = 0.8  # supply rail width
+    rail_gap: float = 1.6  # active edge -> rail centre
+    blk_gap: float = 6.0  # gap between the device stack and the passive blocks
 
 
 BOUNDS: dict[str, tuple[float, float]] = {
-    "dev_gap": (2.0, 6.0), "track_pitch": (0.65, 1.2), "rail_w": (0.5, 2.0),
-    "rail_gap": (1.4, 2.5), "blk_gap": (4.0, 15.0),
+    "dev_gap": (2.0, 6.0),
+    "track_pitch": (0.65, 1.2),
+    "rail_w": (0.5, 2.0),
+    "rail_gap": (1.4, 2.5),
+    "blk_gap": (4.0, 15.0),
 }
 
 
@@ -69,7 +73,7 @@ class Obstacles:
     """
 
     def __init__(self, clearance: float = 0.21):
-        self.clearance = clearance                      # min space rule of the routing layer
+        self.clearance = clearance  # min space rule of the routing layer
         self.boxes: list[tuple[str, str, float, float, float, float]] = []
 
     def claim(self, net: str, layer: str, x0: float, y0: float, x1: float, y1: float) -> None:
@@ -83,11 +87,21 @@ class Obstacles:
                 raise AssertionError(
                     f"{layer}: net {net!r} would merge with {onet!r} at "
                     f"({x0:.3f},{y0:.3f})-({x1:.3f},{y1:.3f}) — overlapping metal is one legal "
-                    f"polygon, so DRC will not see this short; move the run or widen the gap")
+                    f"polygon, so DRC will not see this short; move the run or widen the gap"
+                )
         self.boxes.append((net, layer, x0, y0, x1, y1))
 
-    def free_column(self, net: str, x: float, y0: float, y1: float, layer: str,
-                    w: float = 0.2, step: float = 0.6, tries: int = 24) -> float:
+    def free_column(
+        self,
+        net: str,
+        x: float,
+        y0: float,
+        y1: float,
+        layer: str,
+        w: float = 0.2,
+        step: float = 0.6,
+        tries: int = 24,
+    ) -> float:
         for k in range(tries):
             for cand in ((x + k * step), (x - k * step)):
                 try:
@@ -95,8 +109,10 @@ class Obstacles:
                     return snap(cand)
                 except AssertionError:
                     continue
-        raise AssertionError(f"no free {layer} column for {net!r} near x={x:.3f}: "
-                             "widen LayoutParams.dev_gap or re-order the row")
+        raise AssertionError(
+            f"no free {layer} column for {net!r} near x={x:.3f}: "
+            "widen LayoutParams.dev_gap or re-order the row"
+        )
 
 
 def load_sizing(path: str | Path | None = None) -> dict:
@@ -106,18 +122,26 @@ def load_sizing(path: str | Path | None = None) -> dict:
     return json.loads(Path(path).read_text())
 
 
-def build(params: LayoutParams = LayoutParams(), sizing: dict | None = None):
+# One shared default, evaluated once at import exactly as the inline default was.
+_DEFAULT_PARAMS = LayoutParams()
+
+
+def build(params: LayoutParams = _DEFAULT_PARAMS, sizing: dict | None = None):
     """Place and route the cell; return the gdsfactory Component."""
     import gdsfactory as gf  # noqa: F401  (the generator interpreter, not the repo venv)
 
     _obs = Obstacles()  # claim every run through it; see the class docstring
     raise NotImplementedError(
         f"draw {CELL}: place the devices from `sizing`, route through the obstacle map, "
-        "label every pin net (the labels become LVS/PEX pin names)")
+        "label every pin net (the labels become LVS/PEX pin names)"
+    )
 
 
-def write_lvs_reference(params: LayoutParams = LayoutParams(), sizing: dict | None = None,
-                        out: str | Path = f"{CELL}_lvs.spice") -> Path:
+def write_lvs_reference(
+    params: LayoutParams = _DEFAULT_PARAMS,
+    sizing: dict | None = None,
+    out: str | Path = f"{CELL}_lvs.spice",
+) -> Path:
     """The netlist LVS compares the GDS against.
 
     Emit it from the CERTIFIED binding (the same source `design.dut.Design` builds decks from), not
@@ -139,7 +163,9 @@ def main() -> None:
     c = build(p, sizing)
     c.write_gds(a.out)
     bbox = c.bbox()
-    print(f"{CELL}: {a.out}  area um2: {round((bbox.right - bbox.left) * (bbox.top - bbox.bottom))}")
+    print(
+        f"{CELL}: {a.out}  area um2: {round((bbox.right - bbox.left) * (bbox.top - bbox.bottom))}"
+    )
     if a.lvs:
         write_lvs_reference(p, sizing, a.lvs)
 

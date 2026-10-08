@@ -48,8 +48,14 @@ def _checkout(tmp_path: Path, *, harness: bool = True, python: str | None = None
 
 def _hook(root: Path) -> subprocess.CompletedProcess:
     """The script as the hook runs it: the system python3, stdout captured."""
-    return subprocess.run(["python3", str(root / "scripts" / "session_pack.py")], cwd=root,
-                          capture_output=True, text=True, timeout=60, check=False)
+    return subprocess.run(
+        ["python3", str(root / "scripts" / "session_pack.py")],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
 
 
 def test_silent_without_a_venv(tmp_path):
@@ -121,6 +127,12 @@ def test_the_settings_command_exits_0_with_or_without_the_script(tmp_path):
     (hook,) = _session_start()["hooks"]
     for project in (_checkout(tmp_path), tmp_path / "no-such-checkout"):
         env = {**os.environ, "CLAUDE_PROJECT_DIR": str(project)}
-        r = subprocess.run(["sh", "-c", hook["command"]], capture_output=True, text=True,
-                           env=env, timeout=60, check=False)
+        r = subprocess.run(
+            ["sh", "-c", hook["command"]],
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=60,
+            check=False,
+        )
         assert (r.returncode, r.stdout, r.stderr) == (0, "", ""), project

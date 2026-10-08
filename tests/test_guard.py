@@ -38,20 +38,34 @@ def _load_githook():
 
 
 def _env() -> dict[str, str]:
-    e = {k: v for k, v in os.environ.items()
-         if k not in ("MAKEFLAGS", "MAKELEVEL", "MFLAGS", "GUARD_SKIP_TEST")}
+    e = {
+        k: v
+        for k, v in os.environ.items()
+        if k not in ("MAKEFLAGS", "MAKELEVEL", "MFLAGS", "GUARD_SKIP_TEST")
+    }
     return e
 
 
 def git(root: Path, *args: str) -> subprocess.CompletedProcess:
     return subprocess.run(
         ["git", "-c", "user.email=t@t", "-c", "user.name=t", "-c", "commit.gpgsign=false", *args],
-        cwd=root, capture_output=True, text=True, env=_env())
+        cwd=root,
+        capture_output=True,
+        check=False,
+        text=True,
+        env=_env(),
+    )
 
 
 def make(root: Path, *args: str, **env: str) -> subprocess.CompletedProcess:
-    return subprocess.run(["make", *args], cwd=root, capture_output=True, text=True,
-                          env={**_env(), **env})
+    return subprocess.run(
+        ["make", *args],
+        cwd=root,
+        capture_output=True,
+        check=False,
+        text=True,
+        env={**_env(), **env},
+    )
 
 
 def repo(tmp_path: Path, lint: str = "@echo lint-ok", test: str = "@echo test-ok") -> Path:
@@ -69,6 +83,7 @@ def repo(tmp_path: Path, lint: str = "@echo lint-ok", test: str = "@echo test-ok
 
 
 # --------------------------------------------------------------------------- the guard clauses
+
 
 def test_guard_passes_on_a_clean_green_tree(tmp_path):
     r = make(repo(tmp_path), "guard")
@@ -93,7 +108,7 @@ def test_guard_refuses_a_staged_but_uncommitted_edit(tmp_path):
     r = make(root, "guard")
     assert r.returncode != 0
     assert "REFUSING: staged but uncommitted changes" in r.stdout
-    assert "unstaged changes" not in r.stdout        # the tree itself matches the index
+    assert "unstaged changes" not in r.stdout  # the tree itself matches the index
 
 
 def test_guard_refuses_red_lint(tmp_path):
@@ -134,6 +149,7 @@ def test_guard_refuses_outside_a_git_checkout(tmp_path):
 
 # ------------------------------------------------------------------------- install and remove
 
+
 def test_install_is_idempotent_and_remove_cleans_up(tmp_path):
     gh = _load_githook()
     root = repo(tmp_path)
@@ -141,9 +157,9 @@ def test_install_is_idempotent_and_remove_cleans_up(tmp_path):
     assert gh.install(root) == 0
     hook = gh.hook_path(root)
     assert hook.is_file() and os.access(hook, os.X_OK) and gh.state(root) == "ours"
-    assert gh.install(root) == 0 and gh.state(root) == "ours"     # re-install, not a clobber
+    assert gh.install(root) == 0 and gh.state(root) == "ours"  # re-install, not a clobber
     assert gh.remove(root) == 0 and not hook.exists()
-    assert gh.remove(root) == 0                                   # removing nothing is fine
+    assert gh.remove(root) == 0  # removing nothing is fine
 
 
 def test_install_refuses_to_clobber_a_hook_somebody_wrote(tmp_path):
@@ -181,15 +197,18 @@ def test_lint_reports_the_hook_as_info_and_never_as_a_failure(tmp_path):
     assert "not installed" in mod.hook_info(root) and mod.hook_info(root).startswith("INFO:")
     gh.install(root)
     assert "installed" in mod.hook_info(root) and "not installed" not in mod.hook_info(root)
-    assert not any(c.__name__ == "hook_info" for c in mod.EXTRA), \
+    assert not any(c.__name__ == "hook_info" for c in mod.EXTRA), (
         "hook_info must stay out of EXTRA: an INFO is not a repo invariant"
+    )
 
 
 # ------------------------------------------------------------------------------ the hook, live
 
+
 @pytest.fixture
 def pushable(tmp_path):
     """A repo with the hook installed and a bare remote on a path (no network)."""
+
     def build(**stubs) -> Path:
         root = repo(tmp_path, **stubs)
         bare = tmp_path / "bare.git"
@@ -197,6 +216,7 @@ def pushable(tmp_path):
         git(root, "remote", "add", "origin", str(bare))
         _load_githook().install(root)
         return root
+
     return build
 
 
@@ -206,8 +226,8 @@ def test_the_installed_hook_refuses_a_push_and_names_both_bypasses(pushable):
     r = git(root, "push", "--dry-run", "origin", "main")
     assert r.returncode != 0
     out = r.stdout + r.stderr
-    assert "REFUSING: make lint is red" in out              # the guard says WHAT is red
-    assert "git push --no-verify" in out                    # the hook says how to bypass it
+    assert "REFUSING: make lint is red" in out  # the guard says WHAT is red
+    assert "git push --no-verify" in out  # the hook says how to bypass it
     assert "GUARD_SKIP_TEST=1" in out
 
 
@@ -221,8 +241,14 @@ def test_guard_skip_test_reaches_the_hook_through_the_environment(pushable):
     """`GUARD_SKIP_TEST=1 git push` — git hands its environment to the hook, so the escape works."""
     root = pushable(test="@echo a test failed; exit 1")
     assert git(root, "push", "--dry-run", "origin", "main").returncode != 0
-    r = subprocess.run(["git", "push", "--dry-run", "origin", "main"], cwd=root,
-                       capture_output=True, text=True, env={**_env(), "GUARD_SKIP_TEST": "1"})
+    r = subprocess.run(
+        ["git", "push", "--dry-run", "origin", "main"],
+        cwd=root,
+        capture_output=True,
+        check=False,
+        text=True,
+        env={**_env(), "GUARD_SKIP_TEST": "1"},
+    )
     assert r.returncode == 0, r.stdout + r.stderr
 
 
@@ -242,8 +268,9 @@ def _repo_state(root: Path) -> dict[str, str]:
     }
 
 
-def test_a_push_from_a_linked_worktree_keeps_the_guard_s_git_calls_out_of_the_repo(pushable,
-                                                                                 tmp_path):
+def test_a_push_from_a_linked_worktree_keeps_the_guard_s_git_calls_out_of_the_repo(
+    pushable, tmp_path
+):
     """A push from a linked worktree runs the hook with GIT_DIR=<repo>/.git/worktrees/<name>.
 
     With that variable in the environment, `git init` and `git commit` in a tmp dir write into
@@ -260,7 +287,7 @@ def test_a_push_from_a_linked_worktree_keeps_the_guard_s_git_calls_out_of_the_re
     r = git(wt, "push", "--dry-run", "origin", "wt")
     assert _repo_state(root) == before, r.stdout + r.stderr
     assert r.returncode == 0, r.stdout + r.stderr
-    assert (probe / ".git").is_dir()      # the stub's commit went to a repo of its own
+    assert (probe / ".git").is_dir()  # the stub's commit went to a repo of its own
 
 
 _PROBE_SUITE = f"""
@@ -303,8 +330,22 @@ def test_the_suite_removes_git_dir_before_its_first_git_call(tmp_path):
     before = _repo_state(sentinel)
     env = {k: v for k, v in _env().items() if not k.startswith(("PYTEST_", "GIT_"))}
     env["GIT_DIR"] = str(sentinel / ".git")
-    r = subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider",
-                        f"--basetemp={tmp_path / 'probe-tmp'}", str(suite)],
-                       cwd=suite, env=env, capture_output=True, text=True, check=False)
+    r = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "-q",
+            "-p",
+            "no:cacheprovider",
+            f"--basetemp={tmp_path / 'probe-tmp'}",
+            str(suite),
+        ],
+        cwd=suite,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
     assert _repo_state(sentinel) == before, r.stdout + r.stderr
     assert r.returncode == 0, r.stdout + r.stderr

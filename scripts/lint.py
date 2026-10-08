@@ -38,9 +38,10 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
-from scripts import githook, pdk_links  # noqa: E402
 from spicexplorer_harness import lint, load  # noqa: E402
 from spicexplorer_harness.lint import Lint  # noqa: E402
+
+from scripts import githook, pdk_links  # noqa: E402
 
 # How a certified number may be written in doc/target-spec.md; any one WHOLE-TOKEN match passes.
 # Three significant figures minimum, on purpose: at `{:.0f}` a doc reading `62` would "quote" a
@@ -53,7 +54,9 @@ QUOTE_FIXED = ("{:.3f}", "{:.2f}")
 NUMBER = re.compile(r"-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?")
 # An include/library line naming an ABSOLUTE path: what `deck_portable` refuses in a frozen deck.
 # `$VAR` and repo-relative spellings are the portable forms and never match.
-_ABS_INCLUDE = re.compile(r'^\s*\.?(?:include|lib)\b[^\n]*?["\'\s](/[^"\'\s]+)', re.I | re.M)
+_ABS_INCLUDE = re.compile(
+    r'^\s*\.?(?:include|lib)\b[^\n]*?["\'\s](/[^"\'\s]+)', re.IGNORECASE | re.MULTILINE
+)
 
 
 def _frozen_dirs(L: Lint) -> list[Path]:
@@ -80,11 +83,14 @@ def deck_portable(L: Lint) -> None:
         for p in sorted(d.glob("*.spice")):
             rel = p.relative_to(L.h.root).as_posix()
             for path in abs_includes(p.read_text(errors="replace")):
-                L.fail("deck-portable", f"{rel} includes the absolute path {path}",
-                       f"a frozen deck is committed, hashed and rebuilt byte for byte, so the "
-                       f"path may not be in it: name it `$VAR` in the deck, declare VAR in "
-                       f"`{L.h.package}.sim.DECK_VARS` (resolved in `sim.run`), re-certify "
-                       f"(`make certify && make freeze`)")
+                L.fail(
+                    "deck-portable",
+                    f"{rel} includes the absolute path {path}",
+                    f"a frozen deck is committed, hashed and rebuilt byte for byte, so the "
+                    f"path may not be in it: name it `$VAR` in the deck, declare VAR in "
+                    f"`{L.h.package}.sim.DECK_VARS` (resolved in `sim.run`), re-certify "
+                    f"(`make certify && make freeze`)",
+                )
 
 
 # A model name as a deck writes it: whole token only, so `nmos_a` is not found inside `nmos_a_hv`
@@ -94,11 +100,13 @@ def _token(name: str) -> re.Pattern[str]:
 
 
 # The header lines a section can be declared on, and the section each one names.
-_SECTION_OF = re.compile(r'^\s*\.?(?:include|lib)\b[^\n]*?\bsection\s*=\s*["\']?([A-Za-z0-9_.-]+)',
-                         re.I | re.M)
-_INCLUDE_LINE = re.compile(r'^\s*\.?(?:include|lib)\b', re.I)
+_SECTION_OF = re.compile(
+    r'^\s*\.?(?:include|lib)\b[^\n]*?\bsection\s*=\s*["\']?([A-Za-z0-9_.-]+)',
+    re.IGNORECASE | re.MULTILINE,
+)
+_INCLUDE_LINE = re.compile(r"^\s*\.?(?:include|lib)\b", re.IGNORECASE)
 # Comment spellings both deck dialects use. `*` only in the first column, which is the SPICE rule.
-_COMMENT_LINE = re.compile(r'^\s*(?:\*|//|;)|^\*')
+_COMMENT_LINE = re.compile(r"^\s*(?:\*|//|;)|^\*")
 
 
 def header_sections(deck: str) -> set[str]:
@@ -112,8 +120,11 @@ def instantiating_body(deck: str) -> str:
     The include lines are dropped so a section whose name happens to spell a model name cannot
     pass the check for it, and the comments so a model named in a note does not demand a section.
     """
-    return "\n".join(ln for ln in deck.splitlines()
-                     if not _COMMENT_LINE.match(ln) and not _INCLUDE_LINE.match(ln))
+    return "\n".join(
+        ln
+        for ln in deck.splitlines()
+        if not _COMMENT_LINE.match(ln) and not _INCLUDE_LINE.match(ln)
+    )
 
 
 def _points(L: Lint) -> list[tuple[str, object]]:
@@ -133,7 +144,7 @@ def _points(L: Lint) -> list[tuple[str, object]]:
     for d in _frozen_dirs(L):
         try:
             point = dut.Design.from_dict(json.loads((d / "design.json").read_text()))
-        except Exception:  # noqa: BLE001 - `deck_rebuild` reports an unloadable design.json
+        except Exception:  # noqa: BLE001, S112 - `deck_rebuild` reports an unloadable design.json
             continue
         out.append((d.relative_to(L.h.root).as_posix(), point))
     ref = getattr(dut, "REFERENCE", None)
@@ -185,23 +196,25 @@ def deck_models(L: Lint) -> None:
         # so printing it on an open-lane design (whose models come from the PDK's own init file
         # and whose decks have no `section=` at all) would be a line nobody can ever act on.
         if str(getattr(L.h, "lane", "") or "") == "bridge":
-            print(f"INFO: deck-models skipped — {L.h.package}/pdk.py MODEL_GROUPS is empty; fill "
-                  f"it (model name -> SECTIONS group) and every deck's header is then checked "
-                  f"against the models it instantiates")
+            print(
+                f"INFO: deck-models skipped — {L.h.package}/pdk.py MODEL_GROUPS is empty; fill "
+                f"it (model name -> SECTIONS group) and every deck's header is then checked "
+                f"against the models it instantiates"
+            )
         return
     corners = tuple(getattr(pdk, "CORNERS", ()) or (getattr(pdk, "TYPICAL", "tt"),))
     seen: set[tuple[str, str]] = set()
     for where, point in _points(L):
         try:
             benches = list(point.benches())
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001, S112 - `deck_rebuild` reports a broken bench list
             continue
         for bench in benches:
             try:
                 deck = point.deck(bench)
             except NotImplementedError:
-                continue                      # a bare template: `Design.deck` is still the stub
-            except Exception:  # noqa: BLE001 - `deck_rebuild` reports a builder that raises
+                continue  # a bare template: `Design.deck` is still the stub
+            except Exception:  # noqa: BLE001, S112 - `deck_rebuild` reports a builder that raises
                 continue
             have = header_sections(deck)
             body = instantiating_body(deck)
@@ -212,24 +225,29 @@ def deck_models(L: Lint) -> None:
                 try:
                     want = {pdk.section(group, c) for c in corners}
                 except Exception as exc:  # noqa: BLE001 - an undeclared group is the same bug
-                    L.fail("deck-models",
-                           f"{bench}: instantiates {model} but MODEL_GROUPS maps it to the group "
-                           f"{group!r}, which is not a section this design declares ({exc})",
-                           f"add {group!r} to SECTIONS in {L.h.package}/pdk.py (the section name "
-                           f"the library spells), or point MODEL_GROUPS[{model!r}] at a group "
-                           f"that exists")
+                    L.fail(
+                        "deck-models",
+                        f"{bench}: instantiates {model} but MODEL_GROUPS maps it to the group "
+                        f"{group!r}, which is not a section this design declares ({exc})",
+                        f"add {group!r} to SECTIONS in {L.h.package}/pdk.py (the section name "
+                        f"the library spells), or point MODEL_GROUPS[{model!r}] at a group "
+                        f"that exists",
+                    )
                     continue
                 if not (have & want):
-                    L.fail("deck-models",
-                           f"{bench}: instantiates {model} but its header lacks the {group} "
-                           f"section (header: {sorted(have) or 'no section= include line at all'}"
-                           f"; from {where})",
-                           f'add "{group}" to the pdk.models_block(...) call in '
-                           f"{L.h.package}/dut.py that builds Design.deck({bench!r}) — the "
-                           f"simulator's own verdict for this is `unresolved master`, which "
-                           f"reads like a typo in the device line rather than a missing include")
+                    L.fail(
+                        "deck-models",
+                        f"{bench}: instantiates {model} but its header lacks the {group} "
+                        f"section (header: {sorted(have) or 'no section= include line at all'}"
+                        f"; from {where})",
+                        f'add "{group}" to the pdk.models_block(...) call in '
+                        f"{L.h.package}/dut.py that builds Design.deck({bench!r}) — the "
+                        f"simulator's own verdict for this is `unresolved master`, which "
+                        f"reads like a typo in the device line rather than a missing include",
+                    )
 
-_ID_LIKE = re.compile(r"\s*([A-Z]{1,3}\d{1,3})\b")   # `S3`, `A12`: how a spec table numbers its rows
+
+_ID_LIKE = re.compile(r"\s*([A-Z]{1,3}\d{1,3})\b")  # `S3`, `A12`: how a spec table numbers its rows
 
 
 def _row_lines(doc: str, row) -> list[str]:
@@ -272,17 +290,19 @@ def spec_quotes(L: Lint) -> None:
     doc = h.text(h.spec_doc).replace("**", "").replace("−", "-")
     for row in h.spec:
         v = card.get(row.key)
-        if not isinstance(v, (int, float)) or isinstance(v, bool) or v != v:
+        if not isinstance(v, (int, float)) or isinstance(v, bool) or v != v:  # noqa: PLR0124 - NaN
             continue
         written = [f.format(v) for f in QUOTE_FORMATS]
         written += [f.format(v) for f in QUOTE_FIXED] if abs(v) >= 1 else []
         named = _row_lines(doc, row)
         if not named:
-            L.fail("spec-quotes",
-                   f"no line of {h.spec_doc} names {row.id or row.key} — certified "
-                   f"{row.key} = {v:.4g} cannot be matched against its own row",
-                   f"give the row an `id:` in harness.yaml and write that id (or the key "
-                   f"`{row.key}`, or the label `{row.label}`) in its line of {h.spec_doc}")
+            L.fail(
+                "spec-quotes",
+                f"no line of {h.spec_doc} names {row.id or row.key} — certified "
+                f"{row.key} = {v:.4g} cannot be matched against its own row",
+                f"give the row an `id:` in harness.yaml and write that id (or the key "
+                f"`{row.key}`, or the label `{row.label}`) in its line of {h.spec_doc}",
+            )
             continue
         # ONLY the row's own line(s): a document-wide set of numbers passes any certified value
         # that coincides with any number anywhere in the file — a bound, a sample count, a date.
@@ -290,10 +310,12 @@ def spec_quotes(L: Lint) -> None:
         # doc that says `62` is not quoting a certified 62.4.
         tokens = {t for ln in named for t in NUMBER.findall(ln)}
         if not tokens.intersection(written):
-            L.fail("spec-quotes",
-                   f"certified {row.key} = {v:.4g} is not quoted in the {row.id or row.key} row of {h.spec_doc}",
-                   f"the spec table's reference-baseline column quotes {h.reference_scorecard}; "
-                   f"copy the certified number across (e.g. `{written[0]}`), or re-certify")
+            L.fail(
+                "spec-quotes",
+                f"certified {row.key} = {v:.4g} is not quoted in the {row.id or row.key} row of {h.spec_doc}",
+                f"the spec table's reference-baseline column quotes {h.reference_scorecard}; "
+                f"copy the certified number across (e.g. `{written[0]}`), or re-certify",
+            )
 
 
 def sx_links(L: Lint) -> None:
@@ -311,25 +333,41 @@ def sx_links(L: Lint) -> None:
     plat = root / ".sx" / "platform"
     if not (plat / "packages" / "spicexplorer-harness" / "pyproject.toml").is_file():
         where = os.readlink(plat) if plat.is_symlink() else "missing"
-        L.fail("sx-links", f".sx/platform does not resolve to a spicexplorer-platform checkout ({where})",
-               "export SX_ROOT=<your spicexplorer-workspace checkout> (the lab: ~/.sx_env) and run `make init`")
+        L.fail(
+            "sx-links",
+            f".sx/platform does not resolve to a spicexplorer-platform checkout ({where})",
+            "export SX_ROOT=<your spicexplorer-workspace checkout> (the lab: ~/.sx_env) and run `make init`",
+        )
     tool = root / ".sx" / "skills" / "bin" / "sx-link"
     if not tool.is_file():
-        L.fail("sx-links", ".sx/skills (the analog-skill-directory submodule) is not initialised",
-               "run `make init` (= git submodule update --init --recursive .sx/skills, then the links)")
+        L.fail(
+            "sx-links",
+            ".sx/skills (the analog-skill-directory submodule) is not initialised",
+            "run `make init` (= git submodule update --init --recursive .sx/skills, then the links)",
+        )
         return
     sets = ["design"]
     pdk_set = pdk_links.linkset(root, str(getattr(L.h, "pdk", "") or ""))
     if pdk_set:
-        sets.append(pdk_set)            # after `design`, in the order `make init` links them
+        sets.append(pdk_set)  # after `design`, in the order `make init` links them
     for name in sets:
-        r = subprocess.run([str(tool), str(root), "--set", name, "--check"], capture_output=True,
-                           text=True)
+        r = subprocess.run(
+            [str(tool), str(root), "--set", name, "--check"],
+            capture_output=True,
+            check=False,
+            text=True,
+        )
         if r.returncode:
-            first = next((ln for ln in r.stdout.splitlines() if ln and not ln.startswith(" ")),
-                         "links missing")
-            L.fail("sx-links", first.strip(), "run `make init` (re-links every entry from "
-                   ".sx/skills; a nested submodule needs the --recursive it does)")
+            first = next(
+                (ln for ln in r.stdout.splitlines() if ln and not ln.startswith(" ")),
+                "links missing",
+            )
+            L.fail(
+                "sx-links",
+                first.strip(),
+                "run `make init` (re-links every entry from "
+                ".sx/skills; a nested submodule needs the --recursive it does)",
+            )
 
 
 # Where a committed artefact is allowed to live (template 2.00, "every artefact has a home").
@@ -341,14 +379,16 @@ ARTIFACT_SUFFIXES = (".png", ".svg", ".pdf", ".csv", ".gds", ".gds.gz")
 # escape hatch and it is on purpose: a home nobody wrote down is a directory the next reader has
 # to guess at, and a one-line declaration in a reviewed file costs nothing.
 ARTIFACT_HOMES = (
-    "signoff/",        # the design of record, by fidelity — what a reader is entitled to trust
-    "experiments/",    # the working space: agents organize inside it freely (figs/ + tables/ is the habit)
-    "layout/",         # the generator's own working output; what is SIGNED OFF moves to signoff/layout/
-    "decks/",          # candidate and control deck dirs (the CERTIFIED ones live in signoff/)
-    "references/",     # papers, datasheets, standards
-    "doc/",            # figures that belong to a document
-    "notebooks/",      # executed in place, outputs committed
-    ".claude/", ".sx/", ".github/",
+    "signoff/",  # the design of record, by fidelity — what a reader is entitled to trust
+    "experiments/",  # the working space: agents organize inside it freely (figs/ + tables/ is the habit)
+    "layout/",  # the generator's own working output; what is SIGNED OFF moves to signoff/layout/
+    "decks/",  # candidate and control deck dirs (the CERTIFIED ones live in signoff/)
+    "references/",  # papers, datasheets, standards
+    "doc/",  # figures that belong to a document
+    "notebooks/",  # executed in place, outputs committed
+    ".claude/",
+    ".sx/",
+    ".github/",
 )
 
 
@@ -366,7 +406,9 @@ def artifact_home(L: Lint) -> None:
     import subprocess  # noqa: PLC0415 - local: a design's lint.py may not import it at module level
 
     root = L.h.root
-    r = subprocess.run(["git", "ls-files", "-z"], cwd=root, capture_output=True, text=True)
+    r = subprocess.run(
+        ["git", "ls-files", "-z"], cwd=root, capture_output=True, check=False, text=True
+    )
     if r.returncode:
         return  # not a git checkout (a template copied by hand): nothing to check
     # Grouped by top-level directory, because that is the unit you DECLARE. Reporting one failure
@@ -382,13 +424,15 @@ def artifact_home(L: Lint) -> None:
         stray.setdefault(rel.split("/")[0] + "/" if "/" in rel else "(repo root)", []).append(rel)
     for where, files in stray.items():
         eg = files[0] if len(files) == 1 else f"{len(files)} files, e.g. {files[0]}"
-        L.fail("artifact-home", f"{where} holds committed artefacts outside every declared home "
-                                f"({eg})",
-               f"either MOVE them — an experiment's evidence to `experiments/NNN-*/figs|tables/`, "
-               f"a measured result to `signoff/<fidelity>/`, a document's figure to `doc/`, a "
-               f"paper to `references/` — or DECLARE `{where}` in `ARTIFACT_HOMES` in this file, "
-               f"with one line saying what lives there. Raw simulator output is neither: it is "
-               f"never committed, and stays in the scratch root ($SX_SCRATCH)")
+        L.fail(
+            "artifact-home",
+            f"{where} holds committed artefacts outside every declared home ({eg})",
+            f"either MOVE them — an experiment's evidence to `experiments/NNN-*/figs|tables/`, "
+            f"a measured result to `signoff/<fidelity>/`, a document's figure to `doc/`, a "
+            f"paper to `references/` — or DECLARE `{where}` in `ARTIFACT_HOMES` in this file, "
+            f"with one line saying what lives there. Raw simulator output is neither: it is "
+            f"never committed, and stays in the scratch root ($SX_SCRATCH)",
+        )
 
 
 def signoff_index(L: Lint) -> None:
@@ -403,22 +447,30 @@ def signoff_index(L: Lint) -> None:
         return  # a design that has not started signing anything off
     idx = d / "README.md"
     if not idx.is_file():
-        L.fail("signoff-index", "signoff/ exists but signoff/README.md does not",
-               "copy it from the template (`make template-update`): it is the index of what is "
-               "signed off, at which fidelity, by whom and when")
+        L.fail(
+            "signoff-index",
+            "signoff/ exists but signoff/README.md does not",
+            "copy it from the template (`make template-update`): it is the index of what is "
+            "signed off, at which fidelity, by whom and when",
+        )
         return
     text = idx.read_text()
     # `__pycache__` and dot-dirs are tooling debris, not fidelities: they are not sign-offs and
     # demanding a README row for them would teach people to ignore this check.
-    subs = (p.name for p in d.iterdir()
-            if p.is_dir() and not p.name.startswith(".") and p.name != "__pycache__")
+    subs = (
+        p.name
+        for p in d.iterdir()
+        if p.is_dir() and not p.name.startswith(".") and p.name != "__pycache__"
+    )
     for sub in sorted(subs):
         if f"`{sub}`" not in text and f"`{sub}/" not in text:
-            L.fail("signoff-index", f"signoff/{sub}/ is not named in signoff/README.md",
-                   f"add a row for `{sub}` to the table — what the number includes, its scorecard "
-                   f"path, its status, who signed it and when. A fidelity nobody described is not "
-                   f"a sign-off")
-
+            L.fail(
+                "signoff-index",
+                f"signoff/{sub}/ is not named in signoff/README.md",
+                f"add a row for `{sub}` to the table — what the number includes, its scorecard "
+                f"path, its status, who signed it and when. A fidelity nobody described is not "
+                f"a sign-off",
+            )
 
 
 # How many of the biggest run dirs `scratch_budget` names in its warning. Enough to point at the
@@ -444,33 +496,47 @@ def scratch_budget(L: Lint) -> None:
 
     work, _note = clean_runs.work_dir()
     if work is None or not work.is_dir():
-        return                      # nothing has simulated in this checkout: nothing to report
+        return  # nothing has simulated in this checkout: nothing to report
     rep = clean_runs.usage(work)
     if not rep["over"]:
         return
     entries = clean_runs.scan(work / "runs", clean_runs.rows_by_label(L.rows()))
     biggest = sorted(entries, key=lambda e: -e["bytes"])[:BIGGEST]
     unreduced = [e for e in biggest if not e["reduced"]]
-    where = f"{rep['work']} holds {rep['human']} in {rep['runs']} run dir(s), over the "\
-            f"{rep['warn_gb']:g} GB mark (${clean_runs.WARN_GB_ENV})"
+    where = (
+        f"{rep['work']} holds {rep['human']} in {rep['runs']} run dir(s), over the "
+        f"{rep['warn_gb']:g} GB mark (${clean_runs.WARN_GB_ENV})"
+    )
     if unreduced:
         names = ", ".join(f"{e['name']} ({clean_runs.human_bytes(e['bytes'])})" for e in unreduced)
-        L.warn("scratch-budget",
-               f"{where}, and {len(unreduced)} of its {len(biggest)} biggest run dir(s) have no "
-               f"reduction row: {names}",
-               "reduce each one to the number it was run for, commit that reduction (a scorecard, "
-               "an experiment table, a ledger row), then `make clean-runs` — a raw simulation "
-               "record is scratch, not evidence, and the deck rebuilds it")
+        L.warn(
+            "scratch-budget",
+            f"{where}, and {len(unreduced)} of its {len(biggest)} biggest run dir(s) have no "
+            f"reduction row: {names}",
+            "reduce each one to the number it was run for, commit that reduction (a scorecard, "
+            "an experiment table, a ledger row), then `make clean-runs` — a raw simulation "
+            "record is scratch, not evidence, and the deck rebuilds it",
+        )
     else:
-        L.warn("scratch-budget",
-               f"{where}; every one of its {len(biggest)} biggest run dir(s) is already reduced",
-               "`make clean-runs` (it keeps anything unreduced, running, or younger than AGE); "
-               "`make clean-runs AGE=0` once the campaign is finished")
+        L.warn(
+            "scratch-budget",
+            f"{where}; every one of its {len(biggest)} biggest run dir(s) is already reduced",
+            "`make clean-runs` (it keeps anything unreduced, running, or younger than AGE); "
+            "`make clean-runs AGE=0` once the campaign is finished",
+        )
+
 
 # `package-importable` is NOT here: the platform ships it (driven by `package:` in harness.yaml).
 # `deck_rebuild` is NOT here either: the platform's GENERIC runs it, and naming it here ran it twice.
-EXTRA = (deck_portable, deck_models, spec_quotes, sx_links,
-         artifact_home, signoff_index, scratch_budget)
+EXTRA = (
+    deck_portable,
+    deck_models,
+    spec_quotes,
+    sx_links,
+    artifact_home,
+    signoff_index,
+    scratch_budget,
+)
 
 
 def hook_info(repo: Path = REPO) -> str:
@@ -490,8 +556,10 @@ def hook_info(repo: Path = REPO) -> str:
     if where == "ours":
         return "INFO: pre-push guard hook installed — `make guard` runs before every push"
     if where == "foreign":
-        return (f"INFO: {githook.hook_path(repo)} exists but is not the guard hook — "
-                f"left alone; `make guard` before pushing, by hand")
+        return (
+            f"INFO: {githook.hook_path(repo)} exists but is not the guard hook — "
+            f"left alone; `make guard` before pushing, by hand"
+        )
     return "INFO: pre-push guard hook not installed — `make hook-install` (optional, per clone)"
 
 
@@ -564,7 +632,7 @@ def own_tree_only(module=lint):
     `<package>.<module>` a listed check imports, itself or through a helper, is named on its line.
     """
     saved = getattr(module, "os", None)
-    if saved is not os:     # no `os` name to replace (a harness that walks some other way)
+    if saved is not os:  # no `os` name to replace (a harness that walks some other way)
         yield
         return
     module.os = _OwnTreeOs()

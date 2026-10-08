@@ -23,16 +23,24 @@ def set_exp(nnn: str) -> None:
     os.environ.setdefault(H.exp_env, nnn)
 
 
-def run_batch(designs: dict, score: Callable, *, prefix: str = "",
-              workers: int | None = None) -> list[dict]:
+def run_batch(
+    designs: dict, score: Callable, *, prefix: str = "", workers: int | None = None
+) -> list[dict]:
     """`score(design, tag) -> row` for every design in parallel (`jobs_env` wide); a failure is a row with `error`."""
     items = list(designs.items())
-    rows = batch(items, lambda it: score(it[1], f"{prefix}{it[0]}"), workers=workers, env=H.jobs_env)
+    rows = batch(
+        items, lambda it: score(it[1], f"{prefix}{it[0]}"), workers=workers, env=H.jobs_env
+    )
     out = []
     for (label, d), r in zip(items, rows):
         if isinstance(r, Exception):
-            out.append({"label": label, "error": str(r)[:300],
-                        "design": d.as_dict() if hasattr(d, "as_dict") else str(d)})
+            out.append(
+                {
+                    "label": label,
+                    "error": str(r)[:300],
+                    "design": d.as_dict() if hasattr(d, "as_dict") else str(d),
+                }
+            )
         else:
             out.append({"label": label, **r})
     return out
@@ -42,7 +50,7 @@ def fmt(v, p: int = 2) -> str:
     if isinstance(v, bool):
         return str(v)
     if isinstance(v, (int, float)):
-        if v != v:
+        if v != v:  # noqa: PLR0124 - NaN check that also covers numpy scalars
             return "nan"
         return f"{v:.{p}f}" if abs(v) < 1e4 else f"{v:.3g}"
     return "—" if v is None else str(v)
@@ -61,8 +69,10 @@ def verdicts(rows: list[dict]) -> str:
     out = []
     for r in rows:
         v = r.get("violations")
-        out.append(f"- `{r.get('label')}`: "
-                   + ("PASS" if v == [] else "; ".join(v) if v else r.get("error", "?")))
+        out.append(
+            f"- `{r.get('label')}`: "
+            + ("PASS" if v == [] else "; ".join(v) if v else r.get("error", "?"))
+        )
     return "\n".join(out)
 
 
