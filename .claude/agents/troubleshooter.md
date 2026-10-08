@@ -1,0 +1,1 @@
+../../.sx/skills/agents/troubleshooter.md
