@@ -180,7 +180,10 @@ def current_density(out: Path) -> dict:
     from spicexplorer_signoff import check_current_density
 
     r = check_current_density(BUDGETS, pdk=pdk())
-    print(f"  Jmax: passed={r.passed} over={r.worst_over_factor:.2f}x n={r.n_checked}")
+    if getattr(r, "skipped", False):  # no budget given: not a pass, and not a failure either
+        print(f"  Jmax: skipped ({r.reason})")
+    else:
+        print(f"  Jmax: passed={r.passed} over={r.worst_over_factor:.2f}x n={r.n_checked}")
     return _record(r)
 
 
