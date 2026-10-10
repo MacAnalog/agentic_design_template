@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import math
 import re
@@ -14,7 +15,11 @@ from typing import ClassVar
 import numpy as np
 import pytest
 
-from design import exp, sim
+from design import exp
+
+# The ngspice lane by name, not `design.sim`: on `lane: bridge` the dispatcher hands back
+# `sim_bridge`, and these are the open lane's own tests (template#58).
+from design import sim_ngspice as sim
 
 
 def _have_ngspice() -> bool:
@@ -405,6 +410,9 @@ def test_a_deck_that_simulated_but_did_not_measure_is_not_an_ok_bench(monkeypatc
         measures, failed, wall = {"gain_db": 61.0}, ["pm_deg"], 0.1
 
     monkeypatch.setattr(metrics.sim, "run", lambda deck, tag: _R())
+    # no reduction and no KEYMAP rows: a design that fills `PRODUCES` would promote `ac.gain_db`
+    monkeypatch.setattr(metrics.bench_mod, "reduce", lambda bench, r: {})
+    monkeypatch.setattr(metrics.L, "keymap", {})
     monkeypatch.setattr(metrics, "log_run", lambda *a, **k: None)
     values, records = metrics.run_decks({"ac": "* ac\n.end\n"}, "t")
     assert records["ac"]["status"] != "ok", "the deck ran; its measure did not"
@@ -445,9 +453,31 @@ def test_certify_refuses_a_reference_whose_measure_failed(monkeypatch, tmp_path)
     assert not list(tmp_path.glob("scorecard.json")), "no scorecard may be written"
 
 
-def test_table_reports_pass_and_fail():
+# The template's own spec rows, pinned for the tests that read bounds and tolerance bands: an
+# instantiated design writes its own `spec:` in harness.yaml (template#58).
+_TEMPLATE_SPEC = [
+    {"key": "gain_db", "label": "gain", "op": ">=", "bound": 60, "unit": "dB",
+     "tolerance": {"kind": "abs", "delta": 0.5}},
+    {"key": "pm_deg", "label": "PM", "op": ">=", "bound": 60, "unit": "deg"},
+    {"key": "power_uw", "label": "power", "op": "<=", "bound": 100, "unit": "uW"},
+]  # fmt: skip
+
+
+@pytest.fixture
+def template_spec(monkeypatch):
+    """`design.metrics` scoring against `_TEMPLATE_SPEC`, whatever this checkout's `spec:` says."""
+    from spicexplorer_harness.config import spec_rows
+
     from design import metrics
 
+    rows = spec_rows(_TEMPLATE_SPEC)
+    monkeypatch.setattr(metrics.L, "h", dataclasses.replace(metrics.L.h, spec=rows))
+    monkeypatch.setattr(metrics.L, "cols", tuple(r.key for r in rows))
+    return metrics
+
+
+def test_table_reports_pass_and_fail(template_spec):
+    metrics = template_spec
     md = metrics.table(
         {
             "ok": {"gain_db": 61, "pm_deg": 70, "power_uw": 9},
@@ -457,18 +487,17 @@ def test_table_reports_pass_and_fail():
     assert "| PASS |" in md and "FAIL (1)" in md
 
 
-def test_drift_limit_prefers_the_spec_tolerance_band():
-    from design import metrics
-
-    # harness.yaml gives gain_db `tolerance: {kind: abs, delta: 0.5}`; pm_deg declares none
+def test_drift_limit_prefers_the_spec_tolerance_band(template_spec):
+    metrics = template_spec
+    # the template's harness.yaml gives gain_db `tolerance: {kind: abs, delta: 0.5}`; pm_deg declares none
     assert metrics.drift_limit("gain_db", 60.0) == pytest.approx(0.5)
     assert metrics.drift_limit("pm_deg", 60.0) == pytest.approx(0.6)
 
 
-def test_drift_flags_moved_and_missing_columns(monkeypatch):
+def test_drift_flags_moved_and_missing_columns(monkeypatch, template_spec):
     """A column that did not come back is `NOT MEASURED`, never skipped — the second half of
     AT-01. `drift()` returns `Drift` records now (the lifecycle's), not tuples."""
-    from design import metrics
+    metrics = template_spec
 
     monkeypatch.setattr(
         type(metrics.L),

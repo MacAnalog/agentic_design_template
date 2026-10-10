@@ -17,6 +17,25 @@ Versions are `MAJOR.MINOR`, written `#.##`:
 `make template-status` prints the recorded version and the latest release. Releases are git
 tags, `v<version>`.
 
+## Unreleased — the generic tests read the design's lane, spec and `pdk:` (#58)
+
+Minor, tests only; no module, recipe or `harness.yaml` key changes. On a design with `lane: bridge`,
+`pdk:` declared, its own `spec:` and the per-machine `<PDK-ID>_PDK_LIB` exported, the template's
+suite failed eight tests that check the template's defaults (`test_design.py` failed at
+collection). Reproduced on a copy of the template with those four changes and a filled
+`PRODUCES`: 3 failed + 1 collection error before, 258 passed after.
+
+| change | files |
+|---|---|
+| the ngspice-lane tests import `<package>.sim_ngspice`, not the `sim` dispatcher | `tests/test_design.py` |
+| the drift and table tests score against the template's spec rows (`template_spec` fixture) | `tests/test_design.py` |
+| the failed-measure test stubs `bench.reduce` and empties the keymap | `tests/test_design.py` |
+| the lane test checks the module of the lane `harness.yaml` names | `tests/test_lane.py` |
+| the `bridge` fixture clears `pdk.machine_env()` and its `_ALLOW_MISMATCH` | `tests/test_lane.py` |
+
+**Taking it.** A design that adapted these tests locally gets conflicts in the two files from
+`make template-update`; resolve each by taking the template's side.
+
 ## v2.16 — template tests hold on a bridge-lane design; `template-update` names a signed scorer it changes
 
 Minor, 2026-10-10. No module is renamed and every lifecycle command keeps its name. The first
