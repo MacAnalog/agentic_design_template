@@ -18,6 +18,13 @@ preimage blobs exist locally), builds the diff between the recorded tag and the 
 applies it with a **three-way merge**. A file the design never touched moves cleanly; a file the
 design edited merges, or leaves conflict markers where a human must choose. Nothing is committed.
 
+The diff's base is the template commit the design matches. A design cut from a tag needs nothing
+more than `.sx/template-version`; a design cut from an untagged commit between two releases also
+records that commit in `.sx/template-commit` (the full sha). With the tag as the base, the changes
+between the tag and that commit would be applied a second time onto files that already carry them:
+conflicts, and mode warnings for every file whose mode changed in between. `update` writes both
+files when a release lands, so after the first update the base is always exact.
+
 The one thing to know: the instantiation rename (`git mv design <package>`). The template's package
 is `design/`; this design's is whatever `harness.yaml` says. So the diff is applied in two parts —
 the package part relative to `design/`, re-rooted onto `<package>/`, and everything else as it is.
@@ -40,6 +47,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 VERSION_FILE = REPO / ".sx" / "template-version"
+COMMIT_FILE = REPO / ".sx" / "template-commit"
 REMOTE = "template"
 URL = "https://github.com/MacAnalog/agentic_design_template.git"
 VER_RE = re.compile(r"^(\d+)\.(\d{2})$")
@@ -56,6 +64,7 @@ EXCLUDE = (
     ":!pyproject.toml",  # its dependency set (the template's is a starting point)
     ":!.sx/skills",  # the library pin: `make skills-update` owns it
     ":!.sx/template-version",  # written here, at the end
+    ":!.sx/template-commit",  # likewise
     ":!experiments",  # `experiments/_template/` included: a design edits its own copy
     ":!decks",
     ":!layout",
@@ -93,6 +102,35 @@ def recorded() -> str:
             f"{VERSION_FILE.relative_to(REPO)} holds {v!r}; expected MAJOR.MINOR, e.g. 1.01"
         )
     return v
+
+
+def base_ref(cur: str, want: str) -> str:
+    """The ref the release diff starts from: the commit in `.sx/template-commit` when the design
+    records one, else the tag `v<cur>`. A recorded commit that is not between `v<cur>` and
+    `v<want>` stops the update: a wrong base is what this file exists to prevent, so it is never
+    replaced by the tag in silence."""
+    if not COMMIT_FILE.is_file():
+        return f"v{cur}"
+    sha = COMMIT_FILE.read_text().strip()
+    rel = COMMIT_FILE.relative_to(REPO)
+    if not re.fullmatch(r"[0-9a-f]{7,40}", sha):
+        raise SystemExit(f"{rel} holds {sha!r}; expected the sha of a template commit")
+    if subprocess.run(
+        ["git", "cat-file", "-e", f"{sha}^{{commit}}"], cwd=REPO, capture_output=True, check=False
+    ).returncode:
+        raise SystemExit(f"{rel} names {sha}, which is not a commit of the template remote")
+    for older, newer in ((f"v{cur}", sha), (sha, f"v{want}")):
+        if subprocess.run(
+            ["git", "merge-base", "--is-ancestor", older, newer],
+            cwd=REPO,
+            capture_output=True,
+            check=False,
+        ).returncode:
+            raise SystemExit(
+                f"{rel} names {sha}, which is not between v{cur} (.sx/template-version) and "
+                f"v{want}: fix whichever of the two files is wrong, or delete {rel} to use v{cur}"
+            )
+    return sha
 
 
 def package() -> str:
@@ -184,22 +222,27 @@ def _apply_one(diff: str, directory: str | None) -> tuple[bool, str]:
 
 
 def _apply(
-    a: str, b: str, paths: list[str], directory: str | None = None, relative: str | None = None
+    a: str,
+    b: str,
+    paths: list[str],
+    directory: str | None = None,
+    relative: str | None = None,
+    base: str | None = None,
 ) -> list[tuple[str, str, str]]:
     """Apply the diff FILE BY FILE and report each one.
 
     `git apply` is atomic: one file the design does not have (a test module it dropped, a script it
     never received) aborts the whole patch and silently rolls back every file that HAD merged. So
     each file is applied on its own — a design gets everything that can land, and the report says
-    exactly what did not.
+    exactly what did not. `base` is the ref the diff starts from (`base_ref()`), default `v<a>`.
     """
-    base = ["git", "diff", "--full-index", f"v{a}", f"v{b}"]
-    base += [f"--relative={relative}"] if relative else []
-    names = sh(*base, "--name-only", "--", *paths).split()
+    cmd = ["git", "diff", "--full-index", base or f"v{a}", f"v{b}"]
+    cmd += [f"--relative={relative}"] if relative else []
+    names = sh(*cmd, "--name-only", "--", *paths).split()
     out: list[tuple[str, str, str]] = []
     for name in names:
         target = (Path(directory) / name) if directory else Path(name)
-        diff = sh(*base, "--", (f"{relative}{name}" if relative else name))
+        diff = sh(*cmd, "--", (f"{relative}{name}" if relative else name))
         if not diff.strip():
             continue
         exists = (REPO / target).exists()
@@ -239,14 +282,18 @@ def update(target: str | None) -> int:
         )
         return 2
     pkg = package()
+    base = base_ref(cur, want)
     print(
-        f"template {cur} -> {want}   package: {pkg}\n{changelog(cur, want) or '(no changelog entries)'}\n"
+        f"template {cur} -> {want}   package: {pkg}   base: {base}\n"
+        f"{changelog(cur, want) or '(no changelog entries)'}\n"
     )
 
     # 1) the package, re-rooted from the template's `design/` onto this design's package dir
-    rows = _apply(cur, want, ["design/", *PKG_EXCLUDE], directory=pkg, relative="design/")
+    rows = _apply(
+        cur, want, ["design/", *PKG_EXCLUDE], directory=pkg, relative="design/", base=base
+    )
     # 2) everything else, path for path
-    rows += _apply(cur, want, [".", ":!design", *EXCLUDE])
+    rows += _apply(cur, want, [".", ":!design", *EXCLUDE], base=base)
 
     width = max((len(r[0]) for r in rows), default=1)
     for name, verdict, msg in rows:
@@ -272,7 +319,10 @@ def update(target: str | None) -> int:
     if not bad:
         VERSION_FILE.parent.mkdir(parents=True, exist_ok=True)
         VERSION_FILE.write_text(want + "\n")
-        print(f"\n.sx/template-version -> {want} (nothing is committed)")
+        COMMIT_FILE.write_text(sh("git", "rev-parse", f"v{want}^{{commit}}").strip() + "\n")
+        print(
+            f"\n.sx/template-version -> {want}, .sx/template-commit -> v{want} (nothing is committed)"
+        )
     else:
         conf = [r[0] for r in bad if r[1] == "CONFLICT"]
         rej = [r[0] for r in bad if r[1] == "REJECTED"]
@@ -281,7 +331,8 @@ def update(target: str | None) -> int:
             print(
                 f"  CONFLICT ({', '.join(conf)}): resolve in place, `make lint && make test`, "
                 f"commit, then record the release yourself — `echo {want} > "
-                f".sx/template-version` (the same line records a deliberate DECLINE). Do NOT "
+                f".sx/template-version && git rev-parse v{want}^{{commit}} > "
+                f".sx/template-commit` (the same line records a deliberate DECLINE). Do NOT "
                 f"re-run: `git apply --3way` reads the INDEX, so a resolved hunk conflicts again "
                 f"and your resolution comes back wrapped in fresh markers."
             )

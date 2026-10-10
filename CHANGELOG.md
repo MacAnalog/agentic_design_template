@@ -17,6 +17,28 @@ Versions are `MAJOR.MINOR`, written `#.##`:
 `make template-status` prints the recorded version and the latest release. Releases are git
 tags, `v<version>`.
 
+## Unreleased — `template-update` merges from the commit a design was cut from
+
+Minor; `scripts/template_update.py` only. A design copied from an untagged commit between two
+releases records the release before it in `.sx/template-version`, and `make template-update` used
+that tag as the merge base, so it re-applied every change between the tag and the copied commit.
+Reproduced on an unedited copy of a commit six commits after v2.14 that records `2.14`: the update
+to v2.16 left 4 files in CONFLICT and printed `has type 100755, expected 100644` for the two
+scripts whose mode changed in between; with that commit as the base, 0 conflicts and no warning.
+
+| change | files | carried by `make template-update` |
+|---|---|---|
+| the merge base is `.sx/template-commit` when the design records one, else `v<template-version>` | `scripts/template_update.py` | yes |
+| a recorded commit not between `v<template-version>` and the target stops the update, naming the file | `scripts/template_update.py` | yes |
+| a landed release writes `.sx/template-commit` beside `.sx/template-version` | `scripts/template_update.py`, `tests/test_template_scripts.py` | yes |
+| a tree copied by hand from an untagged commit records it | `README.md`, `CLAUDE.md` | `CLAUDE.md` yes; `README.md` no |
+
+**Taking it.** The update runs the design's own copy of the script, so the update that brings
+this release still merges from the tag. A design cut from an untagged commit takes the script
+first — `git fetch --tags template && git checkout v<this release> -- scripts/template_update.py`
+— writes the full sha of the commit it was cut from into `.sx/template-commit`, then runs
+`make template-update`. After any landed release the file holds that release's commit.
+
 ## Unreleased — the generic tests read the design's lane, spec and `pdk:` (#58)
 
 Minor, tests only; no module, recipe or `harness.yaml` key changes. On a design with `lane: bridge`,

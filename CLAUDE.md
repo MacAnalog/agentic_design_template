@@ -103,7 +103,8 @@ undeclared case: an artefact somewhere nobody wrote down.
   workflows `workflows.sizing` (gm/ID sizing → optimizer project; `BUDGET=N` adds the optimize
   step) and `workflows.layout`, run from `$SX_ROOT`'s orchestration venv; the rest through `ARGS`.
 - `make template-status` / `make template-update` — this repo was **copied** from the template, so
-  it records the release it was cut from in `.sx/template-version` (`#.##`) and takes later MINOR
+  it records the release it was cut from in `.sx/template-version` (`#.##`) — and, cut from an
+  untagged commit, that commit in `.sx/template-commit`, the merge base — and takes later MINOR
   work by three-way merge, never by overwrite (`CHANGELOG.md` says what each release changed; a
   MAJOR release is refused and its migration note printed). Read every merged hunk, then
   `make lint && make test`. The shared agent/skill library moves separately: `make skills-update`.
