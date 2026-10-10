@@ -23,8 +23,8 @@ Minor; `scripts/template_update.py` only. A design copied from an untagged commi
 releases records the release before it in `.sx/template-version`, and `make template-update` used
 that tag as the merge base, so it re-applied every change between the tag and the copied commit.
 Reproduced on an unedited copy of a commit six commits after v2.14 that records `2.14`: the update
-to v2.16 left 4 files in CONFLICT and printed `has type 100755, expected 100644` for the two
-scripts whose mode changed in between; with that commit as the base, 0 conflicts and no warning.
+to v2.16 left 4 files in CONFLICT, two of them printing `has type 100755, expected 100644` (six
+files changed mode in between); with that commit as the base, 0 conflicts and no warning.
 
 | change | files | carried by `make template-update` |
 |---|---|---|
