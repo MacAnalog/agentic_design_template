@@ -32,6 +32,11 @@ That rewrites the PATHS a hunk lands on, never a hunk's CONTENT: a template line
 `design.metrics` arrives spelled that way, so run `make lint && make test` afterwards and fix what
 the report lists.
 
+When the design's copy of this script is the unmodified copy of the commit it is on, the update
+runs the TARGET release's copy instead (`handoff()`), so a check that release adds to `update()`
+runs on the update that brings it, not one release later. A copy the design edited or took from a
+later commit runs the update itself.
+
     scripts/template_update.py status          # recorded vs latest release
     scripts/template_update.py update [VER]    # propagate up to VER (default: latest minor)
 """
@@ -40,9 +45,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
@@ -51,6 +58,8 @@ COMMIT_FILE = REPO / ".sx" / "template-commit"
 REMOTE = "template"
 URL = "https://github.com/MacAnalog/agentic_design_template.git"
 VER_RE = re.compile(r"^(\d+)\.(\d{2})$")
+# Set in the environment of the target release's script when `update` hands the run over to it.
+HANDOFF_ENV = "SX_TEMPLATE_UPDATE_HANDOFF"
 
 # Never propagated: what a design owns the moment it is instantiated. Everything else — including a
 # module the template grows later — comes across, and the three-way merge protects local edits.
@@ -262,6 +271,56 @@ def _apply(
     return out
 
 
+def _script_at(ref: str) -> str | None:
+    r = subprocess.run(
+        ["git", "show", f"{ref}:scripts/template_update.py"],
+        cwd=REPO,
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+    return None if r.returncode else r.stdout
+
+
+def handoff(base: str, want: str) -> int | None:
+    """Run the update with release `want`'s own `scripts/template_update.py`, and return its exit
+    code; `None` means this copy does the update.
+
+    The design's copy is the release it was last updated to. A check a later release adds to
+    `update()` (v2.16's signed-scorer warning) would otherwise be skipped on the very update that
+    carries it. The run is handed over only when this copy is the unmodified script of `base`, the
+    template commit the design is on, and the target's script differs from it. A copy that differs
+    from `base`'s was edited or taken from a later commit on purpose (a release's *Taking it* step),
+    and the target's script may be older than it: a release that predates `.sx/template-commit`
+    would merge from the tag again. That copy does the update itself.
+
+    The target's script runs from a temporary file in this design's `scripts/`, so its `REPO` is
+    this design; the file is removed afterwards."""
+    if os.environ.get(HANDOFF_ENV):
+        return None
+    mine = Path(__file__).read_text()
+    theirs = _script_at(f"v{want}")
+    if theirs is None or theirs == mine or _script_at(base) != mine:
+        return None
+    print(
+        f"running v{want}'s scripts/template_update.py: this design's copy is {base}'s, unmodified",
+        flush=True,
+    )
+    with tempfile.NamedTemporaryFile(
+        "w", dir=REPO / "scripts", prefix=".template_update-", suffix=".py", delete=False
+    ) as f:
+        f.write(theirs)
+    try:
+        return subprocess.run(
+            [sys.executable, f.name, "update", want],
+            cwd=REPO,
+            env={**os.environ, HANDOFF_ENV: "1"},
+            check=False,
+        ).returncode
+    finally:
+        Path(f.name).unlink(missing_ok=True)
+
+
 def update(target: str | None) -> int:
     cur, tags = recorded(), fetch()
     if not tags:
@@ -281,8 +340,11 @@ def update(target: str | None) -> int:
             f"{VERSION_FILE.relative_to(REPO)} yourself."
         )
         return 2
-    pkg = package()
     base = base_ref(cur, want)
+    handed = handoff(base, want)
+    if handed is not None:
+        return handed
+    pkg = package()
     print(
         f"template {cur} -> {want}   package: {pkg}   base: {base}\n"
         f"{changelog(cur, want) or '(no changelog entries)'}\n"
