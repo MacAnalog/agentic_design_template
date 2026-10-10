@@ -37,8 +37,7 @@ update to v2.16 merged `<package>/metrics.py` and printed no `WARNING`, and `mak
 - The base commit is the one `.sx/template-commit` names, else `v<recorded>`. A copy that differs
   from that commit's script — edited by the design, or taken from a later commit as a *Taking it*
   step says — runs the update itself: the target's script may be older than it, and a release that
-  predates `.sx/template-commit` would merge from the tag again (a design at an untagged commit
-  after v2.14 then got 5 conflicts on `update 2.16` instead of none).
+  predates `.sx/template-commit` would merge from the tag again.
 
 **Taking it.** The handoff is in the design's copy only after this release lands, so the update
 that brings it still runs the older copy. A design below v2.16 that carries a signed scorecard
