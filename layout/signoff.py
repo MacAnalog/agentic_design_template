@@ -517,7 +517,8 @@ def checks_dry_run(
 
 
 def main_bridge(a: argparse.Namespace, out: Path, stages: tuple[str, ...], *, runner=None) -> dict:
-    """The bridge lane's stages (`lane: bridge`); returns the `signoff.json` record.
+    """The bridge lane's stages (`lane: bridge`); returns the `signoff.json` record (under
+    `--dry-run`, the `signoff.dry-run.json` record).
 
     A build together with DRC/LVS/PEX is refused without `--load`, before any stage runs: the
     checks stream the layout view already in the OA library, not the SKILL this build writes.

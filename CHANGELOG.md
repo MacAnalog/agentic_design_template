@@ -37,7 +37,8 @@ the last real `pex` run. A build plus checks without `--load` is refused as in a
 | tests: `--all --load --dry-run` writes the SKILL and the scripts, calls neither the editor load, the check run nor `run_decks`, and keeps `signoff.json`; the no-`--load` refusal and the no-DSPF bench refusal hold; the open lane refuses | `tests/test_layout_lane.py` | yes (the cases skip until `layout/signoff.py` has `--dry-run`) |
 
 **Taking it.** `make template-update`, then copy `layout/signoff.py` from the template by hand if
-the design has not edited it (else port `checks_dry_run` and the `dry` branches of `main_bridge` and `_dspf`).
+the design has not edited it (else port `checks_dry_run`, the `dry` branches of `main_bridge` and `_dspf`, and in `main()` the
+`--dry-run` argument, its refusal on the open lane and the `DRY_RUN_JSON` target).
 
 ## Unreleased — `lane: bridge` without its platform package names the package to add
 
