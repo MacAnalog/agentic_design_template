@@ -17,6 +17,22 @@ Versions are `MAJOR.MINOR`, written `#.##`:
 `make template-status` prints the recorded version and the latest release. Releases are git
 tags, `v<version>`.
 
+## Unreleased — `layout/signoff.py` on `lane: bridge` refuses a build plus checks without `--load`
+
+Minor; `layout/signoff.py` only. `layout/signoff.py --all --lib L` without `--load` wrote a new SKILL
+file and then ran DRC, LVS and PEX on the layout view already in the library, which the build had
+not touched, and recorded the verdicts as if they were the new build's. `workflows.layout` already
+refuses that combination; the two entry points now apply the same rule.
+
+| change | files | carried by `make template-update` |
+|---|---|---|
+| `build` with any of `drc`, `lvs`, `pex` and no `--load` exits before any stage runs, naming the two ways out (`--load`, or the build and the checks as separate runs) | `layout/signoff.py` | yes |
+| tests: refused for `--all`, `build,drc` and `build,pex`; the build alone, the checks alone and `--all --load` still run | `tests/test_layout_lane.py` | yes |
+| the `OA library` row says `layout/signoff.py` refuses it too | `doc/environment.md` | no (a design owns `doc/`; copy the sentence by hand) |
+
+**Taking it.** `make template-update`. A design that ran `layout/signoff.py --all` without
+`--load` now adds `--load`, or runs `--stages build` and then `--stages drc,lvs,pex,benches`.
+
 ## Unreleased — `make layout-flow` on `lane: bridge` runs without `ARGS`: `LOAD=1`, or the build alone
 
 Minor; `Makefile` and `scripts/layout_lane.py`. On `lane: bridge`, `make layout-flow RUN=d OA_LIB=L`
