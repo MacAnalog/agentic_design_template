@@ -443,9 +443,23 @@ def fake_kit_lane(fake_backend, monkeypatch, tmp_path):
             else None,
         )
 
+    def build_scripts(kit, job):
+        seen.setdefault("build_scripts", []).append(job)
+        names = ("stream", "netlist", *job.checks)
+        steps = tuple(
+            types.SimpleNamespace(
+                name=n, script=f"s{i}_{n}.csh", log=f"{n}.out", reports=(f"{job.cell}.{n}.rep",)
+            )
+            for i, n in enumerate(names, start=1)
+        )
+        files = {"env.csh": "# env\n", **{s.script: f"# {s.name}\n" for s in steps}}
+        return types.SimpleNamespace(
+            files=files, steps=steps, shell="csh", uploads={}, sha256=lambda: "ab" * 32
+        )
+
     so = types.ModuleType("spicexplorer_signoff")
     cal = types.ModuleType("spicexplorer_signoff.calibre")
-    cal.CalibreJob, cal.run_calibre = CalibreJob, run_calibre
+    cal.CalibreJob, cal.run_calibre, cal.build_scripts = CalibreJob, run_calibre, build_scripts
 
     def splice_dspf(deck, path, port_order, *, cell, drop_includes=(), include_as=None):
         seen.setdefault("splice", []).append(
@@ -568,6 +582,102 @@ def test_build_alone_or_checks_alone_run_without_load(fake_kit_lane, monkeypatch
     so = _signoff(monkeypatch, tmp_path)
     monkeypatch.setenv("SX_KIT_FILE", "/k/kit.yaml")
     assert so.main(["--stages", stages, "--out", str(tmp_path / "o"), "--lib", "amp_lib"]) == 0
+
+
+NEEDS_SIGNOFF_DRY_RUN = _needs("layout/signoff.py", "--dry-run")
+
+
+@NEEDS_SIGNOFF_DRY_RUN
+def test_dry_run_writes_the_skill_and_the_check_scripts_and_contacts_nothing(
+    fake_kit_lane, monkeypatch, tmp_path
+):
+    """`--all --load --dry-run`: the SKILL and the batch check scripts land under --out, each
+    server step is listed, and no load, no check run and no bench run starts."""
+    so = _signoff(monkeypatch, tmp_path)
+    monkeypatch.setenv("SX_KIT_FILE", "/k/kit.yaml")
+
+    def run_decks(*args, **kwargs):
+        raise AssertionError("a dry run ran a bench deck")
+
+    monkeypatch.setattr(so.M, "run_decks", run_decks)
+    out = tmp_path / "out"
+    out.mkdir()
+    (out / "signoff.json").write_text('{"pex": {"netlist_path": "kept"}}\n')
+    argv = ["--all", "--load", "--dry-run", "--out", str(out), "--lib", "amp_lib"]
+    assert so.main([*argv, "--workarea", "$HOME/w"]) == 0
+
+    assert "load_layout" not in fake_kit_lane and "run_calibre" not in fake_kit_lane
+    assert Path(fake_kit_lane["write_skill"]["path"]).name == "amp_layout.il"
+    (job,) = fake_kit_lane["build_scripts"]
+    assert (job.cell, job.lib, job.checks, job.workarea) == (
+        "amp",
+        "amp_lib",
+        ("drc", "lvs", "pex"),
+        "$HOME/w",
+    )
+    rec = json.loads((out / "signoff.dry-run.json").read_text())
+    assert rec["dry_run"] is True and rec["build"]["loaded"] is False
+    assert rec["build"]["server_steps"] == [
+        "load amp_layout.il into the editor (amp_lib/amp/layout)"
+    ]
+    scripts = Path(rec["checks"]["scripts_dir"])
+    assert scripts == out / "calibre" / "dry-run" / "scripts"
+    assert sorted(f.name for f in scripts.iterdir()) == rec["checks"]["files"]
+    server = rec["checks"]["server_steps"]
+    assert server[0].startswith("create the run directory ") and server[0].endswith("/amp-abababab")
+    assert [ln.split(":")[0] for ln in server if "run `" in ln] == [
+        "stream",
+        "netlist",
+        "drc",
+        "lvs",
+        "pex",
+    ]
+    assert f"upload {rec['checks']['files'][0]}" in server
+    (drc_line,) = (ln for ln in server if ln.startswith("drc:"))
+    assert "`csh s3_drc.csh`" in drc_line and "drc.out, amp.drc.rep" in drc_line
+    assert rec["current_density"]["skipped"] is True
+    assert "2 bench deck(s)" in rec["benches"]["server_steps"][0]
+    # the real record a later `--stages benches` reads is left as it was
+    assert json.loads((out / "signoff.json").read_text()) == {"pex": {"netlist_path": "kept"}}
+    # a second dry run with fewer checks leaves only its own scripts
+    assert so.main(["--stages", "drc", "--dry-run", "--out", str(out), "--lib", "amp_lib"]) == 0
+    files = json.loads((out / "signoff.dry-run.json").read_text())["checks"]["files"]
+    assert sorted(f.name for f in scripts.iterdir()) == files and "s4_lvs.csh" not in files
+
+
+@NEEDS_SIGNOFF_DRY_RUN
+def test_dry_run_keeps_the_build_plus_checks_without_load_refusal(
+    fake_kit_lane, monkeypatch, tmp_path
+):
+    """A dry run predicts the real run, so it refuses what the real run refuses."""
+    so = _signoff(monkeypatch, tmp_path)
+    monkeypatch.setenv("SX_KIT_FILE", "/k/kit.yaml")
+    with pytest.raises(SystemExit, match="--load"):
+        so.main(["--all", "--dry-run", "--out", str(tmp_path / "o"), "--lib", "amp_lib"])
+    assert "write_skill" not in fake_kit_lane and "build_scripts" not in fake_kit_lane
+
+
+@NEEDS_SIGNOFF_DRY_RUN
+def test_dry_run_keeps_the_benches_without_a_dspf_refusal(fake_kit_lane, monkeypatch, tmp_path):
+    """`--stages benches` with no DSPF under --out is refused dry as it is for real; with `pex` in
+    the same run the dry run lists the bench step, since that pex would write the DSPF."""
+    so = _signoff(monkeypatch, tmp_path)
+    monkeypatch.setenv("SX_KIT_FILE", "/k/kit.yaml")
+    out = tmp_path / "o"
+    with pytest.raises(SystemExit, match="no DSPF"):
+        so.main(["--stages", "benches", "--dry-run", "--out", str(out), "--lib", "amp_lib"])
+    argv = ["--stages", "pex,benches", "--dry-run", "--out", str(out), "--lib", "amp_lib"]
+    assert so.main(argv) == 0
+    assert json.loads((out / "signoff.dry-run.json").read_text())["benches"]["server_steps"]
+    assert "run_decks" not in fake_kit_lane
+
+
+@NEEDS_SIGNOFF_DRY_RUN
+def test_dry_run_on_the_open_lane_is_refused(fake_kit_lane, monkeypatch, tmp_path):
+    so = _signoff(monkeypatch, tmp_path)
+    monkeypatch.setattr(so, "LANE", "")
+    with pytest.raises(SystemExit, match="lane: bridge option"):
+        so.main(["--all", "--dry-run", "--out", str(tmp_path / "o")])
 
 
 class _NotConfigured(RuntimeError):
