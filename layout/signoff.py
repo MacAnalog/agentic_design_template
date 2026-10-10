@@ -11,7 +11,8 @@ sequences them and writes the verdicts a reviewer reads. Imports are lazy so the
 * absent, the open lane: the stages below, on this machine (gdsfactory, KLayout, kpex).
 * `bridge`, a commercial kit: `main_bridge`. The generator is `layout/gen_cell_bridge.py`
   (`plan(params, kit) -> LayoutPlan`); `build` writes the SKILL file that builds the cell in the
-  design's OA library on the EDA server (and loads it with `--load`); one batch run there streams
+  design's OA library on the EDA server (and loads it with `--load`, which `--all` and any build
+  plus drc/lvs/pex require, as `workflows.layout` does); one batch run there streams
   the cell out and answers DRC, LVS and PEX together (`spicexplorer_signoff.calibre.run_calibre`);
   `benches` re-runs the cell's own benches on the extracted DSPF
   (`spicexplorer_spectre.postlayout.splice_dspf`) through the same `metrics.run_decks`. There is no
@@ -331,8 +332,9 @@ def build_bridge(
     """The generator's `LayoutPlan` -> the SKILL file that builds the cell in `lib`.
 
     With `load`, the file is loaded into the running editor session through the bridge, which
-    REPLACES the cell's `layout` view in `lib`, hand edits included; without it, nothing leaves
-    this machine.
+    creates the cell's `layout` view in `lib`; the SKILL is written with the platform's default
+    `overwrite=False`, so it stops with an error when that view already exists (delete it first
+    to rebuild). Without `load`, nothing leaves this machine.
     """
     from spicexplorer_layout.backends.virtuoso import load_layout, write_skill
 
@@ -466,7 +468,20 @@ CHECK_STAGES = ("drc", "lvs", "pex")
 
 
 def main_bridge(a: argparse.Namespace, out: Path, stages: tuple[str, ...], *, runner=None) -> dict:
-    """The bridge lane's stages (`lane: bridge`); returns the `signoff.json` record."""
+    """The bridge lane's stages (`lane: bridge`); returns the `signoff.json` record.
+
+    A build together with DRC/LVS/PEX is refused without `--load`, before any stage runs: the
+    checks stream the layout view already in the OA library, not the SKILL this build writes.
+    `workflows.layout` applies the same rule, so `make layout-flow` and this file agree.
+    """
+    unloaded = sorted(c for c in CHECK_STAGES if c in stages)
+    if "build" in stages and unloaded and not a.load:
+        raise SystemExit(
+            f"{unloaded} would check the layout view already in the OA library, not the SKILL "
+            "this build writes (no --load).\n    FIX: pass --load to load it, or run the build "
+            "alone (--stages build) and the checks alone (--stages drc,lvs,pex) on the view "
+            "in the library"
+        )
     lib = oa_lib(a.lib)
     workarea = a.workarea or os.environ.get(WORKAREA_ENV) or None
     params = json.loads(a.params) if a.params else {}
@@ -532,7 +547,8 @@ def main(argv=None) -> int:
     ap.add_argument(
         "--load",
         action="store_true",
-        help="bridge lane: load the SKILL into the running editor (replaces the layout view)",
+        help="bridge lane: load the SKILL into the running editor (creates the layout view); "
+        "required when build runs with drc/lvs/pex",
     )
     a = ap.parse_args(argv)
     out = Path(a.out).resolve()

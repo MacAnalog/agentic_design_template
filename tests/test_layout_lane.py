@@ -74,9 +74,21 @@ def test_the_bridge_lane_passes_the_kit_file_by_name_and_the_oa_library():
         "$SX_KIT_FILE",  # the literal: the kit path never reaches a verdict or the ledger
         "--lib",
         "amp_lib",
+        "--skip",  # not loaded: the checks would read the OA view, not this build's SKILL
+        "drc,lvs,pex,benches",
     ]
     args = layout_lane.lane_args("bridge", lib="amp_lib", workarea="$HOME/wa", env=env)
-    assert args[-2:] == ["--workarea", "$HOME/wa"]
+    assert args[-4:-2] == ["--workarea", "$HOME/wa"]
+
+
+def test_the_bridge_lane_loads_or_skips_the_checks_never_neither():
+    env = {"SX_KIT_FILE": "/somewhere/kit.yaml"}
+    loaded = layout_lane.lane_args("bridge", lib="amp_lib", load=True, env=env)
+    assert loaded[-1] == "--load" and "--skip" not in loaded
+    chose = layout_lane.lane_args("bridge", lib="amp_lib", caller_chose=True, env=env)
+    assert "--load" not in chose and "--skip" not in chose  # the caller's ARGS decide
+    with pytest.raises(layout_lane.LaneError, match="open lane loads nothing"):
+        layout_lane.lane_args("", load=True, env={})
 
 
 def test_the_bridge_lane_reads_the_prefixed_variables_signoff_reads():
@@ -84,9 +96,9 @@ def test_the_bridge_lane_reads_the_prefixed_variables_signoff_reads():
     the variables `layout/signoff.py` reads; the make variable wins over the export."""
     env = {"SX_KIT_FILE": "k.yaml", "AMP_OA_LIB": "amp_lib", "AMP_WORKAREA": "$HOME/wa"}
     args = layout_lane.lane_args("bridge", env=env, prefix="AMP")
-    assert args[-4:] == ["--lib", "amp_lib", "--workarea", "$HOME/wa"]
+    assert args[-6:-2] == ["--lib", "amp_lib", "--workarea", "$HOME/wa"]
     assert (
-        layout_lane.lane_args("bridge", lib="other_lib", env=env, prefix="AMP")[-3] == "other_lib"
+        layout_lane.lane_args("bridge", lib="other_lib", env=env, prefix="AMP")[-5] == "other_lib"
     )
     with pytest.raises(layout_lane.LaneError, match="AMP_OA_LIB="):
         layout_lane.lane_args("bridge", env={"SX_KIT_FILE": "k.yaml"}, prefix="AMP")
@@ -153,7 +165,17 @@ def _orch_stub(tmp_path: Path) -> tuple[Path, Path]:
 def _make(
     root: Path, sx_root: Path, *args: str, kit: str | None, extra: dict[str, str] | None = None
 ) -> subprocess.CompletedProcess:
-    drop = ("MAKEFLAGS", "MAKELEVEL", "MFLAGS", "ORCH_PY", "GEN", "OA_LIB", "WORKAREA", "ARGS")
+    drop = (
+        "MAKEFLAGS",
+        "MAKELEVEL",
+        "MFLAGS",
+        "ORCH_PY",
+        "GEN",
+        "OA_LIB",
+        "WORKAREA",
+        "ARGS",
+        "LOAD",
+    )
     suffixes = (layout_lane.OA_LIB_SUFFIX, layout_lane.WORKAREA_SUFFIX)
     env = {
         k: v
@@ -191,11 +213,54 @@ def test_make_layout_flow_on_the_bridge_lane_runs_the_kit_lane(tmp_path):
         "$SX_KIT_FILE",
         "--lib",
         "amp_lib",
+        "--skip",
+        "drc,lvs,pex,benches",
         "--run-dir",
         "runs/l",
         "--cell",
         "amp",
     ]
+    assert "DRC, LVS, PEX and the benches were skipped" in r.stderr
+
+
+def test_make_layout_flow_load_1_loads_the_skill_and_runs_the_checks(tmp_path):
+    root = _bridge_copy(tmp_path)
+    ws, log = _orch_stub(tmp_path)
+    r = _make(root, ws, "RUN=r", "OA_LIB=amp_lib", "LOAD=1", kit="/k/kit.yaml")
+    assert r.returncode == 0, r.stdout + r.stderr
+    argv = log.read_text().splitlines()
+    assert "--load" in argv and "--skip" not in argv
+    assert "skipped" not in r.stderr
+
+
+@pytest.mark.parametrize("args", ["--skip build --cell amp", "--load"])
+def test_make_layout_flow_leaves_the_stages_to_args_that_choose_them(tmp_path, args):
+    root = _bridge_copy(tmp_path)
+    ws, log = _orch_stub(tmp_path)
+    r = _make(root, ws, "RUN=r", "OA_LIB=amp_lib", f"ARGS={args}", kit="/k/kit.yaml")
+    assert r.returncode == 0, r.stdout + r.stderr
+    argv = log.read_text().splitlines()
+    assert "drc,lvs,pex,benches" not in argv and argv[-len(args.split()) :] == args.split()
+    assert "skipped" not in r.stderr
+
+
+def test_make_layout_flow_takes_load_from_the_command_line_only(tmp_path):
+    root = _bridge_copy(tmp_path)  # loading replaces the layout view: an exported LOAD is ignored
+    ws, log = _orch_stub(tmp_path)
+    r = _make(root, ws, "RUN=r", "OA_LIB=amp_lib", kit="/k/kit.yaml", extra={"LOAD": "1"})
+    assert r.returncode == 0, r.stdout + r.stderr
+    argv = log.read_text().splitlines()
+    assert "--load" not in argv and "drc,lvs,pex,benches" in argv
+
+
+def test_make_layout_flow_refuses_load_on_the_open_lane(tmp_path):
+    root = _bridge_copy(tmp_path)
+    harness = root / "harness.yaml"
+    harness.write_text(harness.read_text().replace("\nlane: bridge\n", "\n"))
+    ws, log = _orch_stub(tmp_path)
+    r = _make(root, ws, "RUN=r", "LOAD=1", kit=None)
+    assert r.returncode == 2 and "open lane loads nothing" in r.stdout, r.stdout + r.stderr
+    assert not log.exists()
 
 
 def test_make_layout_flow_passes_a_remote_home_workarea_unexpanded(tmp_path):
@@ -444,12 +509,13 @@ def test_main_on_the_bridge_lane_runs_every_stage_through_one_check_run(
     monkeypatch.setattr(so.M, "run_decks", run_decks)
     monkeypatch.setattr(so.M, "table", lambda cols: "| table |")
     out = tmp_path / "out"
-    assert so.main(["--all", "--out", str(out), "--lib", "amp_lib"]) == 0
+    assert so.main(["--all", "--load", "--out", str(out), "--lib", "amp_lib"]) == 0
 
     rec = json.loads((out / "signoff.json").read_text())
     assert rec["lane"] == "bridge"
     assert fake_kit_lane["write_skill"]["lib"] == "amp_lib"
-    assert rec["build"]["instances"] == 2 and rec["build"]["loaded"] is False
+    assert rec["build"]["instances"] == 2 and rec["build"]["loaded"] is True
+    assert fake_kit_lane["load_layout"] == Path(rec["build"]["skill"])
     calls = fake_kit_lane["run_calibre"]
     assert len(calls) == 1 and calls[0]["job"].checks == ("drc", "lvs", "pex")
     assert calls[0]["job"].lib == "amp_lib" and calls[0]["job"].cell == "amp"
@@ -468,6 +534,30 @@ def test_main_on_the_bridge_lane_runs_every_stage_through_one_check_run(
     assert all(d.endswith(f"dspf_include {name}\n") for d in runs[1]["decks"].values())
 
     assert (out / "scorecard.md").read_text() == "| table |\n"
+
+
+@NEEDS_SIGNOFF_BRIDGE
+@pytest.mark.parametrize(
+    "stages", [["--all"], ["--stages", "build,drc"], ["--stages", "build,pex"]]
+)
+def test_build_with_checks_but_no_load_is_refused_before_any_stage(
+    fake_kit_lane, monkeypatch, tmp_path, stages
+):
+    """DRC/LVS/PEX read the layout view in the library, not the SKILL this build writes:
+    the same rule `workflows.layout` applies, so both entry points agree."""
+    so = _signoff(monkeypatch, tmp_path)
+    monkeypatch.setenv("SX_KIT_FILE", "/k/kit.yaml")
+    with pytest.raises(SystemExit, match="--load"):
+        so.main([*stages, "--out", str(tmp_path / "o"), "--lib", "amp_lib"])
+    assert "write_skill" not in fake_kit_lane and "run_calibre" not in fake_kit_lane
+
+
+@NEEDS_SIGNOFF_BRIDGE
+@pytest.mark.parametrize("stages", ["build", "build,jmax", "drc,lvs,pex"])
+def test_build_alone_or_checks_alone_run_without_load(fake_kit_lane, monkeypatch, tmp_path, stages):
+    so = _signoff(monkeypatch, tmp_path)
+    monkeypatch.setenv("SX_KIT_FILE", "/k/kit.yaml")
+    assert so.main(["--stages", stages, "--out", str(tmp_path / "o"), "--lib", "amp_lib"]) == 0
 
 
 @NEEDS_SIGNOFF_BRIDGE
