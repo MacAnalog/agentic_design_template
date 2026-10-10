@@ -33,6 +33,7 @@ from __future__ import annotations
 import sys
 from importlib import import_module
 from pathlib import Path
+from types import ModuleType
 
 from spicexplorer_harness import load
 
@@ -44,7 +45,7 @@ REPO = Path(__file__).resolve().parents[1]
 LANES: dict[str, str] = {"ngspice": "sim_ngspice", "bridge": "sim_bridge"}
 DEFAULT_LANE = "ngspice"
 
-__all__ = ["LANES", "DEFAULT_LANE", "LANE", "lane_name", "module_name"]  # noqa: RUF022 - declaration order
+__all__ = ["LANES", "DEFAULT_LANE", "LANE", "lane_name", "module_name", "import_lane"]  # noqa: RUF022 - declaration order
 
 
 def module_name(lane: str) -> str:
@@ -70,12 +71,47 @@ def lane_name() -> str:
     return (getattr(load(REPO), "lane", "") or "").strip() or DEFAULT_LANE
 
 
+def import_lane(lane: str) -> ModuleType:
+    """Import the module of `lane`; a missing platform package says which one to add, and where.
+
+    `lane: bridge` needs a platform package the template's venv does not install
+    (`pyproject.toml` names it, commented). Without it the import died as a bare
+    `ModuleNotFoundError` traceback out of `design/sim_bridge.py`, from `make test` or `make check`,
+    with no word on the fix. Any other missing module is not this case and is re-raised as is.
+    """
+    try:
+        return import_module(f".{module_name(lane)}", __package__)
+    except ModuleNotFoundError as e:
+        top = (e.name or "").split(".")[0]
+        if not top.startswith("spicexplorer_"):
+            raise
+        dist = top.replace("_", "-")
+        signoff = (
+            "layout/signoff.py on this lane also needs `spicexplorer-layout` and "
+            "`spicexplorer-signoff[remote]`. "
+            if module_name(lane) == "sim_bridge"
+            else ""
+        )
+        raise ModuleNotFoundError(
+            f"harness.yaml says `lane: {lane}`, which needs the platform package `{dist}` in "
+            f"pyproject.toml (dependencies + [tool.uv.sources], see the commented block there); "
+            f"{signoff}Add them, then `uv sync`.",
+            name=e.name,
+        ) from e
+
+
 LANE = lane_name()
-_mod = import_module(f".{module_name(LANE)}", __package__)
+try:
+    _mod = import_lane(LANE)
+except ModuleNotFoundError as _e:
+    if __name__ != "__main__":
+        raise
+    print(f"FAIL: {_e}", file=sys.stderr)
+    sys.exit(2)  # a lane that cannot load is a setup gap, not a drift (`make doctor`)
 
 # The selection travels WITH the lane module, so `design.sim.LANE` answers "which lane am I on"
 # after the swap below has made this module unreachable by name.
-for _n in ("LANE", "LANES", "DEFAULT_LANE", "lane_name", "module_name"):
+for _n in ("LANE", "LANES", "DEFAULT_LANE", "lane_name", "module_name", "import_lane"):
     setattr(_mod, _n, globals()[_n])
 
 if __name__ == "__main__":  # `make doctor` = `python -m design.sim`

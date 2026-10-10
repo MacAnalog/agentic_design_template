@@ -39,6 +39,16 @@ the last real `pex` run. A build plus checks without `--load` is refused as in a
 **Taking it.** `make template-update`, then copy `layout/signoff.py` from the template by hand if
 the design has not edited it (else port `checks_dry_run` and the `dry` branches of `main_bridge` and `_dspf`).
 
+## Unreleased — `lane: bridge` without its platform package names the package to add
+
+Minor; `design/sim.py` only. A design that set `lane: bridge` before adding the bridge-lane
+platform package to `pyproject.toml` got a bare `ModuleNotFoundError` traceback out of
+`design/sim_bridge.py` from `make test` and `make check`. The dispatcher now re-raises it with the
+package to add, the two `layout/signoff.py` also needs (`spicexplorer-layout`,
+`spicexplorer-signoff[remote]`) and `uv sync`; `make doctor` prints the same line and exits 2. A
+missing module that is not a platform package is re-raised unchanged. Takes with
+`make template-update`; nothing to migrate.
+
 ## Unreleased — `layout/signoff.py` on `lane: bridge` exits 2 with a FIX line when the account has no bridge profile
 
 Minor; `layout/signoff.py` only. On an account with no bridge profile,
