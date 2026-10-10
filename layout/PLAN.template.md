@@ -1,13 +1,17 @@
 # <cell> layout plan
 
+plan-version: 1
+
 KIND: PLAN (copy this file to `layout/<cell>/PLAN.md` and fill it in before the generator draws any
 geometry; both lanes, `gen_cell.py` and `gen_cell_bridge.py`)
 
 **Order.** `layout-brief-author` researches this block and writes `layout/<cell>/BRIEF.md`;
 `layout-designer` writes this plan from that research; `layout-reviewer` reviews the plan, with
 its own research of the block, before any geometry exists; the generator is written from the
-approved plan; after each DRC, LVS, PEX and post-layout bench result the designer revisits the
-plan's decisions in the revision log below, not only the geometry.
+approved plan; after each DRC run, LVS compare, extraction and post-layout bench run and each review
+round the designer revisits the plan's decisions in *Plan revisions* below, not only the geometry.
+`plan-version:` is 1 for the first plan and goes up by one with each revision that changes a
+decision.
 
 **Every decision names its reason** as a brief row (`BRIEF.md` table and row) or a measured number.
 Matching patterns, dummies, shielding and guard rings are chosen per group for a reason this
@@ -94,18 +98,30 @@ Decisions taken without a human, each also listed in the PR's Assumptions.
 
 ## 11. Plan review
 
-| round | reviewer | plan sha | verdict | findings |
+`layout-reviewer` reviews this plan in plan mode, with its own research of the block, and writes
+`PLAN-REVIEW.md`; the designer commits it unchanged as `layout/<cell>/PLAN-REVIEW.md` beside this
+file. Each finding is answered here, by a revision (raise `plan-version:`, add a *Plan revisions*
+row citing the finding) or by the evidence that the decision holds.
+
+| review round | finding | answer (plan-version raised to, or the evidence) |
+|---|---|---|
+| | | |
+
+Geometry starts when the last line of `PLAN-REVIEW.md` is `ALL PASS (layout)`. If the second plan
+review still has open findings, the designer stops and hands back with both `PLAN-REVIEW.md` files;
+no geometry is drawn against a plan with open findings. The plan reviews are not geometry review
+rounds: those are at most 4, counted separately.
+
+## 12. Plan revisions
+
+Revisited after each DRC run, LVS compare, extraction and post-layout bench run, and each review
+round (plan and geometry). The feedback is attributed first: a DRC rule and count, an LVS mismatch,
+a PEX attribution (which net, its extracted C or R against the brief's budget, the metric it moves
+and its share of the shift), a post-layout bench metric against its pre-layout value, or a review
+finding id. A changed decision raises `plan-version:` and adds one row. When no decision changes,
+the row keeps the version, writes `geometry only` as the decision, and gives the reason the plan
+decision still holds; a round with no row did not revisit the plan.
+
+| version | round | decision (section, from -> to) | feedback that drove it | evidence path |
 |---|---|---|---|---|
 | | | | | |
-
-Geometry starts after a round whose verdict accepts the plan.
-
-## 12. Revision log
-
-One row per change to a decision above. The feedback is a DRC rule and count, an LVS mismatch, a
-PEX attribution (which net, which coupling or resistance, its share of the metric's shift) or a
-post-layout bench metric against its pre-layout value.
-
-| rev | iteration | feedback (tool, finding, net, number) | section changed | before -> after | reason |
-|---|---|---|---|---|---|
-| | | | | | |

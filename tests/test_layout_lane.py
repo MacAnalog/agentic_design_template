@@ -33,6 +33,23 @@ def _mod(rel: str, name: str | None = None):
     return mod
 
 
+def _needs(rel: str, marker: str = ""):
+    """Skip a test whose `layout/` file is not in this repo yet. `make template-update` never
+    carries `layout/`, so a design taking v2.15 copies these files by hand before its tests run."""
+    path = REPO / rel
+    present = path.is_file() and marker in path.read_text()
+    what = f"has no {marker!r}" if path.is_file() else "is absent"
+    return pytest.mark.skipif(
+        not present,
+        reason=f"{rel} {what}: bring it across by hand (CHANGELOG.md, v2.15, Taking it, step 2)",
+    )
+
+
+NEEDS_GEN_BRIDGE = _needs("layout/gen_cell_bridge.py")
+NEEDS_SIGNOFF_BRIDGE = _needs("layout/signoff.py", "def main_bridge")
+NEEDS_PLAN_TEMPLATE = _needs("layout/PLAN.template.md")
+
+
 layout_lane = _mod("scripts/layout_lane.py")
 
 
@@ -174,9 +191,10 @@ def test_make_layout_flow_refuses_a_bridge_lane_it_cannot_run(tmp_path, args, ki
 
 # --- layout/gen_cell_bridge.py ------------------------------------------------------------------
 
-gen = _mod("layout/gen_cell_bridge.py")
+gen = _mod("layout/gen_cell_bridge.py") if (REPO / "layout/gen_cell_bridge.py").is_file() else None
 
 
+@NEEDS_GEN_BRIDGE
 def test_every_knob_has_a_bound_and_its_default_is_inside_it():
     import dataclasses
 
@@ -185,6 +203,7 @@ def test_every_knob_has_a_bound_and_its_default_is_inside_it():
     gen.layout_params({})  # the defaults pass their own bounds
 
 
+@NEEDS_GEN_BRIDGE
 def test_layout_params_refuses_unknown_and_out_of_bounds_knobs():
     assert gen.layout_params({"dev_gap": 2, "sizing": "s.json"}).dev_gap == 2.0
     with pytest.raises(ValueError, match="unknown layout knob"):
@@ -239,6 +258,7 @@ def fake_backend(monkeypatch):
     return seen
 
 
+@NEEDS_GEN_BRIDGE
 def test_the_skeleton_resolves_its_roles_then_asks_to_be_drawn(fake_backend, tmp_path):
     sizing = tmp_path / "sizing.json"
     sizing.write_text(json.dumps({"m1": {"w": 1}}))
@@ -349,6 +369,7 @@ def _signoff(monkeypatch, tmp_path, *, cell="amp"):
     return so
 
 
+@NEEDS_SIGNOFF_BRIDGE
 def test_the_bridge_lane_refuses_without_the_kit_file(fake_kit_lane, monkeypatch, tmp_path):
     so = _signoff(monkeypatch, tmp_path)
     monkeypatch.delenv("SX_KIT_FILE", raising=False)
@@ -356,6 +377,7 @@ def test_the_bridge_lane_refuses_without_the_kit_file(fake_kit_lane, monkeypatch
         so.kit()
 
 
+@NEEDS_SIGNOFF_BRIDGE
 def test_the_bridge_lane_refuses_without_an_oa_library(monkeypatch, tmp_path):
     so = _signoff(monkeypatch, tmp_path)
     monkeypatch.delenv(so.OA_LIB_ENV, raising=False)
@@ -365,6 +387,7 @@ def test_the_bridge_lane_refuses_without_an_oa_library(monkeypatch, tmp_path):
     assert so.oa_lib(None) == "amp_lib" and so.oa_lib("other_lib") == "other_lib"
 
 
+@NEEDS_SIGNOFF_BRIDGE
 def test_main_on_the_bridge_lane_runs_every_stage_through_one_check_run(
     fake_kit_lane, monkeypatch, tmp_path
 ):
@@ -405,6 +428,7 @@ def test_main_on_the_bridge_lane_runs_every_stage_through_one_check_run(
     assert (out / "scorecard.md").read_text() == "| table |\n"
 
 
+@NEEDS_SIGNOFF_BRIDGE
 def test_the_staged_dspf_is_named_for_its_content(fake_kit_lane, monkeypatch, tmp_path):
     """The lane keys a run on the deck text: a re-extracted DSPF must change the deck."""
     so = _signoff(monkeypatch, tmp_path)
@@ -424,6 +448,7 @@ def test_the_staged_dspf_is_named_for_its_content(fake_kit_lane, monkeypatch, tm
     assert len(set(names)) == 2 and all(n.startswith("amp.") for n in names)
 
 
+@NEEDS_SIGNOFF_BRIDGE
 def test_benches_reuse_the_dspf_of_an_earlier_run(fake_kit_lane, monkeypatch, tmp_path):
     so = _signoff(monkeypatch, tmp_path)
     monkeypatch.setenv("SX_KIT_FILE", "/k/kit.yaml")
@@ -438,6 +463,7 @@ def test_benches_reuse_the_dspf_of_an_earlier_run(fake_kit_lane, monkeypatch, tm
     assert "benches" in json.loads((out / "signoff.json").read_text())
 
 
+@NEEDS_SIGNOFF_BRIDGE
 def test_benches_without_a_dspf_say_to_run_pex_first(fake_kit_lane, monkeypatch, tmp_path):
     so = _signoff(monkeypatch, tmp_path)
     monkeypatch.setenv("SX_KIT_FILE", "/k/kit.yaml")
@@ -445,12 +471,14 @@ def test_benches_without_a_dspf_say_to_run_pex_first(fake_kit_lane, monkeypatch,
         so.main(["--stages", "benches", "--out", str(tmp_path / "o"), "--lib", "amp_lib"])
 
 
+@NEEDS_SIGNOFF_BRIDGE
 def test_a_stage_of_the_other_lane_is_refused(fake_kit_lane, monkeypatch, tmp_path):
     so = _signoff(monkeypatch, tmp_path)
     with pytest.raises(SystemExit, match="render"):
         so.main(["--stages", "render", "--out", str(tmp_path / "o"), "--lib", "amp_lib"])
 
 
+@NEEDS_SIGNOFF_BRIDGE
 def test_a_generator_that_builds_another_cell_is_refused(fake_kit_lane, monkeypatch, tmp_path):
     so = _signoff(monkeypatch, tmp_path, cell="not_amp")
     monkeypatch.setenv("SX_KIT_FILE", "/k/kit.yaml")
@@ -458,6 +486,7 @@ def test_a_generator_that_builds_another_cell_is_refused(fake_kit_lane, monkeypa
         so.build_bridge(tmp_path / "o", "amp_lib")
 
 
+@NEEDS_SIGNOFF_BRIDGE
 def test_load_hands_the_skill_file_to_the_editor(fake_kit_lane, monkeypatch, tmp_path):
     so = _signoff(monkeypatch, tmp_path)
     monkeypatch.setenv("SX_KIT_FILE", "/k/kit.yaml")
@@ -586,9 +615,17 @@ PLAN_SECTIONS = {
     "Per-net metal stack": "via count per transition",
     "Generator knobs": "range",
     "Assumed approvals": "",
-    "Plan review": "verdict",
-    "Revision log": "feedback (tool, finding, net, number)",
+    "Plan review": "PLAN-REVIEW.md",
+    "Plan revisions": "feedback that drove it",
 }
+#: the *Plan revisions* columns of the library's `layout-designer` definition, in its order
+PLAN_REVISION_COLUMNS = [
+    "version",
+    "round",
+    "decision (section, from -> to)",
+    "feedback that drove it",
+    "evidence path",
+]
 
 
 def _plan_sections() -> dict[str, str]:
@@ -604,6 +641,7 @@ def _plan_sections() -> dict[str, str]:
     return out
 
 
+@NEEDS_PLAN_TEMPLATE
 @pytest.mark.parametrize("section", sorted(PLAN_SECTIONS))
 def test_plan_template_carries_each_decision_section(section: str) -> None:
     sections = _plan_sections()
@@ -611,8 +649,36 @@ def test_plan_template_carries_each_decision_section(section: str) -> None:
     assert PLAN_SECTIONS[section] in sections[section]
 
 
-def test_plan_template_metal_stack_and_revision_rows_name_their_reason() -> None:
-    sections = _plan_sections()
-    for name in ("Per-net metal stack", "Revision log"):
-        header = next(line for line in sections[name].splitlines() if line.startswith("| "))
-        assert "because" in header or "reason" in header, f"{name}: no reason column"
+@NEEDS_PLAN_TEMPLATE
+def test_plan_template_metal_stack_rows_name_their_reason() -> None:
+    header = next(
+        line
+        for line in _plan_sections()["Per-net metal stack"].splitlines()
+        if line.startswith("| ")
+    )
+    assert "because" in header, "Per-net metal stack: no reason column"
+
+
+@NEEDS_PLAN_TEMPLATE
+def test_plan_template_carries_a_plan_version_under_its_title() -> None:
+    lines = [line for line in PLAN_TEMPLATE.read_text().splitlines() if line.strip()]
+    assert lines[0].startswith("# ") and lines[1] == "plan-version: 1", lines[:2]
+
+
+@NEEDS_PLAN_TEMPLATE
+def test_plan_revisions_table_has_the_layout_designer_columns() -> None:
+    raw = _plan_sections()["Plan revisions"]
+    header = next(line for line in raw.splitlines() if line.startswith("| "))
+    text = " ".join(raw.split())
+    assert [c.strip() for c in header.strip("|").split("|")] == PLAN_REVISION_COLUMNS
+    assert "geometry only" in text, "an unchanged decision needs its `geometry only` row"
+    assert "review round" in text, "a review round is a revisit trigger"
+
+
+@NEEDS_PLAN_TEMPLATE
+def test_plan_review_states_the_loop_bound() -> None:
+    text = " ".join(_plan_sections()["Plan review"].split())
+    assert "second plan review still has open findings" in text and "hands back" in text
+    assert "at most 4" in text, "the geometry review rounds are bounded"
+    claude = " ".join((REPO / "CLAUDE.md").read_text().split())
+    assert "second plan review still has open findings" in claude and "at most 4" in claude

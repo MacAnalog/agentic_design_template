@@ -30,14 +30,17 @@ either platform.
 | change | files | carried by `make template-update` |
 |---|---|---|
 | `make layout-flow` picks the lane from `lane:` | `Makefile`, `scripts/layout_lane.py` | yes |
-| the bridge-lane generator skeleton | `layout/gen_cell_bridge.py` | yes |
-| `layout/signoff.py` on the bridge lane | `layout/signoff.py` | yes (merged three-way: a design has filled in this file) |
+| the bridge-lane generator skeleton | `layout/gen_cell_bridge.py` | no: `layout/` is the design's; copy it by hand (below) |
+| `layout/signoff.py` on the bridge lane | `layout/signoff.py` | no: `layout/` is the design's; merge the bridge section by hand (below) |
 | `metrics.run_decks(run_kwargs=...)` | `design/metrics.py` | yes (`design/` is re-rooted onto `<package>/`) |
 | the private per-kit skill library, one PDK id | `scripts/pdk_links.py`, `scripts/lint.py` | yes |
 | the lane-aware denylist | `scripts/lint.py` (`lane_denylist`, `denylist_lanes`) | yes |
 | `exempt_lanes: [bridge]` on two denylist entries; the editor pattern skips a dotted module path | `harness.yaml` | no: edit `denylist:` by hand (below) |
-| rows for the bridge layout lane | `doc/environment.md`, `CLAUDE.md`, `pyproject.toml` (comments) | yes |
-| the layout plan skeleton: plan before geometry, revisit after sign-off feedback | `layout/PLAN.template.md`, `CLAUDE.md`, `doc/environment.md` (row `layout plan`) | yes |
+| rows for the bridge layout lane | `CLAUDE.md` | yes |
+| rows for the bridge layout lane | `doc/environment.md`, `pyproject.toml` (comments) | no: `doc/` and `pyproject.toml` are the design's; add the rows by hand (below) |
+| the layout plan skeleton: plan before geometry, plan review, revisit after each feedback | `CLAUDE.md` | yes |
+| the layout plan skeleton: plan before geometry, plan review, revisit after each feedback | `layout/PLAN.template.md`, `doc/environment.md` (row `layout plan`) | no: copy the skeleton and add the row by hand (below) |
+| the layout-lane tests skip, naming the hand step, until the `layout/` files are across | `tests/test_layout_lane.py` | yes |
 
 - **`make layout-flow` reads `lane:`** through `scripts/layout_lane.py` (standard library only):
   - **absent:** `--generator layout/gen_cell.py`, as before; `GEN=` still overrides it.
@@ -60,9 +63,14 @@ either platform.
 - **`layout/PLAN.template.md`** is the plan a designer copies to `layout/<cell>/PLAN.md` before
   the generator draws anything: research inputs from the brief, outline and aspect, device groups
   and matching patterns, dummies, guard rings and taps, pin frame, a per-net metal stack table
-  (layer keys, width for current, vias per transition, shield), the knobs, a plan-review table
-  (geometry starts after an accepting round) and a revision log, one row per changed decision
-  naming the DRC, LVS, PEX or post-layout bench result that drove it. It names kit-file layer keys
+  (layer keys, width for current, vias per transition, shield), the knobs, the plan review (the
+  reviewer's `PLAN-REVIEW.md` committed beside the plan; geometry starts when it reads
+  `ALL PASS (layout)`, and a second plan review with open findings stops the run and hands back)
+  and a *Plan revisions* table under a `plan-version:` line: after each DRC run, LVS compare,
+  extraction, post-layout bench run and review round, one row per changed decision (version,
+  round, decision from -> to, the feedback that drove it, its evidence path), or a `geometry only`
+  row when no decision changes. Geometry review rounds are at most 4. This matches the library's
+  `layout-designer` definition. It names kit-file layer keys
   and rules by name, never a kit value.
 - **`metrics.run_decks(..., run_kwargs=...)`** passes the lane's options to every `sim.run`, so
   the post-layout row with a staged DSPF is measured by the same function as the pre-layout row.
@@ -81,13 +89,27 @@ either platform.
 
 ### Taking it
 
-1. `make template-update`; resolve any conflict in `layout/signoff.py` (keep your `CELL`,
-   `BUDGETS`, `PDK`; take the bridge section and the new `main`).
-2. In `harness.yaml`, give the simulator and editor entries of `denylist:` the key
+1. `make template-update`. It carries `Makefile`, `scripts/`, `tests/`, `CLAUDE.md` and
+   `<package>/metrics.py`; it never touches `layout/`, `doc/`, `pyproject.toml` or `harness.yaml`,
+   which a design owns.
+2. Bring the `layout/` files and the doc rows across by hand, from the release tag the update
+   fetched:
+   - `git checkout v2.15 -- layout/gen_cell_bridge.py layout/PLAN.template.md`
+   - `layout/signoff.py`: compare with `git diff v2.14 v2.15 -- layout/signoff.py` and take the
+     bridge section and the new `main`, keeping your `CELL`, `BUDGETS` and `PDK`.
+   - `doc/environment.md`: take the rows `layout lane` to `bridge profile` and `physical lanes`
+     from `git show v2.15:doc/environment.md`.
+   - `pyproject.toml`: a bridge-lane design that runs `layout/signoff.py` adds
+     `spicexplorer-layout` and `"spicexplorer-signoff[remote]"` (the template's comment there names
+     both).
+   Until the first two files and the bridge section are across, the layout-lane tests skip with a
+   reason naming this step.
+3. In `harness.yaml`, give the simulator and editor entries of `denylist:` the key
    `exempt_lanes: [bridge]` (the template's own list shows both), and write the editor pattern
    with the lookbehind `(?<!\\.)` before `\\b`, so `layout/gen_cell_bridge.py`'s import line is
    not a hit. A design that had deleted an entry for the bridge lane restores it with the key.
-3. A commercial-kit design: export `SX_KIT_FILE` and `SX_KIT_SKILLS` (doc/environment.md), run
+4. `make test`.
+5. A commercial-kit design: export `SX_KIT_FILE` and `SX_KIT_SKILLS` (doc/environment.md), run
    `make init`, then `make lint`.
 
 ## v2.14 — per-PDK skills, the context pack at session start, `make size` and `make layout-flow`
