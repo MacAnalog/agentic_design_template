@@ -243,8 +243,10 @@ record), `schematic-reviewer` (report-only check that each sheet of record is le
 `schematic-of-record`, `testbench-schematic` (components, not text), `findings-as-plots` (spec
 boxes on figures), `layout-evidence` (brief → generator → GDS → DRC/Jmax/LVS/PEX → review, via the linked
 `layout-*` agents) — say how each is produced and gated. Also linked: `measurement-setup-of-record` (the measurement traps of the lane, the harness and the experiment process), `analog-knowledge-authoring` (the standard a knowledge skill is written to), `gmid-sizing`,
-`current-mirrors`, `layout-annotation`, `neutral-artifact-naming`, the library's `pdk-<id>` skills when `harness.yaml` declares `pdk:`, and the bridge's two
-remote-simulator skills (the `denylist:` keeps their vendor names out of this file).
+`current-mirrors`, `layout-annotation`, `neutral-artifact-naming`, `postlayout-analysis` (the post-layout shift of each metric
+attributed to nets, which a *Plan revisions* row cites), the library's `pdk-<id>` skills when `harness.yaml` declares `pdk:`, the bridge's two
+remote-simulator skills, and the bridge layout lane's two skills (the commercial-kit layout lane; the review setup of record in the kit's
+editor) — the `denylist:` keeps their vendor names out of this file.
 A request for a schematic means the xschem sheet of record built by `schematic-of-record`
 (never an ad-hoc drawing); only a cell already ported through the bridge's `xvport` lane is shown
 from its ported cellview instead.
