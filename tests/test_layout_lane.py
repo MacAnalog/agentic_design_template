@@ -509,12 +509,13 @@ def test_main_on_the_bridge_lane_runs_every_stage_through_one_check_run(
     monkeypatch.setattr(so.M, "run_decks", run_decks)
     monkeypatch.setattr(so.M, "table", lambda cols: "| table |")
     out = tmp_path / "out"
-    assert so.main(["--all", "--out", str(out), "--lib", "amp_lib"]) == 0
+    assert so.main(["--all", "--load", "--out", str(out), "--lib", "amp_lib"]) == 0
 
     rec = json.loads((out / "signoff.json").read_text())
     assert rec["lane"] == "bridge"
     assert fake_kit_lane["write_skill"]["lib"] == "amp_lib"
-    assert rec["build"]["instances"] == 2 and rec["build"]["loaded"] is False
+    assert rec["build"]["instances"] == 2 and rec["build"]["loaded"] is True
+    assert fake_kit_lane["load_layout"] == Path(rec["build"]["skill"])
     calls = fake_kit_lane["run_calibre"]
     assert len(calls) == 1 and calls[0]["job"].checks == ("drc", "lvs", "pex")
     assert calls[0]["job"].lib == "amp_lib" and calls[0]["job"].cell == "amp"
@@ -533,6 +534,30 @@ def test_main_on_the_bridge_lane_runs_every_stage_through_one_check_run(
     assert all(d.endswith(f"dspf_include {name}\n") for d in runs[1]["decks"].values())
 
     assert (out / "scorecard.md").read_text() == "| table |\n"
+
+
+@NEEDS_SIGNOFF_BRIDGE
+@pytest.mark.parametrize(
+    "stages", [["--all"], ["--stages", "build,drc"], ["--stages", "build,pex"]]
+)
+def test_build_with_checks_but_no_load_is_refused_before_any_stage(
+    fake_kit_lane, monkeypatch, tmp_path, stages
+):
+    """DRC/LVS/PEX read the layout view in the library, not the SKILL this build writes:
+    the same rule `workflows.layout` applies, so both entry points agree."""
+    so = _signoff(monkeypatch, tmp_path)
+    monkeypatch.setenv("SX_KIT_FILE", "/k/kit.yaml")
+    with pytest.raises(SystemExit, match="--load"):
+        so.main([*stages, "--out", str(tmp_path / "o"), "--lib", "amp_lib"])
+    assert "write_skill" not in fake_kit_lane and "run_calibre" not in fake_kit_lane
+
+
+@NEEDS_SIGNOFF_BRIDGE
+@pytest.mark.parametrize("stages", ["build", "build,jmax", "drc,lvs,pex"])
+def test_build_alone_or_checks_alone_run_without_load(fake_kit_lane, monkeypatch, tmp_path, stages):
+    so = _signoff(monkeypatch, tmp_path)
+    monkeypatch.setenv("SX_KIT_FILE", "/k/kit.yaml")
+    assert so.main(["--stages", stages, "--out", str(tmp_path / "o"), "--lib", "amp_lib"]) == 0
 
 
 @NEEDS_SIGNOFF_BRIDGE
