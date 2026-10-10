@@ -754,6 +754,13 @@ def test_deck_portable_spots_a_committed_absolute_include():
     )
 
 
+def test_deck_portable_stays_on_the_include_line():
+    """#56: a `//` comment line right after an include is not an absolute path on that include."""
+    mod = _load("scripts/lint.py")
+    assert mod.abs_includes('include "$MODEL_LIB" section=tt\n// subckt comment\n') == []
+    assert mod.abs_includes('include "/abs/models.lib"\n// subckt comment\n') == ["/abs/models.lib"]
+
+
 def _staged_repo(tmp_path, files: dict[str, str]):
     """A minimal git checkout with `files` staged. `artifact_home` reads `git ls-files`."""
     import subprocess as sp
