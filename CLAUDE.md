@@ -148,12 +148,13 @@ undeclared case: an artefact somewhere nobody wrote down.
   to `layout/<cell>/PLAN.md` and fills in outline, device groups and matching patterns, dummies, guard rings, pin
   frame and the per-net metal stack (layers, widths for current, via counts, shields) before any geometry;
   `layout-reviewer` researches the block on its own and reviews the plan before the generator is written; its
-  `PLAN-REVIEW.md` is committed beside the plan, and if the second plan review still has open findings the designer
-  stops and hands back. After each DRC run, LVS compare, extraction, post-layout bench run (the cell's frozen
-  benches on the extracted netlist, with the shift of each metric attributed to nets) and review round, the designer
-  revisits the plan's decisions: a changed decision raises `plan-version:` and adds a *Plan revisions* row with the
-  feedback that drove it and its evidence path, an unchanged one a `geometry only` row. Geometry review rounds are
-  at most 4. On the bridge lane these agents read the kit only through the kit file, the `pdk-<id>`
+  `PLAN-REVIEW.md` is committed beside the plan, the first one renamed to `PLAN-REVIEW-1.md` before the second
+  dispatch, and if the second plan review still has open findings the designer stops and hands back with
+  `PLAN-REVIEW-1.md` and `PLAN-REVIEW.md`. After each DRC run, LVS compare, extraction, post-layout bench run
+  (the cell's frozen benches on the extracted netlist, with the shift of each metric attributed to nets) and review
+  round, the designer revisits the plan's decisions: a changed decision raises `plan-version:` and adds a *Plan
+  revisions* row with the feedback that drove it and its evidence path, an unchanged one a `geometry only` row.
+  Geometry review rounds are at most 4. On the bridge lane these agents read the kit only through the kit file, the `pdk-<id>`
   skill and their run-dir outputs; the kit file is written once per kit, in a session the person attends.
 - **A model library that lives only on some machines is named in a deck by variable, never by path.**
   The deck text writes `$VAR`, `<package>.sim.DECK_VARS` declares it, `sim.run` resolves it against

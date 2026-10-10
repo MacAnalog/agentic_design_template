@@ -572,7 +572,13 @@ def test_the_template_denylist_lifts_the_simulator_and_editor_names_on_the_bridg
     bridged = lint.lane_denylist(dataclasses.replace(h, lane="bridge"))
     kept = {d["why"] for d in bridged.denylist}
     lifted = [d for d in h.denylist if d["why"] not in kept]
-    assert len(lifted) == 2 and all(d["exempt_lanes"] == ["bridge"] for d in lifted)
+    exempt = [
+        d
+        for d in h.denylist
+        if isinstance(d.get("exempt_lanes"), list) and "bridge" in d["exempt_lanes"]
+    ]
+    # holds in a design that adds its own bridge-exempt entries
+    assert lifted and lifted == exempt
     # this file is itself scanned by the denylist, so the word is read from the pattern
     src = next(d["pattern"] for d in lifted if "editor" in d["why"])
     editor = re.search(r"\\b(\w+)\\b", src).group(1)
@@ -606,7 +612,7 @@ def test_make_lint_applies_the_exemption_through_main(tmp_path, capsys, monkeypa
 PLAN_TEMPLATE = REPO / "layout" / "PLAN.template.md"
 #: each section heading the plan must carry, and a column its table must have
 PLAN_SECTIONS = {
-    "Research inputs": "brief row",
+    "Research inputs": "`LAYOUT-RESEARCH.md` section",
     "Outline and aspect": "aspect ratio ceiling",
     "Device groups and matching patterns": "tolerated mismatch",
     "Dummies": "dummies per row end",
@@ -680,5 +686,16 @@ def test_plan_review_states_the_loop_bound() -> None:
     text = " ".join(_plan_sections()["Plan review"].split())
     assert "second plan review still has open findings" in text and "hands back" in text
     assert "at most 4" in text, "the geometry review rounds are bounded"
+    assert "PLAN-REVIEW-1.md" in text, "the first plan review is kept under its own name"
     claude = " ".join((REPO / "CLAUDE.md").read_text().split())
     assert "second plan review still has open findings" in claude and "at most 4" in claude
+    assert "PLAN-REVIEW-1.md" in claude
+
+
+@NEEDS_PLAN_TEMPLATE
+def test_plan_decisions_may_rest_on_a_research_section() -> None:
+    """`layout-brief-author` writes `LAYOUT-RESEARCH.md` beside `BRIEF.md`; the definition takes a
+    decision's reason from either, so the reason line admits both."""
+    text = " ".join(PLAN_TEMPLATE.read_text().split())
+    reason = text[text.index("**Every decision names its reason**") :][:200]
+    assert "`BRIEF.md` row" in reason and "`LAYOUT-RESEARCH.md` section" in reason

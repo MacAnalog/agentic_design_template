@@ -13,7 +13,8 @@ round the designer revisits the plan's decisions in *Plan revisions* below, not 
 `plan-version:` is 1 for the first plan and goes up by one with each revision that changes a
 decision.
 
-**Every decision names its reason** as a brief row (`BRIEF.md` table and row) or a measured number.
+**Every decision names its reason** as a `BRIEF.md` row (table and row), a `LAYOUT-RESEARCH.md`
+section, or a measured number.
 Matching patterns, dummies, shielding and guard rings are chosen per group for a reason this
 block's research gives; none is applied because it is the usual choice.
 
@@ -24,7 +25,7 @@ or device master is written here.
 
 ## 1. Research inputs
 
-| brief row | finding (with number) | decision it drives (section) |
+| `BRIEF.md` row or `LAYOUT-RESEARCH.md` section | finding (with number) | decision it drives (section) |
 |---|---|---|
 | | | |
 
@@ -101,14 +102,17 @@ Decisions taken without a human, each also listed in the PR's Assumptions.
 `layout-reviewer` reviews this plan in plan mode, with its own research of the block, and writes
 `PLAN-REVIEW.md`; the designer commits it unchanged as `layout/<cell>/PLAN-REVIEW.md` beside this
 file. Each finding is answered here, by a revision (raise `plan-version:`, add a *Plan revisions*
-row citing the finding) or by the evidence that the decision holds.
+row citing the finding) or by the evidence that the decision holds. Before the second dispatch the
+designer renames the committed first review to `layout/<cell>/PLAN-REVIEW-1.md`; the second review
+is committed as `PLAN-REVIEW.md`.
 
 | review round | finding | answer (plan-version raised to, or the evidence) |
 |---|---|---|
 | | | |
 
 Geometry starts when the last line of `PLAN-REVIEW.md` is `ALL PASS (layout)`. If the second plan
-review still has open findings, the designer stops and hands back with both `PLAN-REVIEW.md` files;
+review still has open findings, the designer stops and hands back with `PLAN-REVIEW-1.md` and
+`PLAN-REVIEW.md`;
 no geometry is drawn against a plan with open findings. The plan reviews are not geometry review
 rounds: those are at most 4, counted separately.
 

@@ -61,11 +61,12 @@ either platform.
   stage of the lane and refuses a stage of the other lane. `--lib` / `$<PREFIX>_OA_LIB` and
   `--workarea` / `$<PREFIX>_WORKAREA` name the OA library and the workarea.
 - **`layout/PLAN.template.md`** is the plan a designer copies to `layout/<cell>/PLAN.md` before
-  the generator draws anything: research inputs from the brief, outline and aspect, device groups
-  and matching patterns, dummies, guard rings and taps, pin frame, a per-net metal stack table
+  the generator draws anything: research inputs from `BRIEF.md` and `LAYOUT-RESEARCH.md`, outline
+  and aspect, device groups and matching patterns, dummies, guard rings and taps, pin frame, a per-net metal stack table
   (layer keys, width for current, vias per transition, shield), the knobs, the plan review (the
   reviewer's `PLAN-REVIEW.md` committed beside the plan; geometry starts when it reads
-  `ALL PASS (layout)`, and a second plan review with open findings stops the run and hands back)
+  `ALL PASS (layout)`; the first review is renamed `PLAN-REVIEW-1.md` before the second dispatch,
+  and a second plan review with open findings stops the run and hands back with both)
   and a *Plan revisions* table under a `plan-version:` line: after each DRC run, LVS compare,
   extraction, post-layout bench run and review round, one row per changed decision (version,
   round, decision from -> to, the feedback that drove it, its evidence path), or a `geometry only`
