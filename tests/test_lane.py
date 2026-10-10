@@ -352,6 +352,18 @@ def test_the_dispatcher_really_selects_the_bridge_module_when_the_key_says_so(br
     assert bridge.sim.LANE == "bridge"
 
 
+def test_bridge_lane_without_its_platform_package_names_the_package_to_add(monkeypatch):
+    """`lane: bridge` on the template's own venv: a remediation, not a bare traceback."""
+    monkeypatch.setitem(sys.modules, "spicexplorer_spectre", None)  # import -> ModuleNotFoundError
+    monkeypatch.delitem(sys.modules, "design.sim_bridge", raising=False)
+    with pytest.raises(ModuleNotFoundError) as e:
+        sim.import_lane("bridge")
+    msg = str(e.value)
+    for part in ("lane: bridge", "pyproject.toml", "spicexplorer-signoff[remote]", "uv sync"):
+        assert part in msg, part
+    assert e.value.name == "spicexplorer_spectre"
+
+
 def test_the_bridge_module_carries_no_private_driver():
     """The wrapper wraps: nothing here may open a connection or shell out to the server."""
     src = (Path(__file__).resolve().parents[1] / "design" / "sim_bridge.py").read_text()
