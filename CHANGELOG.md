@@ -37,6 +37,12 @@ passed before, none for either set it passes now.
 **Taking it.** `make template-update`. A design that passed `ARGS=--load` keeps working; that
 `--load` suppresses the default skip.
 
+`LOAD=1` (like `--load`) creates the cell's `layout` view; the workflow writes the SKILL with
+`overwrite=False`, so the build stops with an error when the view already exists. To rebuild,
+delete the view in the library first, or check the existing view with
+`ARGS="--skip build --cell <cell>"`. The earlier wording here and in `layout/signoff.py` said the
+load replaces the view; it does not.
+
 ## Unreleased — `template-update` merges from the commit a design was cut from
 
 Minor; `scripts/template_update.py` only. A design copied from an untagged commit between two

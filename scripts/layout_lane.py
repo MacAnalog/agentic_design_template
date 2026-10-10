@@ -18,8 +18,10 @@
 
   The workflow refuses a bridge-lane `build` together with DRC/LVS/PEX unless the SKILL is loaded
   into the layout editor first, because the checks read the layout view already in `<LIB>`, not the SKILL
-  the build writes. So `LOAD=1` passes `--load` (the build REPLACES the cell's `layout` view, then
-  the checks run on it). Without it the build runs alone: `--skip drc,lvs,pex,benches` is added
+  the build writes. So `LOAD=1` passes `--load` (the build creates the cell's `layout` view, then
+  the checks run on it; the workflow writes the SKILL with `overwrite=False`, so the build stops
+  with an error when the view already exists: delete the view in the library first to rebuild, or
+  check the existing view with `ARGS="--skip build --cell <cell>"`). Without it the build runs alone: `--skip drc,lvs,pex,benches` is added
   and one line on stderr says the checks were skipped. A `--load` or `--skip` in `ARGS` is the
   caller's own choice and suppresses the default skip, so the second step of the two-step use
   (`ARGS="--skip build --cell <cell>"`, doc/environment.md) runs the checks.

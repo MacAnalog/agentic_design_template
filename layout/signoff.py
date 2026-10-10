@@ -331,8 +331,9 @@ def build_bridge(
     """The generator's `LayoutPlan` -> the SKILL file that builds the cell in `lib`.
 
     With `load`, the file is loaded into the running editor session through the bridge, which
-    REPLACES the cell's `layout` view in `lib`, hand edits included; without it, nothing leaves
-    this machine.
+    creates the cell's `layout` view in `lib`; the SKILL is written with the platform's default
+    `overwrite=False`, so it stops with an error when that view already exists (delete it first
+    to rebuild). Without `load`, nothing leaves this machine.
     """
     from spicexplorer_layout.backends.virtuoso import load_layout, write_skill
 
