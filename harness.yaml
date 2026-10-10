@@ -15,8 +15,9 @@ jobs_env: JOBS          # width of spicexplorer_harness.batch
 # `ngspice` — `design/sim_ngspice.py`, native ngspice on this machine — and nothing about an
 # open-PDK design changes. `bridge` selects `design/sim_bridge.py`: a commercial kit whose models
 # load only in the vendor simulator on the lab's EDA server, wrapped over the platform's
-# bridge-lane package (add it to pyproject.toml, fill in design/pdk.py, and drop this file's
-# `denylist:` entry for the simulator's own name).
+# bridge-lane package (add it to pyproject.toml and fill in design/pdk.py). The same key picks the
+# layout lane of `make layout-flow` and `layout/signoff.py` (doc/environment.md, `layout lane`),
+# and lifts the `denylist:` entries marked `exempt_lanes: [bridge]` below.
 # NEEDS a platform whose `spicexplorer_harness.config.Harness` carries `lane:`; an older one
 # refuses the key outright (`harness.yaml: unknown keys ['lane']`) rather than ignoring it.
 # lane: bridge          # ngspice (default, key absent) | bridge
@@ -87,11 +88,16 @@ gitignore_must: ["runs/", "*.raw", "__pycache__/", "experiments/*/out/", ".sx/pl
 # Provenance scrub: [{pattern, why, flags}] regexes that may not appear anywhere in the tree
 # (flags: "" = case-sensitive; default is case-insensitive). `harness.yaml` and `lint.py` are
 # exempt, so the patterns may be spelled here. Both instantiations converged on this list; add
-# the foundry names this design is NOT built in.
+# the foundry names this design is NOT built in. `exempt_lanes: [bridge]` drops an entry on that
+# lane only (scripts/lint.py, `lane_denylist`): a commercial-kit design names the vendor simulator
+# and the kit's layout editor in its code and docs, while an open-PDK design still may not. Edit
+# this list, never delete an entry to make a lane pass. The editor pattern skips a dotted Python
+# module path (`spicexplorer_layout.backends.<editor>`), which every copy carries in
+# layout/gen_cell_bridge.py.
 denylist:
   - {pattern: "\\bcadence\\b", why: EDA vendor name}
-  - {pattern: "\\bspectre\\b", why: commercial simulator name}
-  - {pattern: "\\bvirtuoso\\b", why: commercial schematic editor name}
+  - {pattern: "\\bspectre\\b", why: commercial simulator name, exempt_lanes: [bridge]}
+  - {pattern: "(?<!\\.)\\bvirtuoso\\b", why: commercial schematic and layout editor name, exempt_lanes: [bridge]}
   - {pattern: "\\bmaestro\\b", why: commercial ADE tool name}
 
 # `make runs` columns ({key, w: width, p: decimals}; strings left-justified). One list, or a

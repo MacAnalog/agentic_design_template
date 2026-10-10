@@ -10,6 +10,7 @@ import importlib.util
 import os
 import re
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -27,6 +28,12 @@ def _mod(rel: str):
 
 
 pdk_links = _mod("scripts/pdk_links.py")
+
+
+@pytest.fixture(autouse=True)
+def _no_private_library(monkeypatch):
+    """A person's own `$SX_KIT_SKILLS` must not reach these cases; the ones that need it set it."""
+    monkeypatch.delenv(pdk_links.KIT_SKILLS_ENV, raising=False)
 
 
 def _with_pdk(line: str) -> str:
@@ -136,11 +143,12 @@ def test_init_and_skills_update_run_the_same_link_step():
         ), (target, r.stdout)
 
 
-def _lint_repo(tmp_path: Path, pdk_line: str, fail: str = ""):
+def _lint_repo(tmp_path: Path, pdk_line: str, fail: str = "", lane: str = ""):
     from spicexplorer_harness import load
     from spicexplorer_harness.lint import Lint
 
-    (tmp_path / "harness.yaml").write_text(_with_pdk(pdk_line))
+    text = _with_pdk(pdk_line) + (f"lane: {lane}\n" if lane else "")
+    (tmp_path / "harness.yaml").write_text(text)
     marker = tmp_path / ".sx/platform/packages/spicexplorer-harness/pyproject.toml"
     marker.parent.mkdir(parents=True, exist_ok=True)
     marker.write_text("")
@@ -166,3 +174,135 @@ def test_lint_reports_a_missing_pdk_link_with_make_init_as_the_fix(tmp_path):
     L, _ = _lint_repo(tmp_path, "pdk: ihp-sg13g2", fail="pdk-ihp-sg13g2")
     assert len(L.fails) == 1, L.fails
     assert "MISSING  .claude/skills/pdk-ihp-sg13g2" in L.fails[0] and "make init" in L.fails[0]
+
+
+# --- one PDK id (spicexplorer_harness.fleet.pdk_id) --------------------------------------------
+
+
+def test_a_registry_token_links_the_set_of_its_ratified_id(tmp_path):
+    """`ihp130` is the registry token of the open kit whose set is `pdk-ihp-sg13g2`."""
+    (tmp_path / "harness.yaml").write_text(_with_pdk("pdk: ihp130"))
+    log = _library(tmp_path, sets=("design", "pdk-ihp-sg13g2"))
+    assert pdk_links.main(tmp_path) == 0
+    assert _calls(log) == [f"{tmp_path} --set pdk-ihp-sg13g2"]
+
+
+def test_the_ratified_id_comes_from_the_harness_not_a_copy():
+    from spicexplorer_harness.fleet import PDK_IDS, pdk_id
+
+    for token, rid in PDK_IDS.items():
+        assert pdk_links.ratified(token) == pdk_id(token) == rid
+    assert pdk_links.ratified("some-other-kit") == "some-other-kit"
+    assert pdk_links.ratified("") == ""
+
+
+def test_spellings_put_the_ratified_id_first_then_the_declared_one_then_registry_tokens():
+    assert pdk_links.spellings("ihp130") == ["ihp-sg13g2", "ihp130"]
+    assert pdk_links.spellings("ihp-sg13g2") == ["ihp-sg13g2", "ihp130"]
+    assert pdk_links.spellings("../x") == []
+
+
+def test_without_an_importable_harness_the_fleet_file_under_sx_platform_is_read(
+    tmp_path, monkeypatch
+):
+    """`make init` runs the script before `uv sync`: the harness is then only a file."""
+    fleet = tmp_path / pdk_links._FLEET
+    fleet.parent.mkdir(parents=True)
+    fleet.write_text(
+        'PDK_IDS = {"tok1": "kit-one"}\n\ndef pdk_id(p):\n    return PDK_IDS.get(p, p)\n'
+    )
+    monkeypatch.setitem(sys.modules, "spicexplorer_harness", None)  # import fails
+    assert pdk_links.ratified("tok1", tmp_path) == "kit-one"
+    assert pdk_links.spellings("kit-one", tmp_path) == ["kit-one", "tok1"]
+    assert pdk_links.ratified("tok1", tmp_path / "nowhere") == "tok1"  # unreadable: as written
+
+
+def test_lint_warns_on_a_registry_token_and_names_the_ratified_id(tmp_path):
+    L, _ = _lint_repo(tmp_path, "pdk: ihp130")
+    assert L.fails == []
+    assert any("ihp130" in w and "ihp-sg13g2" in w for w in L.warns), L.warns
+
+
+# --- the private per-kit library ($SX_KIT_SKILLS) ----------------------------------------------
+
+
+def _private(root: Path, entries: str = "skills/pdk-kitx\n") -> Path:
+    lib = root / "private-kit-lib"
+    (lib / "linksets").mkdir(parents=True)
+    (lib / "linksets" / "pdk.txt").write_text("# the kit knowledge base\n" + entries)
+    (lib / "skills" / "pdk-kitx").mkdir(parents=True)
+    return lib
+
+
+def _git(root: Path) -> None:
+    subprocess.run(["git", "init", "-q", str(root)], check=True)
+
+
+def test_sx_kit_skills_links_the_private_pdk_set_and_keeps_it_out_of_commits(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo)
+    (repo / "harness.yaml").write_text(_with_pdk("pdk: kitx") + "lane: bridge\n")
+    log = _library(repo)
+    lib = _private(tmp_path)
+    assert pdk_links.main(repo, env={pdk_links.KIT_SKILLS_ENV: str(lib)}) == 0
+    assert _calls(log) == [f"{repo} --library {lib} --set pdk"]
+    exclude = (repo / ".git" / "info" / "exclude").read_text().splitlines()
+    assert "/.claude/skills/pdk-kitx" in exclude
+    # a second run adds nothing twice
+    pdk_links.main(repo, env={pdk_links.KIT_SKILLS_ENV: str(lib)})
+    again = (repo / ".git" / "info" / "exclude").read_text().splitlines()
+    assert again.count("/.claude/skills/pdk-kitx") == 1
+
+
+def test_a_private_library_without_a_pdk_set_is_an_error(tmp_path, capsys):
+    (tmp_path / "harness.yaml").write_text(_with_pdk("pdk: kitx"))
+    log = _library(tmp_path)
+    empty = tmp_path / "not-a-library"
+    empty.mkdir()
+    assert pdk_links.main(tmp_path, env={pdk_links.KIT_SKILLS_ENV: str(empty)}) == 2
+    assert "has no linksets/pdk.txt" in capsys.readouterr().out
+    assert _calls(log) == []
+
+
+def test_link_paths_follow_sx_link():
+    assert pdk_links.link_paths(["skills/a", "agents/b", "bogus"]) == [
+        ".claude/skills/a",
+        ".claude/agents/b.md",
+    ]
+
+
+def test_lint_checks_the_private_library_when_sx_kit_skills_is_set(tmp_path, monkeypatch):
+    lib = _private(tmp_path / "elsewhere")
+    monkeypatch.setenv(pdk_links.KIT_SKILLS_ENV, str(lib))
+    L, calls = _lint_repo(tmp_path, "pdk: kitx", lane="bridge")
+    assert L.fails == []
+    assert calls[-1] == f"{tmp_path} --library {lib} --set pdk --check"
+
+
+def test_lint_fails_when_the_private_library_link_is_missing(tmp_path, monkeypatch):
+    lib = _private(tmp_path / "elsewhere")
+    monkeypatch.setenv(pdk_links.KIT_SKILLS_ENV, str(lib))
+    L, _ = _lint_repo(tmp_path, "pdk: kitx", fail="--library", lane="bridge")
+    assert len(L.fails) == 1 and "make init" in L.fails[0], L.fails
+
+
+def test_lint_fails_on_a_bridge_lane_kit_with_no_skill_linked(tmp_path):
+    L, _ = _lint_repo(tmp_path, "pdk: kitx", lane="bridge")
+    assert len(L.fails) == 1, L.fails
+    assert pdk_links.KIT_SKILLS_ENV in L.fails[0] and "make init" in L.fails[0]
+
+
+def test_lint_accepts_a_bridge_lane_kit_skill_linked_by_hand(tmp_path):
+    target = tmp_path / "kit-skill"
+    target.mkdir()
+    link = tmp_path / ".claude" / "skills" / "pdk-kitx"
+    link.parent.mkdir(parents=True)
+    link.symlink_to(target)
+    L, _ = _lint_repo(tmp_path, "pdk: kitx", lane="bridge")
+    assert L.fails == []
+
+
+def test_lint_needs_no_private_library_on_the_open_lane(tmp_path):
+    L, _ = _lint_repo(tmp_path, "pdk: kitx")
+    assert L.fails == []

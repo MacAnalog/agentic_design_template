@@ -30,8 +30,10 @@ dependencies = [
     # design/pdk.py; CLAUDE.md, "Simulation lanes and reuse", is the contract. Do NOT name the
     # bridge itself here: it comes with that package and the platform pins it (a second source for
     # one package makes uv refuse to resolve).
-    # NOTE the package name carries the simulator's name, which harness.yaml's denylist forbids
-    # until you edit `denylist:` there for a commercial-PDK design.
+    # NOTE the package name carries the simulator's name, which harness.yaml's denylist forbids on
+    # every lane but `lane: bridge` (that entry carries `exempt_lanes: [bridge]`). The bridge
+    # lane's layout sign-off (layout/signoff.py) adds the layout and signoff packages above, with
+    # the signoff package's `remote` extra: "spicexplorer-signoff[remote]".
     # "pyyaml>=6",                                  # circuit/sizing yaml a generator reads
     # "nbconvert>=7", "ipykernel>=6", "notebook>=7",  # `make notebooks`
 ]

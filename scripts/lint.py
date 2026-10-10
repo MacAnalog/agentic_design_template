@@ -27,6 +27,7 @@ A check added here that reads every file below the repo root walks with `own_tre
 from __future__ import annotations
 
 import contextlib
+import dataclasses
 import importlib
 import json
 import os
@@ -38,7 +39,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
-from spicexplorer_harness import lint, load
+from spicexplorer_harness import Harness, lint, load
 from spicexplorer_harness.lint import Lint
 
 from scripts import githook, pdk_links
@@ -328,6 +329,10 @@ def sx_links(L: Lint) -> None:
 
     The links checked are the library's `design` set, and its `pdk-<id>` set when `pdk:` in
     harness.yaml declares a process the pinned library ships a set for (the one `make init` links).
+    For a kit under NDA (`lane: bridge`, no shared `pdk-<id>` set) the skill comes from a private
+    library: with `$SX_KIT_SKILLS` set its `pdk` set is checked like the others; without it, a
+    `.claude/skills/pdk-<id>` link must already resolve, or the check fails. A `pdk:` spelled as a
+    registry token rather than the harness's ratified id is a warning (`pdk_links.spellings`).
     """
     root = L.h.root
     plat = root / ".sx" / "platform"
@@ -346,13 +351,37 @@ def sx_links(L: Lint) -> None:
             "run `make init` (= git submodule update --init --recursive .sx/skills, then the links)",
         )
         return
-    sets = ["design"]
-    pdk_set = pdk_links.linkset(root, str(getattr(L.h, "pdk", "") or ""))
-    if pdk_set:
-        sets.append(pdk_set)  # after `design`, in the order `make init` links them
-    for name in sets:
+    pdk = str(getattr(L.h, "pdk", "") or "")
+    lane = str(getattr(L.h, "lane", "") or "")
+    checks: list[tuple[str, list[str]]] = [("design", ["--set", "design"])]
+    pdk_set = pdk_links.linkset(root, pdk)
+    if pdk_set:  # after `design`, in the order `make init` links them
+        checks.append((pdk_set, ["--set", pdk_set]))
+    lib = pdk_links.private_library()
+    if pdk and lib is not None:
+        if not (lib / "linksets" / f"{pdk_links.PRIVATE_SET}.txt").is_file():
+            L.fail(
+                "sx-links",
+                f"${pdk_links.KIT_SKILLS_ENV} names {lib}, which has no "
+                f"linksets/{pdk_links.PRIVATE_SET}.txt",
+                f"point {pdk_links.KIT_SKILLS_ENV} at a clone of the kit's private skill library "
+                "(doc/environment.md, row `kit skills`), or unset it",
+            )
+        else:
+            checks.append(
+                (f"{lib} {pdk_links.PRIVATE_SET}", ["--library", str(lib), "--set", "pdk"])
+            )
+    elif pdk_links.needs_private(lane, pdk, root) and not _linked_pdk_skill(root, pdk):
+        L.fail(
+            "sx-links",
+            f"lane: bridge declares pdk: {pdk}; the shared library has no pdk-{pdk} set and no "
+            f"pdk-{pdk} skill is linked, so sessions run without the kit's rules and shortcuts",
+            f"export {pdk_links.KIT_SKILLS_ENV}=<a clone of the kit's private skill library> and "
+            "run `make init` (doc/environment.md, row `kit skills`)",
+        )
+    for name, args in checks:
         r = subprocess.run(
-            [str(tool), str(root), "--set", name, "--check"],
+            [str(tool), str(root), *args, "--check"],
             capture_output=True,
             check=False,
             text=True,
@@ -360,14 +389,32 @@ def sx_links(L: Lint) -> None:
         if r.returncode:
             first = next(
                 (ln for ln in r.stdout.splitlines() if ln and not ln.startswith(" ")),
-                "links missing",
+                f"{name}: links missing",
             )
             L.fail(
                 "sx-links",
                 first.strip(),
                 "run `make init` (re-links every entry from "
-                ".sx/skills; a nested submodule needs the --recursive it does)",
+                ".sx/skills, and the private kit library when "
+                f"{pdk_links.KIT_SKILLS_ENV} is set; a nested submodule needs the --recursive "
+                "it does)",
             )
+    ratified = pdk_links.ratified(pdk, root)
+    if pdk and ratified != pdk:
+        L.warn(
+            "sx-links",
+            f"harness.yaml declares pdk: {pdk}, a registry token; the harness's ratified id is "
+            f"{ratified}",
+            f"write `pdk: {ratified}`: the model-library variable, the journal scope and the "
+            "skill links all key on the ratified id",
+        )
+
+
+def _linked_pdk_skill(root: Path, pdk: str) -> bool:
+    """A `.claude/skills/pdk-<id>` that resolves, for a spelling of `pdk` (a link made by hand
+    with `sx-link . --library <clone> --set pdk` counts)."""
+    skills = root / ".claude" / "skills"
+    return any((skills / f"pdk-{p}").exists() for p in pdk_links.spellings(pdk, root))
 
 
 # Where a committed artefact is allowed to live (template 2.00, "every artefact has a home").
@@ -526,6 +573,48 @@ def scratch_budget(L: Lint) -> None:
         )
 
 
+#: the key a `denylist:` entry may carry to name the lanes it does not apply on
+EXEMPT_LANES = "exempt_lanes"
+
+
+def lane_denylist(h: Harness) -> Harness:
+    """`h` with the `denylist:` entries its lane is exempt from removed.
+
+    A commercial-kit design (`lane: bridge`) has to name the vendor simulator and the kit's layout
+    editor in its generator, its scripts and its docs; an open-PDK design must not. An entry that
+    carries `exempt_lanes: [bridge]` is therefore dropped on that lane, and only there; the ban
+    stays in force on every other lane. The harness reads `pattern`, `why` and `flags` and ignores
+    the extra key, so this is the one place the exemption is applied, and `denylist_lanes`
+    reports an entry whose `exempt_lanes` is not a list of lane names. Both harness checks that
+    read the denylist (`denylist`, `disclosure`) see the filtered list.
+    """
+    lane = str(getattr(h, "lane", "") or "")
+    if not lane:
+        return h
+    kept = [d for d in h.denylist if not _exempt(d, lane)]
+    return h if len(kept) == len(h.denylist) else dataclasses.replace(h, denylist=kept)
+
+
+def _exempt(entry: object, lane: str) -> bool:
+    lanes = entry.get(EXEMPT_LANES) if isinstance(entry, dict) else None
+    return isinstance(lanes, list) and lane in lanes
+
+
+def denylist_lanes(L: Lint) -> None:
+    """Every `exempt_lanes:` on a `denylist:` entry is a list of lane names (`lane_denylist`)."""
+    for d in L.h.denylist:
+        lanes = d.get(EXEMPT_LANES) if isinstance(d, dict) else None
+        if lanes is None:
+            continue
+        if not (isinstance(lanes, list) and all(isinstance(x, str) and x for x in lanes)):
+            L.fail(
+                "denylist-lanes",
+                f"denylist entry {d.get('pattern')!r} has {EXEMPT_LANES}: {lanes!r}, which is not "
+                "a list of lane names, so it exempts nothing",
+                f"write `{EXEMPT_LANES}: [bridge]` (the lanes this pattern does not apply on)",
+            )
+
+
 # `package-importable` is NOT here: the platform ships it (driven by `package:` in harness.yaml).
 # `deck_rebuild` is NOT here either: the platform's GENERIC runs it, and naming it here ran it twice.
 EXTRA = (
@@ -536,6 +625,7 @@ EXTRA = (
     artifact_home,
     signoff_index,
     scratch_budget,
+    denylist_lanes,
 )
 
 
@@ -620,12 +710,16 @@ def own_tree_only(module=lint):
     - `sx_links`: `.sx/platform` (the harness `pyproject.toml` through it) and the output of
       `.sx/skills/bin/sx-link --check`, which reads one link under `.claude/agents/` or
       `.claude/skills/` for each entry of `.sx/skills/linksets/design.txt`, and of
-      `linksets/pdk-<id>.txt` when `pdk:` declares a process that file exists for.
+      `linksets/pdk-<id>.txt` when `pdk:` declares a process that file exists for, and of the
+      private kit library's `linksets/pdk.txt` when `$SX_KIT_SKILLS` names one; `pdk:` and
+      `lane:` in harness.yaml, the `.claude/skills/pdk-*` links, and `.sx/platform`'s harness
+      `fleet.py` (the ratified PDK id).
     - `artifact_home`: the file list `git ls-files` prints.
     - `signoff_index`: the top-level entries of `signoff/` and `signoff/README.md`.
     - `scratch_budget`: the scratch work dir `<package>.sim.work()` returns (never inside the
       repo) and its `runs/`, `$SX_SCRATCH_WARN_GB`, and the ledger (`ledger:`, default
       `runs/ledger.ndjson`); `scripts/clean_runs.py` imports `<package>.sim` to find the work dir.
+    - `denylist_lanes`: the `denylist:` entries of harness.yaml (their `exempt_lanes:` keys).
 
     Outside EXTRA, `main` prints `hook_info`, which reads this checkout's pre-push hook file.
     `tests/test_design.py` checks that every check listed here is in EXTRA, and that every
@@ -645,10 +739,10 @@ def own_tree_only(module=lint):
 def main(repo: Path = REPO) -> int:
     """`make lint` on the checkout at `repo`: the harness checks under `own_tree_only`, then EXTRA.
 
-    Returns the exit code.
+    The denylist is the lane's (`lane_denylist`). Returns the exit code.
     """
     with own_tree_only():
-        rc = lint.main(load(repo), extra=EXTRA)
+        rc = lint.main(lane_denylist(load(repo)), extra=EXTRA)
     print(hook_info(repo))
     return rc
 

@@ -98,7 +98,8 @@ undeclared case: an artefact somewhere nobody wrote down.
   bare pack: the `SessionStart` hook, `doc/memory/README.md` §1); re-run with `S="<failure
   signature>"` before diagnosing anything new. `make runs ARGS="--fails | --best <metric> | --exp
   NNN"` reads the ledger every `metrics.evaluate()` appends to.
-- `make size PLAN=<plan.json> OUT=<dir>` (the plan's netlist paths are relative to OUT) / `make layout-flow RUN=<dir>` — the orchestration
+- `make size PLAN=<plan.json> OUT=<dir>` (the plan's netlist paths are relative to OUT) / `make layout-flow RUN=<dir>`
+  (`OA_LIB=<lib>` on `lane: bridge`) — the orchestration
   workflows `workflows.sizing` (gm/ID sizing → optimizer project; `BUDGET=N` adds the optimize
   step) and `workflows.layout`, run from `$SX_ROOT`'s orchestration venv; the rest through `ARGS`.
 - `make template-status` / `make template-update` — this repo was **copied** from the template, so
@@ -134,6 +135,12 @@ undeclared case: an artefact somewhere nobody wrote down.
   uploaded by basename with *relative* `include`s, simulated there, and only results come back. Kit bytes never reach
   the workstation or the model — anything under `/CMC` asks for the person's permission (the one hook); every
   server-side artifact is design-named, never tool-named.
+- **Layout follows the same key.** `lane:` absent → `layout/gen_cell.py` (gdsfactory → GDS) and the open sign-off
+  (KLayout DRC/LVS, kpex). `lane: bridge` → `layout/gen_cell_bridge.py` returns a `LayoutPlan`; `make layout-flow
+  OA_LIB=<lib>` and `layout/signoff.py` build the cell in the design's OA library on the EDA server, run one batch
+  DRC/LVS/PEX there, and re-run the benches on the extracted DSPF. Every kit fact comes from the kit file
+  `$SX_KIT_FILE` names and from the linked `pdk-<id>` skill (`$SX_KIT_SKILLS`, `make init`); none is written in this
+  repo (`doc/environment.md`, rows `layout lane` to `bridge profile`).
 - **A model library that lives only on some machines is named in a deck by variable, never by path.**
   The deck text writes `$VAR`, `<package>.sim.DECK_VARS` declares it, `sim.run` resolves it against
   this machine as the deck is handed to the simulator, and `doc/environment.md` pins WHICH library by

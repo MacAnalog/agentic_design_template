@@ -17,6 +17,71 @@ Versions are `MAJOR.MINOR`, written `#.##`:
 `make template-status` prints the recorded version and the latest release. Releases are git
 tags, `v<version>`.
 
+## v2.15 (unreleased) — the commercial-kit layout lane, private per-kit skills, one PDK id
+
+Minor. No module is renamed and every lifecycle command keeps its name. The bridge-lane layout
+path needs a platform with `spicexplorer_core.kit`, `spicexplorer_layout.backends`,
+`spicexplorer_signoff.calibre` and `spicexplorer_spectre.postlayout` (platform f34c46f or later:
+MacAnalog/spicexplorer-platform#346, #347, #349, #353), and `make layout-flow` on that lane needs
+the orchestration kit lane (MacAnalog/spicexplorer-orchestration#56). The open lane runs on the
+platform v2.14 named. The tests replace those modules with stand-ins, so `make test` passes on
+either platform.
+
+| change | files | carried by `make template-update` |
+|---|---|---|
+| `make layout-flow` picks the lane from `lane:` | `Makefile`, `scripts/layout_lane.py` | yes |
+| the bridge-lane generator skeleton | `layout/gen_cell_bridge.py` | yes |
+| `layout/signoff.py` on the bridge lane | `layout/signoff.py` | yes (merged three-way: a design has filled in this file) |
+| `metrics.run_decks(run_kwargs=...)` | `design/metrics.py` | yes (`design/` is re-rooted onto `<package>/`) |
+| the private per-kit skill library, one PDK id | `scripts/pdk_links.py`, `scripts/lint.py` | yes |
+| the lane-aware denylist | `scripts/lint.py` (`lane_denylist`, `denylist_lanes`) | yes |
+| `exempt_lanes: [bridge]` on two denylist entries; the editor pattern skips a dotted module path | `harness.yaml` | no: edit `denylist:` by hand (below) |
+| rows for the bridge layout lane | `doc/environment.md`, `CLAUDE.md`, `pyproject.toml` (comments) | yes |
+
+- **`make layout-flow` reads `lane:`** through `scripts/layout_lane.py` (standard library only):
+  - **absent:** `--generator layout/gen_cell.py`, as before; `GEN=` still overrides it.
+  - **`bridge`:** `--generator layout/gen_cell_bridge.py --tech '$SX_KIT_FILE' --lib <OA_LIB>`
+    (`--workarea <WORKAREA>` when given). The literal `$SX_KIT_FILE` is passed, so the kit path
+    never reaches a verdict or the ledger. It exits 2 before the workflow starts when
+    `SX_KIT_FILE` is unset or `OA_LIB` is empty, and on any other `lane:` value.
+- **`layout/gen_cell_bridge.py`** is the generator contract of the orchestration kit lane:
+  `LayoutParams`, `BOUNDS`, `plan(params, kit) -> LayoutPlan`. `layout_params` refuses an unknown
+  knob and a value outside `BOUNDS`; every kit fact is read from the kit by name. LVS on this lane
+  compares with the cell's schematic view, so there is no `write_lvs_reference`.
+- **`layout/signoff.py` dispatches on `lane:`.** The open lane is unchanged. On `lane: bridge`:
+  `build` writes the SKILL file (`--load` loads it, which replaces the cell's layout view);
+  `drc`, `lvs` and `pex` come from one batch run on the EDA server; `jmax` is recorded as skipped
+  (the kit file has no electromigration table); `benches` splices the DSPF into the cell's own
+  benches (`DROP_INCLUDES` lists the includes that define the schematic subckt) and runs them
+  through `metrics.run_decks` with the DSPF staged beside each deck. `--stages` defaults to every
+  stage of the lane and refuses a stage of the other lane. `--lib` / `$<PREFIX>_OA_LIB` and
+  `--workarea` / `$<PREFIX>_WORKAREA` name the OA library and the workarea.
+- **`metrics.run_decks(..., run_kwargs=...)`** passes the lane's options to every `sim.run`, so
+  the post-layout row with a staged DSPF is measured by the same function as the pre-layout row.
+- **Private per-kit skills.** `$SX_KIT_SKILLS=<clone>` makes `make init` / `make skills-update`
+  also run `sx-link . --library <clone> --set pdk`, and write each link to the clone's
+  `info/exclude`, so a link into a private repo is never committed. A clone without
+  `linksets/pdk.txt` is an error. `make lint` checks that link; on `lane: bridge` with a `pdk:`
+  the shared library has no set for, it fails when no `pdk-<id>` skill is linked.
+- **One PDK id.** `pdk:` is looked up as the harness's ratified id
+  (`spicexplorer_harness.fleet.pdk_id`), then as written, then as each registry token of that id.
+  The id comes from the harness, never from a copy of its table. `make lint` warns when `pdk:` is
+  a registry token and names the ratified id.
+- **The lane-aware denylist.** A `denylist:` entry with `exempt_lanes: [bridge]` is dropped on that
+  lane only; both harness checks that read the list see the filtered one. `denylist_lanes` fails
+  on an `exempt_lanes` that is not a list of lane names.
+
+### Taking it
+
+1. `make template-update`; resolve any conflict in `layout/signoff.py` (keep your `CELL`,
+   `BUDGETS`, `PDK`; take the bridge section and the new `main`).
+2. In `harness.yaml`, give the simulator and editor entries of `denylist:` the key
+   `exempt_lanes: [bridge]` (the template's own list shows both), and write the editor pattern
+   with the lookbehind `(?<!\\.)` before `\\b`, so `layout/gen_cell_bridge.py`'s import line is
+   not a hit. A design that had deleted an entry for the bridge lane restores it with the key.
+3. A commercial-kit design: export `SX_KIT_FILE` and `SX_KIT_SKILLS` (doc/environment.md), run
+   `make init`, then `make lint`.
+
 ## v2.14 — per-PDK skills, the context pack at session start, `make size` and `make layout-flow`
 
 Minor. No module is renamed and every lifecycle command keeps its name; `make size` and
