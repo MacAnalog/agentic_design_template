@@ -570,3 +570,49 @@ def test_make_lint_applies_the_exemption_through_main(tmp_path, capsys, monkeypa
         reports[lane] = {w for w in ("zorblat", "quuxite") if f"'{w}'" in out}
     assert reports[""] == {"zorblat", "quuxite"}
     assert reports["bridge"] == {"quuxite"}
+
+
+# --- layout/PLAN.template.md --------------------------------------------------------------------
+
+PLAN_TEMPLATE = REPO / "layout" / "PLAN.template.md"
+#: each section heading the plan must carry, and a column its table must have
+PLAN_SECTIONS = {
+    "Research inputs": "brief row",
+    "Outline and aspect": "aspect ratio ceiling",
+    "Device groups and matching patterns": "tolerated mismatch",
+    "Dummies": "dummies per row end",
+    "Guard rings and taps": "well island",
+    "Pin frame": "side",
+    "Per-net metal stack": "via count per transition",
+    "Generator knobs": "range",
+    "Assumed approvals": "",
+    "Plan review": "verdict",
+    "Revision log": "feedback (tool, finding, net, number)",
+}
+
+
+def _plan_sections() -> dict[str, str]:
+    """Each `## N. <title>` heading of the plan skeleton, mapped to the text under it."""
+    out: dict[str, str] = {}
+    title = None
+    for line in PLAN_TEMPLATE.read_text().splitlines():
+        if line.startswith("## "):
+            title = line[3:].split(". ", 1)[-1].strip()
+            out[title] = ""
+        elif title is not None:
+            out[title] += line + "\n"
+    return out
+
+
+@pytest.mark.parametrize("section", sorted(PLAN_SECTIONS))
+def test_plan_template_carries_each_decision_section(section: str) -> None:
+    sections = _plan_sections()
+    assert section in sections, f"layout/PLAN.template.md has no section {section!r}"
+    assert PLAN_SECTIONS[section] in sections[section]
+
+
+def test_plan_template_metal_stack_and_revision_rows_name_their_reason() -> None:
+    sections = _plan_sections()
+    for name in ("Per-net metal stack", "Revision log"):
+        header = next(line for line in sections[name].splitlines() if line.startswith("| "))
+        assert "because" in header or "reason" in header, f"{name}: no reason column"

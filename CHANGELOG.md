@@ -37,6 +37,7 @@ either platform.
 | the lane-aware denylist | `scripts/lint.py` (`lane_denylist`, `denylist_lanes`) | yes |
 | `exempt_lanes: [bridge]` on two denylist entries; the editor pattern skips a dotted module path | `harness.yaml` | no: edit `denylist:` by hand (below) |
 | rows for the bridge layout lane | `doc/environment.md`, `CLAUDE.md`, `pyproject.toml` (comments) | yes |
+| the layout plan skeleton: plan before geometry, revisit after sign-off feedback | `layout/PLAN.template.md`, `CLAUDE.md`, `doc/environment.md` (row `layout plan`) | yes |
 
 - **`make layout-flow` reads `lane:`** through `scripts/layout_lane.py` (standard library only):
   - **absent:** `--generator layout/gen_cell.py`, as before; `GEN=` still overrides it.
@@ -56,6 +57,13 @@ either platform.
   through `metrics.run_decks` with the DSPF staged beside each deck. `--stages` defaults to every
   stage of the lane and refuses a stage of the other lane. `--lib` / `$<PREFIX>_OA_LIB` and
   `--workarea` / `$<PREFIX>_WORKAREA` name the OA library and the workarea.
+- **`layout/PLAN.template.md`** is the plan a designer copies to `layout/<cell>/PLAN.md` before
+  the generator draws anything: research inputs from the brief, outline and aspect, device groups
+  and matching patterns, dummies, guard rings and taps, pin frame, a per-net metal stack table
+  (layer keys, width for current, vias per transition, shield), the knobs, a plan-review table
+  (geometry starts after an accepting round) and a revision log, one row per changed decision
+  naming the DRC, LVS, PEX or post-layout bench result that drove it. It names kit-file layer keys
+  and rules by name, never a kit value.
 - **`metrics.run_decks(..., run_kwargs=...)`** passes the lane's options to every `sim.run`, so
   the post-layout row with a staged DSPF is measured by the same function as the pre-layout row.
 - **Private per-kit skills.** `$SX_KIT_SKILLS=<clone>` makes `make init` / `make skills-update`

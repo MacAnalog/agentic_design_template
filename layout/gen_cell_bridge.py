@@ -12,6 +12,10 @@ and PEX on the EDA server.
 **The layout of record is this file, not the cellview.** Every claim about the cell is
 re-derived from it (`.claude/skills/layout-evidence/SKILL.md`).
 
+**Write `layout/<cell>/PLAN.md` first** (from `layout/PLAN.template.md`): the knobs below and
+every placement and metal choice implement a decision there, and a change after DRC, LVS, PEX or
+the post-layout benches is a row of its revision log before it is an edit here.
+
 Generator contract (`spicexplorer_orchestration.workflows.layout_kit`), which `make layout-flow`
 and an optimizer rely on:
 

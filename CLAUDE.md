@@ -141,6 +141,17 @@ undeclared case: an artefact somewhere nobody wrote down.
   DRC/LVS/PEX there, and re-run the benches on the extracted DSPF. Every kit fact comes from the kit file
   `$SX_KIT_FILE` names and from the linked `pdk-<id>` skill (`$SX_KIT_SKILLS`, `make init`); none is written in this
   repo (`doc/environment.md`, rows `layout lane` to `bridge profile`).
+- **A layout is planned before it is drawn, and the plan is revisited after sign-off feedback.** `layout-brief-author`
+  researches the block (symmetry, gradient, stress and temperature sensitivity, parasitic-sensitive nets,
+  electromigration, RF budgets) and derives the strategy per device group with reasons; matching patterns, dummies
+  and shielding are tools chosen for a reason, not defaults. `layout-designer` then copies `layout/PLAN.template.md`
+  to `layout/<cell>/PLAN.md` and fills in outline, device groups and matching patterns, dummies, guard rings, pin
+  frame and the per-net metal stack (layers, widths for current, via counts, shields) before any geometry;
+  `layout-reviewer` researches the block on its own and reviews the plan before the generator is written. After
+  DRC, LVS, PEX and the post-layout benches (the cell's frozen benches on the extracted netlist, with the shift of
+  each metric attributed to nets), the designer revisits the plan's decisions and logs each change with the
+  feedback that drove it. On the bridge lane these agents read the kit only through the kit file, the `pdk-<id>`
+  skill and their run-dir outputs; the kit file is written once per kit, in a session the person attends.
 - **A model library that lives only on some machines is named in a deck by variable, never by path.**
   The deck text writes `$VAR`, `<package>.sim.DECK_VARS` declares it, `sim.run` resolves it against
   this machine as the deck is handed to the simulator, and `doc/environment.md` pins WHICH library by
