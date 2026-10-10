@@ -4,7 +4,8 @@ Two halves, and the second one is the reason this file exists rather than living
 `test_design.py`:
 
 * **selection** — `design/sim.py` reads `lane:` and re-exports one module. Absent must be the open
-  lane, an unknown value must be refused by name.
+  lane, an unknown value must be refused by name. The template ships with `lane:` absent; a design
+  on `lane: bridge` runs the same tests against its own key (template#58).
 * **the bridge lane** — `design/sim_bridge.py` + `design/pdk.py` against a RECORDING STUB of the
   platform's bridge-lane package. The template's venv does not install that package (a
   commercial-PDK design adds it — `pyproject.toml`), and nothing in a test may reach the lab's EDA
@@ -15,6 +16,7 @@ Two halves, and the second one is the reason this file exists rather than living
 
 from __future__ import annotations
 
+import os
 import sys
 import types
 from pathlib import Path
@@ -26,13 +28,15 @@ from design import sim
 # ------------------------------------------------------------------ selection ---------
 
 
-def test_the_shipped_lane_is_the_open_one_and_sim_IS_that_module():
-    assert sim.LANE == "ngspice", "the template ships with `lane:` absent"
-    assert sim.__name__ == "design.sim_ngspice"
-    assert sys.modules["design.sim"] is sys.modules["design.sim_ngspice"]
+def test_sim_IS_the_module_of_the_lane_harness_yaml_names():
+    lane = sim.lane_name()  # `ngspice` for the template, which ships with `lane:` absent
+    module = f"design.{sim.module_name(lane)}"
+    assert sim.LANE == lane
+    assert sim.__name__ == module
+    assert sys.modules["design.sim"] is sys.modules[module]
     # the swap, not a star-import: assigning a lane constant through `design.sim` must be the same
     # object the lane's own functions read, which is what makes `monkeypatch.setattr(sim, ...)` work
-    assert sim.resolve.__module__ == "design.sim_ngspice"
+    assert sim.run.__module__ == module
 
 
 def test_lane_absent_or_blank_is_the_open_lane():
@@ -148,6 +152,10 @@ def bridge(monkeypatch, tmp_path):
         "PFX_PDK_LIB_ALLOW_MISMATCH",
     ):
         monkeypatch.delenv(n, raising=False)
+    # and the per-machine variable `pdk:` derives: a design that declares `pdk:` exports it
+    if machine := pdk.machine_env():
+        monkeypatch.delenv(machine, raising=False)
+        monkeypatch.delenv(f"{machine}_ALLOW_MISMATCH", raising=False)
     ns = types.SimpleNamespace(sim=sim_bridge, pdk=pdk, calls=calls, work=tmp_path / "work")
     yield ns
     for name in ("design.sim_bridge", "design.pdk"):
@@ -280,6 +288,17 @@ def test_preflight_reports_an_unresolved_library_without_simulating(bridge):
     rep = bridge.sim.preflight()
     assert rep["ok"] is False and "XY001_PDK_LIB" in rep["note"]
     assert "preflight" not in bridge.calls, "a lane that cannot bind to its process is not alive"
+
+
+def test_the_fixture_clears_the_per_machine_variable_a_declared_pdk_derives(monkeypatch, request):
+    """A design that declares `pdk:` exports `<PDK-ID>_PDK_LIB`; left set, it resolves the library
+    in every test that expects none to resolve (template#58)."""
+    monkeypatch.setattr(sim.H, "pdk", "any-proc")
+    monkeypatch.setenv("ANY_PROC_PDK_LIB", "/srv/machine/proc_rev_v1d0/lib.scs")
+    bridge = request.getfixturevalue("bridge")
+    assert bridge.pdk.machine_env() == "ANY_PROC_PDK_LIB"
+    assert "ANY_PROC_PDK_LIB" not in os.environ
+    assert bridge.sim.preflight()["ok"] is False
 
 
 def test_preflight_reports_the_template_placeholders_before_anything_else(bridge, monkeypatch):
