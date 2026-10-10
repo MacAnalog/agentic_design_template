@@ -7,6 +7,7 @@ builds; the workflows themselves are the orchestration repo's to test.
 
 from __future__ import annotations
 
+import importlib.util
 import os
 import subprocess
 from pathlib import Path
@@ -14,6 +15,19 @@ from pathlib import Path
 import pytest
 
 REPO = Path(__file__).resolve().parents[1]
+
+
+def _layout_lane():
+    path = REPO / "scripts" / "layout_lane.py"
+    spec = importlib.util.spec_from_file_location("layout_lane_targets_test", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+layout_lane = _layout_lane()
+# This checkout's `lane:`: the template ships it absent; a design on `lane: bridge` runs this file too
+LANE = layout_lane.declared_lane(REPO)
 
 
 def _sx_root(tmp_path: Path) -> tuple[Path, Path]:
@@ -43,7 +57,11 @@ def _make(*args: str, sx_root: Path | None) -> subprocess.CompletedProcess:
             "RUN",
             "GEN",
             "ARGS",
+            "OA_LIB",
+            "WORKAREA",
         )
+        # `make layout-flow` falls back to `$<PREFIX>_OA_LIB` / `$<PREFIX>_WORKAREA`
+        and not k.endswith((layout_lane.OA_LIB_SUFFIX, layout_lane.WORKAREA_SUFFIX))
     }
     if sx_root is not None:
         env["SX_ROOT"] = str(sx_root)
@@ -93,6 +111,11 @@ def test_make_size_passes_the_budget_and_the_rest_of_the_arguments(tmp_path):
     ]
 
 
+@pytest.mark.skipif(
+    LANE == "bridge",
+    reason="harness.yaml declares lane: bridge; "
+    "test_make_layout_flow_on_a_bridge_lane_repo_refuses_without_the_kit_file covers it",
+)
 def test_make_layout_flow_runs_workflows_layout_on_this_repo(tmp_path):
     root, log = _sx_root(tmp_path)
     r = _make("layout-flow", "RUN=runs/layout", "ARGS=--cell amp", sx_root=root)
@@ -108,6 +131,17 @@ def test_make_layout_flow_runs_workflows_layout_on_this_repo(tmp_path):
         "--cell",
         "amp",
     ]
+
+
+@pytest.mark.skipif(LANE != "bridge", reason="harness.yaml does not declare lane: bridge")
+def test_make_layout_flow_on_a_bridge_lane_repo_refuses_without_the_kit_file(tmp_path):
+    """On this repo's own `lane: bridge`, with `SX_KIT_FILE` cleared (tests/conftest.py), the
+    target refuses before the workflow starts; tests/test_layout_lane.py runs the lane itself on a
+    copy with a stand-in kit file."""
+    root, log = _sx_root(tmp_path)
+    r = _make("layout-flow", "RUN=runs/layout", "OA_LIB=amp_lib", sx_root=root)
+    assert r.returncode == 2 and "SX_KIT_FILE" in r.stdout, r.stdout + r.stderr
+    assert not log.exists(), "the workflow must not start"
 
 
 @pytest.mark.parametrize(

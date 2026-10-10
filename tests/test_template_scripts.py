@@ -13,6 +13,7 @@ into a default argument.
 from __future__ import annotations
 
 import importlib.util
+import json
 import shutil
 import subprocess
 from pathlib import Path
@@ -43,13 +44,19 @@ def load_from(repo: Path, name: str):
     return mod
 
 
-def make_template(root: Path, later: dict[str, str] | None = None) -> Path:
-    """A template repo tagged v1.00 and v1.01; `later` is what 1.01 writes on top of 1.00."""
+def make_template(
+    root: Path, later: dict[str, str] | None = None, first: dict[str, str] | None = None
+) -> Path:
+    """A template repo tagged v1.00 and v1.01; `first` is what 1.00 holds besides its `Makefile`
+    and `harness.yaml`, `later` what 1.01 writes on top of 1.00."""
     t = root / "template"
     (t / "scripts").mkdir(parents=True)
     git("init", "-q", "-b", "main", cwd=t)
     (t / "Makefile").write_text("test:\n\techo one\n")
     (t / "harness.yaml").write_text("package: design\n")
+    for rel, text in (first or {}).items():
+        (t / rel).parent.mkdir(parents=True, exist_ok=True)
+        (t / rel).write_text(text)
     git("add", "-A", cwd=t)
     git("commit", "-qm", "1.00", cwd=t)
     git("tag", "v1.00", cwd=t)
@@ -132,6 +139,57 @@ def test_a_new_file_that_would_not_apply_is_not_reported_as_skipped(tmp_path):
     assert rows.get("lab/new/thing.py") == "REJECTED", rows
     assert rc == 1
     assert (design / ".sx" / "template-version").read_text().strip() == "1.00"
+
+
+def test_an_update_that_changes_a_signed_scorer_says_to_re_certify(tmp_path, capsys):
+    """A release that edits the scorer a committed scorecard hashes (`provenance.script`) leaves
+    that card's script_sha stale: the update says so, and names the card and the way to defer."""
+    tmpl = make_template(
+        tmp_path,
+        first={"design/metrics.py": "VALUE = 1\n"},
+        later={"design/metrics.py": "VALUE = 2\n"},
+    )
+    card = {
+        "scorecard": {"gain_db": 60},
+        "provenance": {"script": "amp/metrics.py", "script_sha": "0" * 64},
+    }
+    other = {"scorecard": {}, "provenance": {"script": "amp/bench.py", "script_sha": "1" * 64}}
+    design = make_design(
+        tmp_path,
+        {
+            "amp/metrics.py": "VALUE = 1\n",
+            "decks/reference/scorecard.json": json.dumps(card),
+            "signoff/schematic/scorecard.json": json.dumps(other),
+        },
+    )
+    (design / "harness.yaml").write_text("package: amp\n")
+    git("commit", "-qam", "renamed", cwd=design)
+    tu = load_from(design, "template_update")
+    tu.URL = str(tmpl)
+
+    assert tu.signed_scorers() == {
+        "amp/metrics.py": ["decks/reference/scorecard.json"],
+        "amp/bench.py": ["signoff/schematic/scorecard.json"],
+    }
+    assert tu.update(None) == 0
+    out = capsys.readouterr().out
+    assert (design / "amp" / "metrics.py").read_text() == "VALUE = 2\n"
+    assert "WARNING: amp/metrics.py is the scorer decks/reference/scorecard.json" in out, out
+    assert "re-certify" in out and "git checkout HEAD -- amp/metrics.py" in out
+    assert "amp/bench.py" not in out, "a scorer the release does not touch is not named"
+
+
+def test_an_update_that_touches_no_signed_scorer_prints_no_warning(tmp_path, capsys):
+    tmpl = make_template(tmp_path)
+    card = {"provenance": {"script": "design/metrics.py", "script_sha": "0" * 64}}
+    design = make_design(
+        tmp_path,
+        {"Makefile": "test:\n\techo one\n", "decks/reference/scorecard.json": json.dumps(card)},
+    )
+    tu = load_from(design, "template_update")
+    tu.URL = str(tmpl)
+    assert tu.update(None) == 0
+    assert "WARNING" not in capsys.readouterr().out
 
 
 # ------------------------------------------------------------------ AT-03 --------------
