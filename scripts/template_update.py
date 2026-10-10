@@ -66,7 +66,9 @@ EXCLUDE = (
 # reduction hook), `sim.py` (the lane wrapper around a design-specific policy), `exp.py`, `plot.py`,
 # `stimulus.py` — is generic work the design SHOULD receive; the three-way merge is what protects
 # the design-specific lines inside them, and a conflict there is a decision, not a failure.
-PKG_EXCLUDE = (":!dut.py",)
+# The pathspec is the template-side path: git resolves it against the repo root, not against the
+# `--relative=design/` prefix, so a bare `:!dut.py` excludes nothing.
+PKG_EXCLUDE = (":!design/dut.py",)
 
 
 def sh(*args: str, cwd: Path = REPO, check: bool = True) -> str:
