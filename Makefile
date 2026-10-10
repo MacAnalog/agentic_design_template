@@ -77,17 +77,23 @@ freeze:  ## write SHA256SUMS into the frozen dirs after a deliberate certificati
 ORCH_PY ?= $(SX_ROOT)/spicexplorer-orchestration/.venv/bin/python
 ORCH_OK = test -x "$(ORCH_PY)" || { if [ -z "$(SX_ROOT)" ]; then echo "SX_ROOT is not set: export SX_ROOT=<your spicexplorer-workspace checkout> (the lab puts it in ~/.sx_env), or set ORCH_PY"; \
 	else echo "no orchestration venv at $(ORCH_PY): run 'make setup' in SX_ROOT, or set ORCH_PY"; fi; exit 2; }
-GEN ?= layout/gen_cell.py
+# GEN empty = the lane's skeleton (scripts/layout_lane.py): layout/gen_cell.py on the open lane,
+# layout/gen_cell_bridge.py on `lane: bridge`, which also needs OA_LIB (and WORKAREA when the kit
+# file's run directory names one) and $SX_KIT_FILE.
+GEN ?=
+OA_LIB ?=
+WORKAREA ?=
 
 size:  ## gm/ID sizing -> optimizer project (workflows.sizing): PLAN=<plan.json> OUT=<dir> (plan netlist paths relative to OUT) ARGS="--table n=<pdk>/<device> ..."; BUDGET=N adds N optimizer trials
 	@$(ORCH_OK)
 	@test -n "$(PLAN)" -a -n "$(OUT)" || { echo "make size needs PLAN=<SizingPlan JSON> and OUT=<dir for sizing.json + project_setup.yaml>, e.g. OUT=experiments/NNN-<slug>/out/sizing"; exit 2; }
 	@$(ORCH_PY) -m spicexplorer_orchestration.workflows.sizing . "$(PLAN)" --out "$(OUT)" $(if $(BUDGET),--optimize-budget $(BUDGET)) $(ARGS)
 
-layout-flow:  ## layout build, DRC, current density, LVS, PEX (workflows.layout): RUN=<run dir> GEN=layout/gen_cell.py ARGS="--netlist ... --cell ..."
+layout-flow:  ## layout build, DRC, current density, LVS, PEX (workflows.layout), lane from harness.yaml: RUN=<run dir> [GEN=...] [OA_LIB=<lib> WORKAREA=<dir> on lane: bridge] ARGS="--netlist ... --cell ..."
 	@$(ORCH_OK)
 	@test -n "$(RUN)" || { echo "make layout-flow needs RUN=<run dir>, e.g. RUN=\$$SX_SCRATCH/<design>-layout (GDS and reports are scratch until signed off into signoff/layout/)"; exit 2; }
-	@$(ORCH_PY) -m spicexplorer_orchestration.workflows.layout . --generator "$(GEN)" --run-dir "$(RUN)" $(ARGS)
+	@lane=$$($(PY) scripts/layout_lane.py --gen "$(GEN)" --lib "$(OA_LIB)" --workarea '$(WORKAREA)') || { echo "$$lane"; exit 2; }; \
+	 $(ORCH_PY) -m spicexplorer_orchestration.workflows.layout . $$lane --run-dir "$(RUN)" $(ARGS)
 
 # The scratch report runs WHATEVER the probe said, and the PROBE's exit code is what `make doctor`
 # returns: a down lane is exactly when nobody looks at the disk, and 212 GB of already-reduced

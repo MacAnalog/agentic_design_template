@@ -28,6 +28,7 @@ from __future__ import annotations
 import sys
 import time
 from pathlib import Path
+from typing import Any
 
 from spicexplorer_harness import batch, log_run
 from spicexplorer_harness.lifecycle import (  # noqa: F401 - re-exported: callers use metrics.CertifyRefused/Drift
@@ -73,7 +74,13 @@ def measure(deck: str, tag: str, bench: str = "") -> dict:
     return {**r.measures, **bench_mod.reduce(bench, r), **{k: float("nan") for k in r.failed}}
 
 
-def run_decks(decks: dict[str, str], tag: str, *, record: bool = True) -> tuple[dict, dict]:
+def run_decks(
+    decks: dict[str, str],
+    tag: str,
+    *,
+    record: bool = True,
+    run_kwargs: dict[str, Any] | None = None,
+) -> tuple[dict, dict]:
     """Simulate `{bench: deck}` in parallel; return (scorecard values, per-bench records).
 
     A key may be the bench name or the deck's FILE name (`op` or `op.spice`) — the lifecycle hands
@@ -84,6 +91,11 @@ def run_decks(decks: dict[str, str], tag: str, *, record: bool = True) -> tuple[
     and the scorecard says which ones are missing. Three statuses — `ok` (it ran and every measure
     came out), `meas_error` (it ran; at least one `.meas` did not, so its column is NaN) and
     `sim_error` (it did not run). Only `ok` is a bench `certify()` will freeze.
+
+    `run_kwargs` go to every `sim.run` call unchanged: the lane's own options, such as the bridge
+    lane's `extra_files` (a file staged beside each deck, like the DSPF `layout/signoff.py`
+    benches on). The post-layout row passes them so it is measured through this same function as
+    the pre-layout row.
     """
 
     named = {Path(k).stem: v for k, v in decks.items()}
@@ -92,7 +104,7 @@ def run_decks(decks: dict[str, str], tag: str, *, record: bool = True) -> tuple[
         t0 = time.perf_counter()
         rec: dict = {"bench": bench, "deck": named[bench]}
         try:
-            r = sim.run(named[bench], f"{tag}__{bench}")
+            r = sim.run(named[bench], f"{tag}__{bench}", **(run_kwargs or {}))
             # the package-level reduction is merged into the record BEFORE anything is promoted,
             # logged or frozen — that is what makes a post-processed number certifiable at all
             failed = list(r.failed)

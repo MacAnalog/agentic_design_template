@@ -17,6 +17,102 @@ Versions are `MAJOR.MINOR`, written `#.##`:
 `make template-status` prints the recorded version and the latest release. Releases are git
 tags, `v<version>`.
 
+## v2.15 (unreleased) — the commercial-kit layout lane, private per-kit skills, one PDK id
+
+Minor. No module is renamed and every lifecycle command keeps its name. The bridge-lane layout
+path needs a platform with `spicexplorer_core.kit`, `spicexplorer_layout.backends`,
+`spicexplorer_signoff.calibre` and `spicexplorer_spectre.postlayout` (platform f34c46f or later:
+MacAnalog/spicexplorer-platform#346, #347, #349, #353), and `make layout-flow` on that lane needs
+the orchestration kit lane (MacAnalog/spicexplorer-orchestration#56). The open lane runs on the
+platform v2.14 named. The tests replace those modules with stand-ins, so `make test` passes on
+either platform.
+
+| change | files | carried by `make template-update` |
+|---|---|---|
+| `make layout-flow` picks the lane from `lane:` | `Makefile`, `scripts/layout_lane.py` | yes |
+| the bridge-lane generator skeleton | `layout/gen_cell_bridge.py` | no: `layout/` is the design's; copy it by hand (below) |
+| `layout/signoff.py` on the bridge lane | `layout/signoff.py` | no: `layout/` is the design's; merge the bridge section by hand (below) |
+| `metrics.run_decks(run_kwargs=...)` | `design/metrics.py` | yes (`design/` is re-rooted onto `<package>/`) |
+| the private per-kit skill library, one PDK id | `scripts/pdk_links.py`, `scripts/lint.py` | yes |
+| the lane-aware denylist | `scripts/lint.py` (`lane_denylist`, `denylist_lanes`) | yes |
+| `exempt_lanes: [bridge]` on two denylist entries; the editor pattern skips a dotted module path | `harness.yaml` | no: edit `denylist:` by hand (below) |
+| rows for the bridge layout lane | `CLAUDE.md` | yes |
+| rows for the bridge layout lane | `doc/environment.md`, `pyproject.toml` (comments) | no: `doc/` and `pyproject.toml` are the design's; add the rows by hand (below) |
+| the layout plan skeleton: plan before geometry, plan review, revisit after each feedback | `CLAUDE.md` | yes |
+| the layout plan skeleton: plan before geometry, plan review, revisit after each feedback | `layout/PLAN.template.md`, `doc/environment.md` (row `layout plan`) | no: copy the skeleton and add the row by hand (below) |
+| the layout-lane tests skip, naming the hand step, until the `layout/` files are across | `tests/test_layout_lane.py` | yes |
+
+- **`make layout-flow` reads `lane:`** through `scripts/layout_lane.py` (standard library only):
+  - **absent:** `--generator layout/gen_cell.py`, as before; `GEN=` still overrides it.
+  - **`bridge`:** `--generator layout/gen_cell_bridge.py --tech '$SX_KIT_FILE' --lib <OA_LIB>`
+    (`--workarea <WORKAREA>` when given). The literal `$SX_KIT_FILE` is passed, so the kit path
+    never reaches a verdict or the ledger. It exits 2 before the workflow starts when
+    `SX_KIT_FILE` is unset or `OA_LIB` is empty, and on any other `lane:` value.
+- **`layout/gen_cell_bridge.py`** is the generator contract of the orchestration kit lane:
+  `LayoutParams`, `BOUNDS`, `plan(params, kit) -> LayoutPlan`. `layout_params` refuses an unknown
+  knob and a value outside `BOUNDS`; every kit fact is read from the kit by name. LVS on this lane
+  compares with the cell's schematic view, so there is no `write_lvs_reference`.
+- **`layout/signoff.py` dispatches on `lane:`.** The open lane is unchanged. On `lane: bridge`:
+  `build` writes the SKILL file (`--load` loads it, which replaces the cell's layout view);
+  `drc`, `lvs` and `pex` come from one batch run on the EDA server; `jmax` is recorded as skipped
+  (the kit file has no electromigration table); `benches` splices the DSPF into the cell's own
+  benches (`DROP_INCLUDES` lists the includes that define the schematic subckt) and runs them
+  through `metrics.run_decks` with the DSPF staged beside each deck. `--stages` defaults to every
+  stage of the lane and refuses a stage of the other lane. `--lib` / `$<PREFIX>_OA_LIB` and
+  `--workarea` / `$<PREFIX>_WORKAREA` name the OA library and the workarea.
+- **`layout/PLAN.template.md`** is the plan a designer copies to `layout/<cell>/PLAN.md` before
+  the generator draws anything: research inputs from `BRIEF.md` and `LAYOUT-RESEARCH.md`, outline
+  and aspect, device groups and matching patterns, dummies, guard rings and taps, pin frame, a per-net metal stack table
+  (layer keys, width for current, vias per transition, shield), the knobs, the plan review (the
+  reviewer's `PLAN-REVIEW.md` committed beside the plan; geometry starts when it reads
+  `ALL PASS (layout)`; the first review is renamed `PLAN-REVIEW-1.md` before the second dispatch,
+  and a second plan review with open findings stops the run and hands back with both)
+  and a *Plan revisions* table under a `plan-version:` line: after each DRC run, LVS compare,
+  extraction, post-layout bench run and review round, one row per changed decision (version,
+  round, decision from -> to, the feedback that drove it, its evidence path), or a `geometry only`
+  row when no decision changes. Geometry review rounds are at most 4. This matches the library's
+  `layout-designer` definition. It names kit-file layer keys
+  and rules by name, never a kit value.
+- **`metrics.run_decks(..., run_kwargs=...)`** passes the lane's options to every `sim.run`, so
+  the post-layout row with a staged DSPF is measured by the same function as the pre-layout row.
+- **Private per-kit skills.** `$SX_KIT_SKILLS=<clone>` makes `make init` / `make skills-update`
+  also run `sx-link . --library <clone> --set pdk`, and write each link to the clone's
+  `info/exclude`, so a link into a private repo is never committed. A clone without
+  `linksets/pdk.txt` is an error. `make lint` checks that link; on `lane: bridge` with a `pdk:`
+  the shared library has no set for, it fails when no `pdk-<id>` skill is linked.
+- **One PDK id.** `pdk:` is looked up as the harness's ratified id
+  (`spicexplorer_harness.fleet.pdk_id`), then as written, then as each registry token of that id.
+  The id comes from the harness, never from a copy of its table. `make lint` warns when `pdk:` is
+  a registry token and names the ratified id.
+- **The lane-aware denylist.** A `denylist:` entry with `exempt_lanes: [bridge]` is dropped on that
+  lane only; both harness checks that read the list see the filtered one. `denylist_lanes` fails
+  on an `exempt_lanes` that is not a list of lane names.
+
+### Taking it
+
+1. `make template-update`. It carries `Makefile`, `scripts/`, `tests/`, `CLAUDE.md` and
+   `<package>/metrics.py`; it never touches `layout/`, `doc/`, `pyproject.toml` or `harness.yaml`,
+   which a design owns.
+2. Bring the `layout/` files and the doc rows across by hand, from the release tag the update
+   fetched:
+   - `git checkout v2.15 -- layout/gen_cell_bridge.py layout/PLAN.template.md`
+   - `layout/signoff.py`: compare with `git diff v2.14 v2.15 -- layout/signoff.py` and take the
+     bridge section and the new `main`, keeping your `CELL`, `BUDGETS` and `PDK`.
+   - `doc/environment.md`: take the rows `layout lane` to `bridge profile` and `physical lanes`
+     from `git show v2.15:doc/environment.md`.
+   - `pyproject.toml`: a bridge-lane design that runs `layout/signoff.py` adds
+     `spicexplorer-layout` and `"spicexplorer-signoff[remote]"` (the template's comment there names
+     both).
+   Until the first two files and the bridge section are across, the layout-lane tests skip with a
+   reason naming this step.
+3. In `harness.yaml`, give the simulator and editor entries of `denylist:` the key
+   `exempt_lanes: [bridge]` (the template's own list shows both), and write the editor pattern
+   with the lookbehind `(?<!\\.)` before `\\b`, so `layout/gen_cell_bridge.py`'s import line is
+   not a hit. A design that had deleted an entry for the bridge lane restores it with the key.
+4. `make test`.
+5. A commercial-kit design: export `SX_KIT_FILE` and `SX_KIT_SKILLS` (doc/environment.md), run
+   `make init`, then `make lint`.
+
 ## v2.14 — per-PDK skills, the context pack at session start, `make size` and `make layout-flow`
 
 Minor. No module is renamed and every lifecycle command keeps its name; `make size` and

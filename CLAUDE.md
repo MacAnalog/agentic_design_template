@@ -98,7 +98,8 @@ undeclared case: an artefact somewhere nobody wrote down.
   bare pack: the `SessionStart` hook, `doc/memory/README.md` §1); re-run with `S="<failure
   signature>"` before diagnosing anything new. `make runs ARGS="--fails | --best <metric> | --exp
   NNN"` reads the ledger every `metrics.evaluate()` appends to.
-- `make size PLAN=<plan.json> OUT=<dir>` (the plan's netlist paths are relative to OUT) / `make layout-flow RUN=<dir>` — the orchestration
+- `make size PLAN=<plan.json> OUT=<dir>` (the plan's netlist paths are relative to OUT) / `make layout-flow RUN=<dir>`
+  (`OA_LIB=<lib>` on `lane: bridge`) — the orchestration
   workflows `workflows.sizing` (gm/ID sizing → optimizer project; `BUDGET=N` adds the optimize
   step) and `workflows.layout`, run from `$SX_ROOT`'s orchestration venv; the rest through `ARGS`.
 - `make template-status` / `make template-update` — this repo was **copied** from the template, so
@@ -134,6 +135,27 @@ undeclared case: an artefact somewhere nobody wrote down.
   uploaded by basename with *relative* `include`s, simulated there, and only results come back. Kit bytes never reach
   the workstation or the model — anything under `/CMC` asks for the person's permission (the one hook); every
   server-side artifact is design-named, never tool-named.
+- **Layout follows the same key.** `lane:` absent → `layout/gen_cell.py` (gdsfactory → GDS) and the open sign-off
+  (KLayout DRC/LVS, kpex). `lane: bridge` → `layout/gen_cell_bridge.py` returns a `LayoutPlan`; `make layout-flow
+  OA_LIB=<lib>` and `layout/signoff.py` build the cell in the design's OA library on the EDA server, run one batch
+  DRC/LVS/PEX there, and re-run the benches on the extracted DSPF. Every kit fact comes from the kit file
+  `$SX_KIT_FILE` names and from the linked `pdk-<id>` skill (`$SX_KIT_SKILLS`, `make init`); none is written in this
+  repo (`doc/environment.md`, rows `layout lane` to `bridge profile`).
+- **A layout is planned before it is drawn, and the plan is revisited after sign-off feedback.** `layout-brief-author`
+  researches the block (symmetry, gradient, stress and temperature sensitivity, parasitic-sensitive nets,
+  electromigration, RF budgets) and derives the strategy per device group with reasons; matching patterns, dummies
+  and shielding are tools chosen for a reason, not defaults. `layout-designer` then copies `layout/PLAN.template.md`
+  to `layout/<cell>/PLAN.md` and fills in outline, device groups and matching patterns, dummies, guard rings, pin
+  frame and the per-net metal stack (layers, widths for current, via counts, shields) before any geometry;
+  `layout-reviewer` researches the block on its own and reviews the plan before the generator is written; its
+  `PLAN-REVIEW.md` is committed beside the plan, the first one renamed to `PLAN-REVIEW-1.md` before the second
+  dispatch, and if the second plan review still has open findings the designer stops and hands back with
+  `PLAN-REVIEW-1.md` and `PLAN-REVIEW.md`. After each DRC run, LVS compare, extraction, post-layout bench run
+  (the cell's frozen benches on the extracted netlist, with the shift of each metric attributed to nets) and review
+  round, the designer revisits the plan's decisions: a changed decision raises `plan-version:` and adds a *Plan
+  revisions* row with the feedback that drove it and its evidence path, an unchanged one a `geometry only` row.
+  Geometry review rounds are at most 4. On the bridge lane these agents read the kit only through the kit file, the `pdk-<id>`
+  skill and their run-dir outputs; the kit file is written once per kit, in a session the person attends.
 - **A model library that lives only on some machines is named in a deck by variable, never by path.**
   The deck text writes `$VAR`, `<package>.sim.DECK_VARS` declares it, `sim.run` resolves it against
   this machine as the deck is handed to the simulator, and `doc/environment.md` pins WHICH library by

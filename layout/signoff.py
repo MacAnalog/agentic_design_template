@@ -6,6 +6,19 @@ sequences them and writes the verdicts a reviewer reads. Imports are lazy so the
 
     <PREFIX>_EXP=005 uv run --no-sync python layout/signoff.py --all
 
+**Two lanes, picked by `lane:` in harness.yaml** (the key that picks the simulator lane):
+
+* absent, the open lane: the stages below, on this machine (gdsfactory, KLayout, kpex).
+* `bridge`, a commercial kit: `main_bridge`. The generator is `layout/gen_cell_bridge.py`
+  (`plan(params, kit) -> LayoutPlan`); `build` writes the SKILL file that builds the cell in the
+  design's OA library on the EDA server (and loads it with `--load`); one batch run there streams
+  the cell out and answers DRC, LVS and PEX together (`spicexplorer_signoff.calibre.run_calibre`);
+  `benches` re-runs the cell's own benches on the extracted DSPF
+  (`spicexplorer_spectre.postlayout.splice_dspf`) through the same `metrics.run_decks`. There is no
+  render (the layer colours are kit data) and no `jmax` (the kit file has no electromigration
+  table, so the stage is recorded as skipped). Every kit fact comes from the kit file
+  `$SX_KIT_FILE` names; `signoff.json` and `scorecard.md` have the same shape on both lanes.
+
 **Two interpreters, deliberately.** The generator needs gdsfactory + the PDK cells; DRC/LVS/PEX
 are KLayout runsets and kpex driven from this venv:
 
@@ -38,7 +51,9 @@ The five lessons baked into the stage functions:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import importlib
+import importlib.util
 import json
 import os
 import sys
@@ -79,6 +94,13 @@ def _prefix(h) -> str:
 PREFIX = _prefix(H)
 GDS_PYTHON_ENV = f"{PREFIX}_GDS_PYTHON"
 PDK_ENV = f"{PREFIX}_PDK"
+LANE = str(getattr(H, "lane", "") or "")
+OA_LIB_ENV = f"{PREFIX}_OA_LIB"
+WORKAREA_ENV = f"{PREFIX}_WORKAREA"
+GEN_BRIDGE = Path(__file__).resolve().parent / "gen_cell_bridge.py"
+# Bridge lane: the `include` files of the benches that define the schematic subckt of CELL; the
+# DSPF defines it after the splice, so each one is dropped from the post-layout decks.
+DROP_INCLUDES: list[str] = []
 
 
 def pdk() -> str:
@@ -255,6 +277,243 @@ def benches(pex_netlist: Path, out: Path, tag: str = "postlayout") -> dict:
     return rec
 
 
+# ------------------------------------------------------------------ bridge lane -------
+
+
+def kit():
+    """The kit file `$SX_KIT_FILE` names (`spicexplorer_core.kit`); unset is an error with its fix."""
+    from spicexplorer_core.kit import KIT_FILE_ENV, load_kit
+
+    if not os.environ.get(KIT_FILE_ENV, "").strip():
+        raise SystemExit(
+            f"lane: bridge reads every kit fact from the kit file, and {KIT_FILE_ENV} is unset."
+            f"\n    FIX: export {KIT_FILE_ENV}=<the kit YAML in the private repo that owns the "
+            "kit> (doc/environment.md, row `kit file`)"
+        )
+    return load_kit()
+
+
+def oa_lib(given: str | None = None) -> str:
+    """The OA library the cell is built and checked in: `--lib`, else `$<PREFIX>_OA_LIB`."""
+    lib = given or os.environ.get(OA_LIB_ENV, "")
+    if not lib:
+        raise SystemExit(
+            f"lane: bridge builds {CELL} in an OA library on the EDA server, and none is named."
+            f"\n    FIX: pass --lib <library> or export {OA_LIB_ENV}=<library> (doc/environment.md,"
+            " row `OA library`); name it for the design, never for a tool"
+        )
+    return lib
+
+
+def _generator_plan(gen: Path):
+    """`plan(params, kit)` of the bridge-lane generator module at `gen`."""
+    spec = importlib.util.spec_from_file_location(f"_{gen.stem}_bridge_generator", gen)
+    if spec is None or spec.loader is None:
+        raise SystemExit(f"cannot load the generator {gen}")
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod  # a dataclass in the generator looks its module up here
+    spec.loader.exec_module(mod)
+    fn = getattr(mod, "plan", None)
+    if not callable(fn):
+        raise SystemExit(f"{gen.name} defines no plan(params, kit): see layout/gen_cell_bridge.py")
+    return fn
+
+
+def build_bridge(
+    out: Path,
+    lib: str,
+    params: dict | None = None,
+    *,
+    gen: Path | None = None,
+    load: bool = False,
+    client=None,
+) -> dict:
+    """The generator's `LayoutPlan` -> the SKILL file that builds the cell in `lib`.
+
+    With `load`, the file is loaded into the running editor session through the bridge, which
+    REPLACES the cell's `layout` view in `lib`, hand edits included; without it, nothing leaves
+    this machine.
+    """
+    from spicexplorer_layout.backends.virtuoso import load_layout, write_skill
+
+    k = kit()
+    plan = _generator_plan(gen or GEN_BRIDGE)(dict(params or {}), k)
+    if plan.cell != CELL:
+        raise SystemExit(f"the generator builds cell {plan.cell!r}, this file signs off {CELL!r}")
+    il = write_skill(plan, k, out / "skill" / f"{plan.cell}_layout.il", lib=lib)
+    rec = {
+        "skill": str(il),
+        "cell": plan.cell,
+        "lib": lib,
+        "kit": k.info.name,
+        "params": dict(params or {}),
+        "instances": len(plan.instances),
+        "loaded": False,
+    }
+    if load:
+        outcome = load_layout(il, client=client)
+        rec.update(loaded=outcome.ok, load_error=outcome.error or "")
+        if not outcome.ok:
+            raise SystemExit(f"loading {il.name} into the editor failed: {outcome.error}")
+    print(f"  SKILL: {il.name} instances={rec['instances']} loaded={rec['loaded']}")
+    return rec
+
+
+def checks_bridge(
+    out: Path, lib: str, checks: tuple[str, ...], *, workarea: str | None = None, runner=None
+):
+    """One batch run on the EDA server for every check in `checks` (`drc`, `lvs`, `pex`).
+
+    The layout is streamed out of `lib` and the schematic view there is the LVS and PEX source,
+    so no local GDS or netlist is an input. `runner` is the remote runner (None: this account's
+    bridge profile); the run directory and its `run_meta.json` are under `out/calibre/`.
+    """
+    from spicexplorer_signoff.calibre import CalibreJob, run_calibre
+
+    job = CalibreJob(cell=CELL, lib=lib, checks=checks, workarea=workarea)
+    run = run_calibre(kit(), job, work_root=out / "calibre", runner=runner)
+    print(f"  checks {','.join(checks)}: status={run.status} {run.reason}".rstrip())
+    return run
+
+
+def drc_bridge(run) -> dict:
+    """DRC from the batch run. `passed` counts the non-density results only; the density results
+    are reported beside them (`n_density_violations`) and are met by fill, never waived by hand."""
+    r = run.drc
+    if r is None:
+        return {"passed": False, "available": False, "reason": run.reason or "DRC did not run"}
+    n_density = int(getattr(r, "n_density_violations", 0) or 0)
+    print(f"  DRC: passed={r.passed} violations={r.n_violations} density={n_density}")
+    return _record(r, lane="bridge", violations_per_rule=violation_counts(r.violations))
+
+
+def lvs_bridge(run) -> dict:
+    r = run.lvs
+    if r is None:
+        return {"matched": False, "available": False, "reason": run.reason or "LVS did not run"}
+    rec = _record(r, lane="bridge", matched=bool(r.matched))
+    if not r.matched and not (r.reason or "").strip():
+        rec["log_tail"] = (r.log or "")[-1500:]
+    print(f"  LVS: matched={bool(r.matched)}")
+    return rec
+
+
+def pex_bridge(run) -> dict:
+    """PEX from the batch run: the DSPF path and its port order, which `benches_bridge` needs."""
+    r = run.pex
+    if r is None:
+        return {"ok": False, "available": False, "reason": run.reason or "PEX did not run"}
+    top = sorted(((v, k) for k, v in (r.per_net_c_ff or {}).items()), reverse=True)[:12]
+    print(f"  PEX: ok={r.ok} n_C={r.n_c} n_R={r.n_r} ports={len(r.port_order or [])}")
+    return _record(
+        r,
+        lane="bridge",
+        top_c_ff={k: round(v, 3) for v, k in top},
+        log_tail="" if r.ok else (r.log or "")[-1500:],
+    )
+
+
+def benches_bridge(dspf: Path, port_order: list[str], out: Path, tag: str = "postlayout") -> dict:
+    """The post-layout scorecard on the bridge lane: the cell's OWN benches on its DSPF.
+
+    `splice_dspf` rewires every instance of CELL into the DSPF's port order and inserts the
+    `dspf_include` line; the DSPF itself is staged beside each deck (the lane uploads by
+    basename). Same benches, same `metrics.run_decks`, so the two columns compare.
+
+    The staged copy is named for its content (`<cell>.<sha256[:12]>.dspf`). The lane keys a run
+    directory on the deck text alone and re-attaches to a run of the same deck, so a DSPF staged
+    under one fixed name would let a re-extracted layout reuse the previous extraction's run.
+    """
+    from spicexplorer_spectre.postlayout import splice_dspf
+
+    text = dspf.read_text(errors="replace")
+    staged_name = f"{CELL}.{hashlib.sha256(text.encode()).hexdigest()[:12]}.dspf"
+    pre_decks = {b: REFERENCE.deck(b) for b in REFERENCE.benches()}
+    post_decks: dict[str, str] = {}
+    rewired: dict[str, int] = {}
+    for b, deck in pre_decks.items():
+        sp = splice_dspf(
+            deck,
+            dspf,
+            port_order,
+            cell=CELL,
+            drop_includes=DROP_INCLUDES,
+            include_as=staged_name,
+        )
+        post_decks[b], rewired[b] = sp.deck, len(sp.instances)
+    staged = {"extra_files": {staged_name: text}}
+    pre, _ = M.run_decks(pre_decks, f"{tag}_pre")
+    post, post_rec = M.run_decks(post_decks, f"{tag}_post", run_kwargs=staged)
+    from spicexplorer_harness import violations as _viol
+
+    rec = {
+        "pre": pre,
+        "post": post,
+        "pre_violations": _viol(H.spec, pre),
+        "post_violations": _viol(H.spec, post),
+        "bench_status": {b: r["status"] for b, r in sorted(post_rec.items())},
+        "rewired_instances": rewired,
+        "dspf": staged_name,
+    }
+    table = M.table({"pre-layout (schematic)": pre, "post-layout (extracted)": post})
+    (out / "scorecard.md").write_text(table + "\n")
+    print("\n" + table)
+    return rec
+
+
+STAGES_BRIDGE = ("build", "drc", "jmax", "lvs", "pex", "benches")
+CHECK_STAGES = ("drc", "lvs", "pex")
+
+
+def main_bridge(a: argparse.Namespace, out: Path, stages: tuple[str, ...], *, runner=None) -> dict:
+    """The bridge lane's stages (`lane: bridge`); returns the `signoff.json` record."""
+    lib = oa_lib(a.lib)
+    workarea = a.workarea or os.environ.get(WORKAREA_ENV) or None
+    params = json.loads(a.params) if a.params else {}
+    if a.sizing:
+        params.setdefault("sizing", a.sizing)
+    rec: dict = {"lane": "bridge"}
+    if "build" in stages:
+        print("build:")
+        rec["build"] = build_bridge(out, lib, params, load=a.load)
+    checks = tuple(c for c in CHECK_STAGES if c in stages)
+    if checks:
+        run = checks_bridge(out, lib, checks, workarea=workarea, runner=runner)
+        rec["calibre_run"] = {"dir": str(run.dir), "status": run.status, "reason": run.reason}
+        if "drc" in checks:
+            print("drc:")
+            rec["drc"] = drc_bridge(run)
+        if "lvs" in checks:
+            print("lvs:")
+            rec["lvs"] = lvs_bridge(run)
+        if "pex" in checks:
+            print("pex:")
+            rec["pex"] = pex_bridge(run)
+    if "jmax" in stages:
+        reason = "the kit file carries no electromigration table, so no budget can be scored"
+        print(f"  Jmax: skipped ({reason})")
+        rec["current_density"] = {"skipped": True, "passed": False, "reason": reason}
+    if "benches" in stages:
+        pex = rec.get("pex") or _previous(out).get("pex") or {}
+        dspf, ports = pex.get("netlist_path"), list(pex.get("port_order") or [])
+        if not dspf or not Path(dspf).is_file() or not ports:
+            raise SystemExit(
+                f"no DSPF with a port order under {out}: run the pex stage first (this run or "
+                "an earlier one into the same --out)"
+            )
+        print("benches:")
+        rec["benches"] = benches_bridge(Path(dspf), ports, out)
+    return rec
+
+
+def _previous(out: Path) -> dict:
+    """The `signoff.json` an earlier run wrote into `out`, or {}."""
+    try:
+        return json.loads((out / "signoff.json").read_text())
+    except (OSError, ValueError):
+        return {}
+
+
 # ------------------------------------------------------------------ driver ------------
 
 STAGES = ("build", "render", "drc", "jmax", "lvs", "pex", "benches")
@@ -263,14 +522,31 @@ STAGES = ("build", "render", "drc", "jmax", "lvs", "pex", "benches")
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=f"{CELL} layout sign-off")
     ap.add_argument("--out", default=str(work() / "layout"))
-    ap.add_argument("--stages", default=",".join(STAGES))
+    ap.add_argument("--stages", default="", help="comma list (default: every stage of the lane)")
     ap.add_argument("--all", action="store_true", help="every stage (the default set)")
     ap.add_argument("--density", action="store_true", help="include the DRC density/fill tables")
     ap.add_argument("--sizing", default=None, help="design.json the generator reads sizes from")
+    ap.add_argument("--params", default=None, help="bridge lane: generator params as JSON")
+    ap.add_argument("--lib", default=None, help=f"bridge lane: the OA library (or ${OA_LIB_ENV})")
+    ap.add_argument("--workarea", default=None, help=f"bridge lane: the workarea (${WORKAREA_ENV})")
+    ap.add_argument(
+        "--load",
+        action="store_true",
+        help="bridge lane: load the SKILL into the running editor (replaces the layout view)",
+    )
     a = ap.parse_args(argv)
     out = Path(a.out).resolve()
     out.mkdir(parents=True, exist_ok=True)
-    stages = STAGES if a.all else tuple(s for s in a.stages.split(",") if s)
+    lane_stages = STAGES_BRIDGE if LANE == "bridge" else STAGES
+    stages = lane_stages if a.all or not a.stages else tuple(s for s in a.stages.split(",") if s)
+    unknown = sorted(set(stages) - set(lane_stages))
+    if unknown:
+        raise SystemExit(f"unknown stage(s) {unknown} on lane {LANE or 'open'}: {lane_stages}")
+    if LANE == "bridge":
+        rec = main_bridge(a, out, stages)
+        (out / "signoff.json").write_text(json.dumps(rec, indent=1, default=str) + "\n")
+        print("\nwrote", out / "signoff.json")
+        return 0
     gds, netlist = out / f"{CELL}.gds", out / f"{CELL}_lvs.spice"
     rec: dict = {}
     if "build" in stages:
