@@ -32,7 +32,7 @@ match its `--tech`, `--lib` and `--workarea` options and its `plan(params, kit)`
 ce06414. Until it merges, `make layout-flow` on `lane: bridge` exits 2 in the workflow's argument
 parser (`unrecognized arguments: --lib`), and `layout/signoff.py` is the bridge-lane path. The
 tests replace those modules with stand-ins, so `make test` passes on either platform.
-`.sx/skills` is library main at ff1f7f9.
+`.sx/skills` is the library at ff1f7f9 (MacAnalog/analog-skill-directory#108).
 The release also records the six changes merged since the v2.14 tag (template#49 to #54).
 
 | change | files | carried by `make template-update` |
@@ -101,7 +101,7 @@ The release also records the six changes merged since the v2.14 tag (template#49
 - **The lane-aware denylist.** A `denylist:` entry with `exempt_lanes: [bridge]` is dropped on that
   lane only; both harness checks that read the list see the filtered one. `denylist_lanes` fails
   on an `exempt_lanes` that is not a list of lane names.
-- **`.sx/skills` moves from 0c2bf08 (v2.14) to ff1f7f9**, library main: fce2bf2 (template#53),
+- **`.sx/skills` moves from 0c2bf08 (v2.14) to ff1f7f9**: fce2bf2 (template#53),
   8c4929a (template#54), then MacAnalog/analog-skill-directory#106 and #108 in this release. The
   `design` link set goes from 10 agents and 19 skills to 15 agents and 25 skills:
   - template#53: the four use-case agents (design-tutor, troubleshooter, design-customizer,
