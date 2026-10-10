@@ -153,7 +153,8 @@ def status() -> int:
 def signed_scorers() -> dict[str, list[str]]:
     """`{scorer path: [scorecard.json, ...]}` for every tracked scorecard that records the scorer
     it was signed with — `script` beside `script_sha`, at the top level or under `provenance:`
-    (both shapes `spicexplorer_harness.scorecard` reads). A release that changes one of those
+    (both shapes `spicexplorer_harness.scorecard` reads; the top level is checked first and
+    the first block carrying both keys counts). A release that changes one of those
     files changes its sha256, and `scorecard-recompute` then fails on every card naming it."""
     out: dict[str, list[str]] = {}
     for card in sh("git", "ls-files", "-z", "--", "*scorecard.json", check=False).split("\0"):

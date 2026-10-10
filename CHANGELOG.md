@@ -30,7 +30,7 @@ platform floor as v2.15; `.sx/skills` stays at ff1f7f9.
 | `make layout-flow`'s test is lane-aware: on `lane: bridge` it asserts the refusal | `tests/test_orchestration_targets.py` | yes |
 | `make layout-flow` reads `$<PREFIX>_OA_LIB` / `$<PREFIX>_WORKAREA` when `OA_LIB` / `WORKAREA` are empty | `scripts/layout_lane.py`, `Makefile` | yes |
 | the `OA library` and `workarea` rows name the fallback | `doc/environment.md`, `CLAUDE.md`, `README.md` | `CLAUDE.md` yes; `doc/` and `README.md` no: edit the two rows by hand (below) |
-| the open-lane fixtures of `test_pdk_links.py` drop the design's `lane:` | `tests/test_pdk_links.py` | yes |
+| the open-lane fixtures of `test_pdk_links.py` drop the design's `lane:`, and the no-`pdk:` case its `pdk:` | `tests/test_pdk_links.py` | yes |
 | no test inherits `SX_KIT_FILE` / `SX_KIT_SKILLS` | `tests/conftest.py`, `tests/test_orchestration_targets.py`, `tests/test_layout_lane.py` | yes |
 | the `run_decks` test imports `<package>.metrics` through `package:` | `tests/test_layout_lane.py` | yes |
 | `make template-update` warns when it changes a signed scorer | `scripts/template_update.py`, `tests/test_template_scripts.py` | yes |
@@ -83,7 +83,7 @@ platform floor as v2.15; `.sx/skills` stays at ff1f7f9.
 ### Taking it
 
 1. `make template-update`. It carries `scripts/`, `tests/`, the `Makefile`, `CLAUDE.md` and
-   `CHANGELOG.md`; no file of the package changes. The `git checkout v2.16 -- ...` line in step 2
+   `CHANGELOG.md`; no file of the package changes. The `git show v2.16:...` in step 2
    needs the tag locally: the update fetches it; offline, run `git fetch --tags template` first.
    A design that edited a test this release changes (most likely `tests/test_pdk_links.py` or
    `tests/test_orchestration_targets.py`) may see a conflict: take the template's side, then

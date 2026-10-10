@@ -101,7 +101,7 @@ def _calls(log: Path) -> list[str]:
 
 
 def test_nothing_is_linked_without_a_declared_pdk(tmp_path, capsys):
-    (tmp_path / "harness.yaml").write_text(TEMPLATE_YAML)
+    (tmp_path / "harness.yaml").write_text(_with_pdk(""))
     log = _library(tmp_path, sets=("design", "pdk-ihp-sg13g2"))
     assert pdk_links.main(tmp_path) == 0
     assert _calls(log) == [] and capsys.readouterr().out == ""
