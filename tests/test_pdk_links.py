@@ -36,13 +36,16 @@ def _no_private_library(monkeypatch):
     monkeypatch.delenv(pdk_links.KIT_SKILLS_ENV, raising=False)
 
 
-def _with_pdk(line: str) -> str:
-    """This checkout's harness.yaml with its `pdk:` line replaced by `line` ("" drops it). A design
-    that has not added `pdk:` yet (CHANGELOG v2.14, Taking it, step 2) gets the line appended, so
-    these tests do not depend on that step."""
-    out, n = re.subn(r"^pdk:.*$", line, TEMPLATE_YAML, count=1, flags=re.MULTILINE)
+def _with_pdk(line: str, base: str = TEMPLATE_YAML) -> str:
+    """This checkout's harness.yaml with its `pdk:` line replaced by `line` ("" drops it) and on
+    the open lane: a top-level `lane:` line is removed, so a design on `lane: bridge` gets the same
+    fixture as the template, and a case that wants the bridge lane appends the line itself. A
+    design that has not added `pdk:` yet (CHANGELOG v2.14, Taking it, step 2) gets the line
+    appended, so these tests do not depend on that step."""
+    open_lane = re.sub(r"^lane:.*\n?", "", base, flags=re.MULTILINE)
+    out, n = re.subn(r"^pdk:.*$", line, open_lane, count=1, flags=re.MULTILINE)
     if n == 0:
-        out = TEMPLATE_YAML.rstrip("\n") + "\n" + (line + "\n" if line else "")
+        out = open_lane.rstrip("\n") + "\n" + (line + "\n" if line else "")
     return out
 
 
@@ -316,4 +319,12 @@ def test_lint_accepts_a_bridge_lane_kit_skill_linked_by_hand(tmp_path):
 
 def test_lint_needs_no_private_library_on_the_open_lane(tmp_path):
     L, _ = _lint_repo(tmp_path, "pdk: kitx")
+    assert pdk_links.declared((tmp_path / "harness.yaml").read_text(), "lane") == ""
     assert L.fails == []
+
+
+def test_the_fixture_is_on_the_open_lane_whatever_this_checkout_declares():
+    """A design on `lane: bridge` runs these tests against its own harness.yaml."""
+    bridge = _with_pdk("pdk: kitx") + "lane: bridge   # a commercial kit\n"
+    text = _with_pdk("pdk: other", base=bridge)
+    assert pdk_links.declared(text, "lane") == "" and pdk_links.declared_pdk(text) == "other"

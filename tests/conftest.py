@@ -4,7 +4,9 @@ Each checkout has its own base folder, `pytest/<folder name>-<first 8 hex of the
 resolved path>`: pytest empties the base folder when a run starts, so two checkouts with the same
 folder name must not share one (template#43).
 
-No test or fixture sees GIT_DIR, GIT_WORK_TREE or GIT_INDEX_FILE from the caller's environment.
+No test or fixture sees GIT_DIR, GIT_WORK_TREE or GIT_INDEX_FILE from the caller's environment,
+nor the commercial-kit variables SX_KIT_FILE and SX_KIT_SKILLS: a design on `lane: bridge` exports
+both, and a test that needs one sets it itself.
 """
 
 from __future__ import annotations
@@ -20,16 +22,19 @@ import pytest
 # is set, the `git init` / `git add` / `git commit` calls the tests make in tmp dirs write into the
 # repo it names: commits on the pushed branch, core.bare=true in its config.
 _GIT_REPO_VARS = ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE")
+# A bridge-lane account exports these; inherited, they add `--library <clone>` to every
+# `make skills-update` a test runs and make `make layout-flow` take the kit lane's checks.
+_KIT_VARS = ("SX_KIT_FILE", "SX_KIT_SKILLS")
 
 
 @pytest.fixture(scope="session", autouse=True)
-def _no_inherited_git_repo():
-    """Remove `_GIT_REPO_VARS` for the whole session.
+def _no_inherited_git_repo_or_kit():
+    """Remove `_GIT_REPO_VARS` and `_KIT_VARS` for the whole session.
 
     Session scope, so the variables are gone before any module- or function-scoped fixture runs git.
     """
     with pytest.MonkeyPatch.context() as mp:
-        for name in _GIT_REPO_VARS:
+        for name in (*_GIT_REPO_VARS, *_KIT_VARS):
             mp.delenv(name, raising=False)
         yield
 

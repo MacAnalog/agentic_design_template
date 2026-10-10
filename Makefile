@@ -79,7 +79,8 @@ ORCH_OK = test -x "$(ORCH_PY)" || { if [ -z "$(SX_ROOT)" ]; then echo "SX_ROOT i
 	else echo "no orchestration venv at $(ORCH_PY): run 'make setup' in SX_ROOT, or set ORCH_PY"; fi; exit 2; }
 # GEN empty = the lane's skeleton (scripts/layout_lane.py): layout/gen_cell.py on the open lane,
 # layout/gen_cell_bridge.py on `lane: bridge`, which also needs OA_LIB (and WORKAREA when the kit
-# file's run directory names one) and $SX_KIT_FILE.
+# file's run directory names one) and $SX_KIT_FILE. An empty OA_LIB / WORKAREA falls back to
+# $<PREFIX>_OA_LIB / $<PREFIX>_WORKAREA (<PREFIX> from exp_env), the variables layout/signoff.py reads.
 GEN ?=
 OA_LIB ?=
 WORKAREA ?=
@@ -89,7 +90,7 @@ size:  ## gm/ID sizing -> optimizer project (workflows.sizing): PLAN=<plan.json>
 	@test -n "$(PLAN)" -a -n "$(OUT)" || { echo "make size needs PLAN=<SizingPlan JSON> and OUT=<dir for sizing.json + project_setup.yaml>, e.g. OUT=experiments/NNN-<slug>/out/sizing"; exit 2; }
 	@$(ORCH_PY) -m spicexplorer_orchestration.workflows.sizing . "$(PLAN)" --out "$(OUT)" $(if $(BUDGET),--optimize-budget $(BUDGET)) $(ARGS)
 
-layout-flow:  ## layout build, DRC, current density, LVS, PEX (workflows.layout), lane from harness.yaml: RUN=<run dir> [GEN=...] [OA_LIB=<lib> WORKAREA=<dir> on lane: bridge] ARGS="--netlist ... --cell ..."
+layout-flow:  ## layout build, DRC, current density, LVS, PEX (workflows.layout), lane from harness.yaml: RUN=<run dir> [GEN=...] [OA_LIB=<lib> WORKAREA=<dir> on lane: bridge, else $<PREFIX>_OA_LIB / _WORKAREA] ARGS="--netlist ... --cell ..."
 	@$(ORCH_OK)
 	@test -n "$(RUN)" || { echo "make layout-flow needs RUN=<run dir>, e.g. RUN=\$$SX_SCRATCH/<design>-layout (GDS and reports are scratch until signed off into signoff/layout/)"; exit 2; }
 	@lane=$$($(PY) scripts/layout_lane.py --gen "$(GEN)" --lib "$(OA_LIB)" --workarea '$(WORKAREA)') || { echo "$$lane"; exit 2; }; \

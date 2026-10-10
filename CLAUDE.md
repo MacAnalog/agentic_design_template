@@ -99,7 +99,7 @@ undeclared case: an artefact somewhere nobody wrote down.
   signature>"` before diagnosing anything new. `make runs ARGS="--fails | --best <metric> | --exp
   NNN"` reads the ledger every `metrics.evaluate()` appends to.
 - `make size PLAN=<plan.json> OUT=<dir>` (the plan's netlist paths are relative to OUT) / `make layout-flow RUN=<dir>`
-  (`OA_LIB=<lib>` on `lane: bridge`) — the orchestration
+  (`OA_LIB=<lib>` on `lane: bridge`, else `$<PREFIX>_OA_LIB`) — the orchestration
   workflows `workflows.sizing` (gm/ID sizing → optimizer project; `BUDGET=N` adds the optimize
   step) and `workflows.layout`, run from `$SX_ROOT`'s orchestration venv; the rest through `ARGS`.
 - `make template-status` / `make template-update` — this repo was **copied** from the template, so

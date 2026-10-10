@@ -17,6 +17,87 @@ Versions are `MAJOR.MINOR`, written `#.##`:
 `make template-status` prints the recorded version and the latest release. Releases are git
 tags, `v<version>`.
 
+## v2.16 — template tests hold on a bridge-lane design; `template-update` names a signed scorer it changes
+
+Minor, 2026-10-10. No module is renamed and every lifecycle command keeps its name. The first
+`make template-update` to v2.15 on a design on `lane: bridge` (its package renamed, `SX_KIT_FILE`
+and `SX_KIT_SKILLS` exported) failed four template tests that hold on the template itself; each
+is fixed here and reproduced on a bridge-lane copy of the template before and after. Same
+platform floor as v2.15; `.sx/skills` stays at ff1f7f9.
+
+| change | files | carried by `make template-update` |
+|---|---|---|
+| `make layout-flow`'s test is lane-aware: on `lane: bridge` it asserts the refusal | `tests/test_orchestration_targets.py` | yes |
+| `make layout-flow` reads `$<PREFIX>_OA_LIB` / `$<PREFIX>_WORKAREA` when `OA_LIB` / `WORKAREA` are empty | `scripts/layout_lane.py`, `Makefile` | yes |
+| the `OA library` and `workarea` rows name the fallback | `doc/environment.md`, `CLAUDE.md`, `README.md` | `CLAUDE.md` yes; `doc/` and `README.md` no: edit the two rows by hand (below) |
+| the open-lane fixtures of `test_pdk_links.py` drop the design's `lane:` | `tests/test_pdk_links.py` | yes |
+| no test inherits `SX_KIT_FILE` / `SX_KIT_SKILLS` | `tests/conftest.py`, `tests/test_orchestration_targets.py`, `tests/test_layout_lane.py` | yes |
+| the `run_decks` test imports `<package>.metrics` through `package:` | `tests/test_layout_lane.py` | yes |
+| `make template-update` warns when it changes a signed scorer | `scripts/template_update.py`, `tests/test_template_scripts.py` | yes |
+| v2.15 *Taking it*: the tag must be local; a signed design re-certifies or defers `metrics.py` | `CHANGELOG.md` | yes |
+
+- **`test_make_layout_flow_runs_workflows_layout_on_this_repo`** ran `make layout-flow` without
+  `OA_LIB`; on `lane: bridge` the recipe exits 2. The test now skips on that lane, and
+  `test_make_layout_flow_on_a_bridge_lane_repo_refuses_without_the_kit_file` runs instead: exit 2,
+  `SX_KIT_FILE` in the message, the workflow not started. The lane itself is still exercised by
+  `tests/test_layout_lane.py` on a copy with a stand-in kit file. The test's environment also drops
+  `OA_LIB`, `WORKAREA` and every `*_OA_LIB` / `*_WORKAREA`, as `tests/test_layout_lane.py` does.
+- **`$<PREFIX>_OA_LIB` for `make layout-flow` (decided: yes).** `layout/signoff.py` already reads
+  `--lib`, else `$<PREFIX>_OA_LIB`, and `--workarea`, else `$<PREFIX>_WORKAREA`. `make layout-flow`
+  now falls back to the same two variables when `OA_LIB=` / `WORKAREA=` are empty, so one export
+  in the account's shell serves both entry points; the make variable still wins. `<PREFIX>` is
+  derived from `exp_env` exactly as the platform and `layout/signoff.py` derive it (`LDO_EXP` ->
+  `LDO`, a bare `EXP` -> `SIM`). With neither set, the refusal names both: `pass OA_LIB=<library>
+  or export <PREFIX>_OA_LIB=<library>`.
+- **`test_lint_needs_no_private_library_on_the_open_lane`** built its fixture from the design's
+  own `harness.yaml`, which on a bridge-lane design carries `lane: bridge`, so the fixture was not
+  on the open lane. `_with_pdk` now removes any top-level `lane:` line; a case that wants the
+  bridge lane appends it, as before. A new test pins that with a bridge-lane `harness.yaml`.
+- **`SX_KIT_FILE` and `SX_KIT_SKILLS` are cleared for the whole session** in `tests/conftest.py`,
+  beside the `GIT_*` variables. Inherited, `SX_KIT_SKILLS` added `--library <clone> --set pdk` to
+  the `make skills-update` of `test_skills_update_links_the_pdk_set_harness_yaml_declares`, and
+  `SX_KIT_FILE` let `make layout-flow` past its first check. A test that needs either sets it.
+- **`from design import metrics`** in `tests/test_layout_lane.py` is now
+  `importlib.import_module(f"{package}.metrics")`, `package` read from `harness.yaml`, the way
+  `layout/signoff.py` resolves its imports. `make template-update` re-roots the PATHS of the
+  package's files and never rewrites a file's text, so an import spelled `design.` in a carried
+  test arrives spelled that way; resolving through `package:` is the rule the template already
+  follows for a carried file.
+- **`make template-update` names a signed scorer it changes.** After the apply it reads every
+  tracked `scorecard.json` that records `script` beside `script_sha` (top level or under
+  `provenance:`). For each file the release merged, added or left in conflict that one of them
+  names, it prints `WARNING: <file> is the scorer <cards> was signed with`, that
+  `scorecard-recompute` fails until the design re-certifies, and the line that defers the file
+  (`git checkout HEAD -- <file>`). A warning, not a refusal: the exit code is unchanged. The
+  update runs the design's own copy of the script, so the warning first shows on the update after
+  the one that carries v2.16 (v2.16 itself changes no file of the package).
+- **v2.15 *Taking it*** now says that step 2's `git checkout v2.15 -- ...` needs the tag locally
+  (`git fetch --tags template` when offline) and that a signed design re-certifies after taking
+  `<package>/metrics.py` or defers that file.
+- **Tests:** on platform df4cc66, a fresh checkout gives 254 passed and 4 skipped before
+  `make init` (three name `make init`; the fourth is the bridge-lane `make layout-flow` test,
+  skipped on the open lane); after it, 257 passed and that one skipped. On a bridge-lane copy of
+  the template (package renamed, `lane: bridge`, both kit variables exported), the four tests
+  named above failed before this release and pass after it.
+
+### Taking it
+
+1. `make template-update`. It carries `scripts/`, `tests/`, the `Makefile`, `CLAUDE.md` and
+   `CHANGELOG.md`; no file of the package changes. The `git checkout v2.16 -- ...` line in step 2
+   needs the tag locally: the update fetches it; offline, run `git fetch --tags template` first.
+   A design that edited a test this release changes (most likely `tests/test_pdk_links.py` or
+   `tests/test_orchestration_targets.py`) may see a conflict: take the template's side, then
+   re-apply the design's own lines.
+2. `doc/environment.md`: take the rows `OA library (bridge lane)` and `workarea (bridge lane)`
+   from `git show v2.16:doc/environment.md`; `README.md`: the `scripts/layout_lane.py` row.
+3. A design that already changed `from design import metrics` in `tests/test_layout_lane.py` to
+   its own package may see a conflict on that hunk: take the template's side.
+4. `make test`. On `lane: bridge` with `SX_KIT_FILE` and `SX_KIT_SKILLS` exported, the four tests
+   named above pass; `test_make_layout_flow_runs_workflows_layout_on_this_repo` skips, naming the
+   bridge-lane test that replaces it.
+5. Optional: export `<PREFIX>_OA_LIB` (and `<PREFIX>_WORKAREA`) once, and drop `OA_LIB=` from
+   your `make layout-flow` lines.
+
 ## v2.15 — the commercial-kit layout lane, private per-kit skills, one PDK id
 
 Minor. No module is renamed and every lifecycle command keeps its name. The open lane runs on the
@@ -145,8 +226,18 @@ The release also records the six changes merged since the v2.14 tag (template#49
    edited a carried file can see a conflict on a style-only hunk of template#51: take either side,
    then `ruff format` the file. A link the design already has from an earlier `make skills-update`
    merges cleanly when it is committed; commit such links before the update.
+   **A signed design:** this release changes `<package>/metrics.py`, the scorer every certified
+   `scorecard.json` hashes (`provenance.script_sha`). Once it lands, `scorecard-recompute` fails
+   on each signed card until the design re-certifies. Either re-certify after the update, or
+   defer the file (`git checkout HEAD -- <package>/metrics.py`) and take the change at the next
+   certification; the bridge-lane `layout/signoff.py` needs `run_decks(run_kwargs=...)` only for
+   its post-layout benches. Once a design carries v2.16's `scripts/template_update.py`, every
+   later update prints this warning itself.
 2. Bring the `layout/` files and the doc rows across by hand, from the release tag the update
-   fetched:
+   fetched. The `git checkout v2.15 -- ...` lines below need the tag in this repository:
+   `make template-update` fetches it from the `template` remote; offline, or if the update ran
+   before the tag existed, run `git fetch --tags template` first (`git tag --list v2.15` prints
+   it when it is there).
    - `git checkout v2.15 -- layout/gen_cell_bridge.py layout/PLAN.template.md`
    - `layout/signoff.py`: compare with `git diff v2.14 v2.15 -- layout/signoff.py` and take the
      bridge section, the new `main` and the skipped-check print of template#50, keeping your

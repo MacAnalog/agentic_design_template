@@ -51,6 +51,7 @@ NEEDS_PLAN_TEMPLATE = _needs("layout/PLAN.template.md")
 
 
 layout_lane = _mod("scripts/layout_lane.py")
+pdk_links = layout_lane.pdk_links
 
 
 # --- scripts/layout_lane.py ---------------------------------------------------------------------
@@ -76,6 +77,30 @@ def test_the_bridge_lane_passes_the_kit_file_by_name_and_the_oa_library():
     ]
     args = layout_lane.lane_args("bridge", lib="amp_lib", workarea="$HOME/wa", env=env)
     assert args[-2:] == ["--workarea", "$HOME/wa"]
+
+
+def test_the_bridge_lane_reads_the_prefixed_variables_signoff_reads():
+    """An empty `OA_LIB` / `WORKAREA` falls back to `$<PREFIX>_OA_LIB` / `$<PREFIX>_WORKAREA`,
+    the variables `layout/signoff.py` reads; the make variable wins over the export."""
+    env = {"SX_KIT_FILE": "k.yaml", "AMP_OA_LIB": "amp_lib", "AMP_WORKAREA": "$HOME/wa"}
+    args = layout_lane.lane_args("bridge", env=env, prefix="AMP")
+    assert args[-4:] == ["--lib", "amp_lib", "--workarea", "$HOME/wa"]
+    assert (
+        layout_lane.lane_args("bridge", lib="other_lib", env=env, prefix="AMP")[-3] == "other_lib"
+    )
+    with pytest.raises(layout_lane.LaneError, match="AMP_OA_LIB="):
+        layout_lane.lane_args("bridge", env={"SX_KIT_FILE": "k.yaml"}, prefix="AMP")
+    # the open lane reads neither
+    assert layout_lane.lane_args("", env=env, prefix="AMP") == ["--generator", "layout/gen_cell.py"]
+
+
+@pytest.mark.parametrize(
+    ("exp_env", "want"),
+    [("exp_env: AMP_EXP", "AMP"), ("exp_env: EXP", "SIM"), ("", "SIM"), ("exp_env: _EXP", "SIM")],
+)
+def test_env_prefix_is_derived_from_exp_env_as_the_platform_does(tmp_path, exp_env, want):
+    (tmp_path / "harness.yaml").write_text(f"name: x\n{exp_env}\n")
+    assert layout_lane.env_prefix(tmp_path) == want
 
 
 @pytest.mark.parametrize(
@@ -125,13 +150,21 @@ def _orch_stub(tmp_path: Path) -> tuple[Path, Path]:
     return tmp_path / "ws", log
 
 
-def _make(root: Path, sx_root: Path, *args: str, kit: str | None) -> subprocess.CompletedProcess:
+def _make(
+    root: Path, sx_root: Path, *args: str, kit: str | None, extra: dict[str, str] | None = None
+) -> subprocess.CompletedProcess:
     drop = ("MAKEFLAGS", "MAKELEVEL", "MFLAGS", "ORCH_PY", "GEN", "OA_LIB", "WORKAREA", "ARGS")
-    env = {k: v for k, v in os.environ.items() if k not in (*drop, "SX_KIT_FILE")}
+    suffixes = (layout_lane.OA_LIB_SUFFIX, layout_lane.WORKAREA_SUFFIX)
+    env = {
+        k: v
+        for k, v in os.environ.items()
+        if k not in (*drop, "SX_KIT_FILE") and not k.endswith(suffixes)
+    }
     env["SX_ROOT"] = str(sx_root)
     env["PY"] = sys.executable
     if kit is not None:
         env["SX_KIT_FILE"] = kit
+    env.update(extra or {})
     return subprocess.run(
         ["make", "--no-print-directory", "layout-flow", *args],
         cwd=root,
@@ -172,6 +205,15 @@ def test_make_layout_flow_passes_a_remote_home_workarea_unexpanded(tmp_path):
     assert r.returncode == 0, r.stdout + r.stderr
     argv = log.read_text().splitlines()
     assert argv[argv.index("--workarea") + 1] == "$HOME/wa"
+
+
+def test_make_layout_flow_takes_the_oa_library_from_the_prefixed_variable(tmp_path):
+    root = _bridge_copy(tmp_path)  # exp_env: EXP, so the prefix is SIM
+    ws, log = _orch_stub(tmp_path)
+    r = _make(root, ws, "RUN=r", kit="/k/kit.yaml", extra={"SIM_OA_LIB": "amp_lib"})
+    assert r.returncode == 0, r.stdout + r.stderr
+    argv = log.read_text().splitlines()
+    assert argv[argv.index("--lib") + 1] == "amp_lib"
 
 
 @pytest.mark.parametrize(
@@ -499,7 +541,10 @@ def test_load_hands_the_skill_file_to_the_editor(fake_kit_lane, monkeypatch, tmp
 
 
 def test_run_decks_passes_run_kwargs_to_every_sim_run(monkeypatch):
-    from design import metrics
+    # through `package:`, never spelled `design.`: `make template-update` re-roots this file's
+    # PATH onto a renamed package but never rewrites its text (scripts/template_update.py)
+    package = pdk_links.declared((REPO / "harness.yaml").read_text(), "package") or "design"
+    metrics = importlib.import_module(f"{package}.metrics")
 
     seen: list[dict] = []
 

@@ -32,6 +32,7 @@ the report lists.
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import subprocess
 import sys
@@ -149,6 +150,28 @@ def status() -> int:
     return 0
 
 
+def signed_scorers() -> dict[str, list[str]]:
+    """`{scorer path: [scorecard.json, ...]}` for every tracked scorecard that records the scorer
+    it was signed with — `script` beside `script_sha`, at the top level or under `provenance:`
+    (both shapes `spicexplorer_harness.scorecard` reads). A release that changes one of those
+    files changes its sha256, and `scorecard-recompute` then fails on every card naming it."""
+    out: dict[str, list[str]] = {}
+    for card in sh("git", "ls-files", "-z", "--", "*scorecard.json", check=False).split("\0"):
+        if not card:
+            continue
+        try:
+            doc = json.loads((REPO / card).read_text())
+        except (OSError, ValueError):
+            continue
+        if not isinstance(doc, dict):
+            continue
+        for block in (doc, doc.get("provenance")):
+            if isinstance(block, dict) and block.get("script") and block.get("script_sha"):
+                out.setdefault(str(block["script"]), []).append(card)
+                break
+    return out
+
+
 def _apply_one(diff: str, directory: str | None) -> tuple[bool, str]:
     cmd = ["git", "apply", "--3way", "--whitespace=nowarn"]
     if directory:
@@ -229,6 +252,16 @@ def update(target: str | None) -> int:
             print("      " + msg.replace("\n", "\n      "))
     if not rows:
         print("  (no files changed between these releases outside what this design owns)")
+    scorers = signed_scorers()
+    for name, verdict, _ in rows:
+        if verdict in ("merged", "added", "CONFLICT") and name in scorers:
+            cards = ", ".join(sorted(scorers[name]))
+            print(
+                f"\nWARNING: {name} is the scorer {cards} was signed with; this release changes "
+                f"it, so its script_sha no longer matches and `scorecard-recompute` fails until "
+                f"you re-certify. To defer: `git checkout HEAD -- {name}` and take the change at "
+                f"the next certification."
+            )
     bad = [r for r in rows if r[1] in ("CONFLICT", "REJECTED")]
     # The version is the record of what this design HAS, so it is written only when the release
     # actually landed. Recorded on a conflicted run, it makes the next `update` start from `want`
