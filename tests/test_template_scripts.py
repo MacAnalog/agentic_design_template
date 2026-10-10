@@ -16,6 +16,7 @@ import importlib.util
 import json
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -215,6 +216,38 @@ def test_an_update_that_touches_no_signed_scorer_prints_no_warning(tmp_path, cap
     tu.URL = str(tmpl)
     assert tu.update(None) == 0
     assert "WARNING" not in capsys.readouterr().out
+
+
+def test_the_update_runs_the_target_releases_own_script(tmp_path):
+    """The update ran the design's own (older) copy of the script, so a check a release adds to
+    `update()` (v2.16's signed-scorer warning) was skipped on the very update that brought it:
+    2.14 -> 2.16 merged a signed `metrics.py` and printed no WARNING. The run now hands over to the
+    target release's script, which therefore prints what only that release's script knows."""
+    current = (SCRIPTS / "template_update.py").read_text()
+    newer = current.replace('"NOW: read every merged file', '"NOW (release 1.01): read every')
+    assert newer != current
+    tmpl = make_template(
+        tmp_path,
+        first={"scripts/template_update.py": current},
+        later={"scripts/template_update.py": newer},
+    )
+    design = make_design(tmp_path, {"Makefile": "test:\n\techo one\n"})
+    git("remote", "add", "template", str(tmpl), cwd=design)
+
+    r = subprocess.run(
+        [sys.executable, "scripts/template_update.py", "update"],
+        cwd=design,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "NOW (release 1.01)" in r.stdout, "the design's own copy ran the update"
+    assert r.stdout.count("template 1.00 -> 1.01") == 1, "the update ran twice"
+    assert (design / "scripts" / "template_update.py").read_text() == newer
+    assert (design / ".sx" / "template-version").read_text().strip() == "1.01"
+    untracked = git("ls-files", "--others", "--", "scripts", cwd=design)
+    assert untracked == "", f"the handed-over copy was left behind: {untracked}"
 
 
 # ------------------------------------------------- a design cut between two tags --------------

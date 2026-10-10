@@ -32,6 +32,9 @@ That rewrites the PATHS a hunk lands on, never a hunk's CONTENT: a template line
 `design.metrics` arrives spelled that way, so run `make lint && make test` afterwards and fix what
 the report lists.
 
+The update itself runs the TARGET release's copy of this script (`handoff()`), so a check that
+release adds to `update()` runs on the update that brings it, not one release later.
+
     scripts/template_update.py status          # recorded vs latest release
     scripts/template_update.py update [VER]    # propagate up to VER (default: latest minor)
 """
@@ -40,9 +43,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
@@ -51,6 +56,8 @@ COMMIT_FILE = REPO / ".sx" / "template-commit"
 REMOTE = "template"
 URL = "https://github.com/MacAnalog/agentic_design_template.git"
 VER_RE = re.compile(r"^(\d+)\.(\d{2})$")
+# Set in the environment of the target release's script when `update` hands the run over to it.
+HANDOFF_ENV = "SX_TEMPLATE_UPDATE_HANDOFF"
 
 # Never propagated: what a design owns the moment it is instantiated. Everything else — including a
 # module the template grows later — comes across, and the three-way merge protects local edits.
@@ -262,6 +269,44 @@ def _apply(
     return out
 
 
+def handoff(want: str) -> int | None:
+    """Run the update with release `want`'s own `scripts/template_update.py` when it differs from
+    this copy, and return its exit code; `None` means this copy does the update.
+
+    The design's copy is the release it was last updated to. A check a later release adds to
+    `update()` (v2.16's signed-scorer warning) would otherwise be skipped on the very update that
+    carries it. The target's script runs from a temporary file in this design's `scripts/`, so
+    its `REPO` is this design; the file is removed afterwards."""
+    if os.environ.get(HANDOFF_ENV):
+        return None
+    theirs = subprocess.run(
+        ["git", "show", f"v{want}:scripts/template_update.py"],
+        cwd=REPO,
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+    if theirs.returncode or theirs.stdout == Path(__file__).read_text():
+        return None
+    print(
+        f"running v{want}'s scripts/template_update.py: it differs from this design's copy",
+        flush=True,
+    )
+    with tempfile.NamedTemporaryFile(
+        "w", dir=REPO / "scripts", prefix=".template_update-", suffix=".py", delete=False
+    ) as f:
+        f.write(theirs.stdout)
+    try:
+        return subprocess.run(
+            [sys.executable, f.name, "update", want],
+            cwd=REPO,
+            env={**os.environ, HANDOFF_ENV: "1"},
+            check=False,
+        ).returncode
+    finally:
+        Path(f.name).unlink(missing_ok=True)
+
+
 def update(target: str | None) -> int:
     cur, tags = recorded(), fetch()
     if not tags:
@@ -281,6 +326,9 @@ def update(target: str | None) -> int:
             f"{VERSION_FILE.relative_to(REPO)} yourself."
         )
         return 2
+    handed = handoff(want)
+    if handed is not None:
+        return handed
     pkg = package()
     base = base_ref(cur, want)
     print(

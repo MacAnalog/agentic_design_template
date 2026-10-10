@@ -17,6 +17,30 @@ Versions are `MAJOR.MINOR`, written `#.##`:
 `make template-status` prints the recorded version and the latest release. Releases are git
 tags, `v<version>`.
 
+## Unreleased — `template-update` runs the target release's own script
+
+Minor; `scripts/template_update.py` only. `make template-update` ran the design's own copy of the
+script, which is the release the design was last updated to, so a check a later release adds to
+`update()` did not run on the update that carries it. Reproduced on a signed design at v2.14: the
+update to v2.16 merged `<package>/metrics.py` and printed no `WARNING`, and `make lint` then failed
+`scorecard-recompute` on 10 entries; with v2.16's script copied in first, the warning printed.
+
+| change | files | carried by `make template-update` |
+|---|---|---|
+| `update` runs `v<target>:scripts/template_update.py` when it differs from the design's copy, and returns its exit code | `scripts/template_update.py`, `tests/test_template_scripts.py` | yes |
+| v2.16 *Taking it* step 1: a design below v2.16 takes v2.16's script before updating | `CHANGELOG.md` | yes |
+
+- The target's script is written to a temporary file in the design's `scripts/` (so it resolves
+  the design as its repository), run with `SX_TEMPLATE_UPDATE_HANDOFF=1` so it does not hand over
+  again, and removed when it exits. The run prints `running v<target>'s
+  scripts/template_update.py` first. A design that edited its own copy of the script gets the
+  release's behaviour for the update; the three-way merge still carries its edits into the file.
+
+**Taking it.** The handoff is in the design's copy only after this release lands, so the update
+that brings it still runs the older copy. A design below v2.16 that carries a signed scorecard
+takes the script first, as v2.16 *Taking it* step 1 now says. From the next release on, no step
+is needed.
+
 ## Unreleased — `template-update` merges from the commit a design was cut from
 
 Minor; `scripts/template_update.py` only. A design copied from an untagged commit between two
@@ -111,7 +135,8 @@ platform floor as v2.15; `.sx/skills` stays at ff1f7f9.
   `scorecard-recompute` fails until the design re-certifies, and the line that defers the file
   (`git checkout HEAD -- <file>`). A warning, not a refusal: the exit code is unchanged. The
   update runs the design's own copy of the script, so the warning first shows on the update after
-  the one that carries v2.16 (v2.16 itself changes no file of the package).
+  the one that carries v2.16 (v2.16 itself changes no file of the package), unless the design
+  takes v2.16's script first (*Taking it* step 1).
 - **v2.15 *Taking it*** now says that step 2's `git checkout v2.15 -- ...` needs the tag locally
   (`git fetch --tags template` when offline) and that a signed design re-certifies after taking
   `<package>/metrics.py` or defers that file.
@@ -123,8 +148,13 @@ platform floor as v2.15; `.sx/skills` stays at ff1f7f9.
 
 ### Taking it
 
-1. `make template-update`. It carries `scripts/`, `tests/`, the `Makefile`, `CLAUDE.md` and
-   `CHANGELOG.md`; no file of the package changes. The `git show v2.16:...` in step 2
+1. A design below v2.16 takes v2.16's script first — `git fetch --tags template && git checkout
+   v2.16 -- scripts/template_update.py` — then runs `make template-update`. The update runs the
+   design's own copy of the script, and only v2.16's copy prints the signed-scorer `WARNING`: an
+   update from v2.14 merges `<package>/metrics.py` (a v2.15 change) and, run by the older copy,
+   says nothing while `scorecard-recompute` then fails. `make template-update` carries `scripts/`,
+   `tests/`, the `Makefile`, `CLAUDE.md` and `CHANGELOG.md`; from v2.15, no file of the package
+   changes. The `git show v2.16:...` in step 2
    needs the tag locally: the update fetches it; offline, run `git fetch --tags template` first.
    A design that edited a test this release changes (most likely `tests/test_pdk_links.py` or
    `tests/test_orchestration_targets.py`) may see a conflict: take the template's side, then
