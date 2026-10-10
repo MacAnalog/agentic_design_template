@@ -17,15 +17,23 @@ Versions are `MAJOR.MINOR`, written `#.##`:
 `make template-status` prints the recorded version and the latest release. Releases are git
 tags, `v<version>`.
 
-## v2.15 (unreleased) — the commercial-kit layout lane, private per-kit skills, one PDK id
+## v2.15 — the commercial-kit layout lane, private per-kit skills, one PDK id
 
-Minor. No module is renamed and every lifecycle command keeps its name. The bridge-lane layout
-path needs a platform with `spicexplorer_core.kit`, `spicexplorer_layout.backends`,
-`spicexplorer_signoff.calibre` and `spicexplorer_spectre.postlayout` (platform f34c46f or later:
-MacAnalog/spicexplorer-platform#346, #347, #349, #353), and `make layout-flow` on that lane needs
-the orchestration kit lane (MacAnalog/spicexplorer-orchestration#56). The open lane runs on the
-platform v2.14 named. The tests replace those modules with stand-ins, so `make test` passes on
-either platform.
+Minor. No module is renamed and every lifecycle command keeps its name. The open lane runs on the
+platform v2.14 named (82d1584c or later). The bridge-lane layout path needs a platform with
+`spicexplorer_core.kit`, `spicexplorer_layout.backends`, `spicexplorer_signoff.calibre` and
+`spicexplorer_spectre.postlayout`: platform f34c46f or later (MacAnalog/spicexplorer-platform#346,
+#347, #349, #353). Every platform name the template imports is the same at f34c46f and at platform
+main df4cc66, which this release was gated against. `layout/signoff.py` on that lane needs only the
+platform. `make layout-flow` on that lane also needs the orchestration kit lane,
+`workflows.layout_kit` (MacAnalog/spicexplorer-orchestration#56), which is **open, not on
+orchestration main**, at this release: `scripts/layout_lane.py` and `layout/gen_cell_bridge.py`
+match its `--tech`, `--lib` and `--workarea` options and its `plan(params, kit)` contract at
+ce06414. Until it merges, `make layout-flow` on `lane: bridge` exits 2 in the workflow's argument
+parser (`unrecognized arguments: --lib`), and `layout/signoff.py` is the bridge-lane path. The
+tests replace those modules with stand-ins, so `make test` passes on either platform.
+`.sx/skills` is the library at ff1f7f9 (MacAnalog/analog-skill-directory#108).
+The release also records the six changes merged since the v2.14 tag (template#49 to #54).
 
 | change | files | carried by `make template-update` |
 |---|---|---|
@@ -41,6 +49,12 @@ either platform.
 | the layout plan skeleton: plan before geometry, plan review, revisit after each feedback | `CLAUDE.md` | yes |
 | the layout plan skeleton: plan before geometry, plan review, revisit after each feedback | `layout/PLAN.template.md`, `doc/environment.md` (row `layout plan`) | no: copy the skeleton and add the row by hand (below) |
 | the layout-lane tests skip, naming the hand step, until the `layout/` files are across | `tests/test_layout_lane.py` | yes |
+| `.sx/skills` 0c2bf08 -> ff1f7f9 (template#53, #54, this release) | `.sx/skills` | no: `make skills-update` (below) |
+| the `design` link set: five agents and six skills more | `.claude/agents/`, `.claude/skills/` | yes, the link files; they resolve once `make skills-update` has moved the pin (below) |
+| a skipped current-density check prints as skipped (template#50) | `layout/signoff.py` | no: `layout/` is the design's; it is part of the hand diff of `layout/signoff.py` (below) |
+| the sx-coding-style pass: format, lint, safe fixes, unused `noqa` removed (template#51, #52) | `design/`, `scripts/`, `tests/`, `experiments/_template/`, `layout/` | yes, except `experiments/` and `layout/` |
+| relock: the platform's base dependencies no longer include sympy (template#49) | `uv.lock` | no: `uv sync`, then commit the design's own `uv.lock` |
+| the agent and skill rows name all 15 agents and 25 skills; the `layout/` and `scripts/layout_lane.py` rows | `README.md` | no: `README.md` is the design's |
 
 - **`make layout-flow` reads `lane:`** through `scripts/layout_lane.py` (standard library only):
   - **absent:** `--generator layout/gen_cell.py`, as before; `GEN=` still overrides it.
@@ -87,17 +101,56 @@ either platform.
 - **The lane-aware denylist.** A `denylist:` entry with `exempt_lanes: [bridge]` is dropped on that
   lane only; both harness checks that read the list see the filtered one. `denylist_lanes` fails
   on an `exempt_lanes` that is not a list of lane names.
+- **`.sx/skills` moves from 0c2bf08 (v2.14) to ff1f7f9**: fce2bf2 (template#53),
+  8c4929a (template#54), then MacAnalog/analog-skill-directory#106 and #108 in this release. The
+  `design` link set goes from 10 agents and 19 skills to 15 agents and 25 skills:
+  - template#53: the four use-case agents (design-tutor, troubleshooter, design-customizer,
+    results-analyst) and the `hand-analysis`, `sx-use-cases` and `sx-coding-style` skills.
+  - template#54: the `pr-reviewer` agent; `sx-contributing` requires its independent review loop
+    before any PR merges.
+  - this release, three skills:
+    - `postlayout-analysis`: the post-layout shift of each metric attributed to nets (one parasitic
+      group back-annotated at a time, the rest ideal), and the *Plan revisions* row it motivates. It
+      names `spicexplorer_signoff.dspf` (platform #362) and the orchestration step
+      `workflows.attribution` (MacAnalog/spicexplorer-orchestration#57, open at this release), and
+      says what to do by hand without it.
+    - the bridge layout lane's skill: the commercial-kit layout lane end to end (kit file, layout
+      backend, the batch checks, the DSPF splice, `spicexplorer_layout.checks` from platform #348).
+    - the bridge review-setup skill: the cell's layout and its ADE test setup of record in the kit's
+      editor, from `spicexplorer_spectre.review_setup` (platform #362, #370, #372; all on df4cc66).
+
+  The layout agents (brief author, designer, reviewer) now research the block first, plan before
+  drawing, have the plan reviewed before geometry and revisit it after each piece of sign-off
+  feedback, which is what `layout/PLAN.template.md` records. The library's new `pdk-distiller`
+  agent is opt-in and never linked into a design: it runs once per kit, in the foreground, and
+  writes the private per-kit skill library `$SX_KIT_SKILLS` names. `.claude/settings.json` and the
+  ask hook are unchanged.
+- **Since v2.14, also in this release.**
+  - `layout/signoff.py` prints `Jmax: skipped (<reason>)` when the platform reports the
+    current-density check skipped (an empty `BUDGETS`), instead of `passed=False ... n=0`
+    (template#50).
+  - The sx-coding-style pass (template#51, #52): `ruff format`, the safe fixes of ruff's default
+    rules, the executable bit on the six scripts with a shebang, and the unused `noqa` comments
+    removed. No behaviour changes; `ruff format --check` and `ruff check` (ruff 0.16.6) are clean.
+  - `uv.lock` without sympy, which left the platform's base dependencies (template#49).
+- **Tests:** on platform df4cc66, a fresh checkout gives 245 passed and 3 skipped before
+  `make init`, each skip naming `make init`; after it, `make test` gives 248 passed.
 
 ### Taking it
 
-1. `make template-update`. It carries `Makefile`, `scripts/`, `tests/`, `CLAUDE.md` and
-   `<package>/metrics.py`; it never touches `layout/`, `doc/`, `pyproject.toml` or `harness.yaml`,
-   which a design owns.
+1. `make template-update`. It carries `Makefile`, `scripts/`, `tests/`, `CLAUDE.md`,
+   `CHANGELOG.md`, the package's generic modules (`<package>/metrics.py` and the style pass) and the
+   new link files under `.claude/`; it never touches `layout/`, `doc/`, `experiments/`,
+   `README.md`, `pyproject.toml`, `uv.lock` or `harness.yaml`, which a design owns. A design that
+   edited a carried file can see a conflict on a style-only hunk of template#51: take either side,
+   then `ruff format` the file. A link the design already has from an earlier `make skills-update`
+   merges cleanly when it is committed; commit such links before the update.
 2. Bring the `layout/` files and the doc rows across by hand, from the release tag the update
    fetched:
    - `git checkout v2.15 -- layout/gen_cell_bridge.py layout/PLAN.template.md`
    - `layout/signoff.py`: compare with `git diff v2.14 v2.15 -- layout/signoff.py` and take the
-     bridge section and the new `main`, keeping your `CELL`, `BUDGETS` and `PDK`.
+     bridge section, the new `main` and the skipped-check print of template#50, keeping your
+     `CELL`, `BUDGETS` and `PDK`.
    - `doc/environment.md`: take the rows `layout lane` to `bridge profile` and `physical lanes`
      from `git show v2.15:doc/environment.md`.
    - `pyproject.toml`: a bridge-lane design that runs `layout/signoff.py` adds
@@ -109,8 +162,10 @@ either platform.
    `exempt_lanes: [bridge]` (the template's own list shows both), and write the editor pattern
    with the lookbehind `(?<!\\.)` before `\\b`, so `layout/gen_cell_bridge.py`'s import line is
    not a hit. A design that had deleted an entry for the bridge lane restores it with the key.
-4. `make test`.
-5. A commercial-kit design: export `SX_KIT_FILE` and `SX_KIT_SKILLS` (doc/environment.md), run
+4. `make skills-update`, then commit the pin and the links it stages. Until then the new links
+   point at skills the old pin does not have.
+5. `make test`.
+6. A commercial-kit design: export `SX_KIT_FILE` and `SX_KIT_SKILLS` (doc/environment.md), run
    `make init`, then `make lint`.
 
 ## v2.14 — per-PDK skills, the context pack at session start, `make size` and `make layout-flow`
