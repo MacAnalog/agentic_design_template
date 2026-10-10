@@ -469,7 +469,7 @@ def benches_bridge(dspf: Path, port_order: list[str], out: Path, tag: str = "pos
 STAGES_BRIDGE = ("build", "drc", "jmax", "lvs", "pex", "benches")
 CHECK_STAGES = ("drc", "lvs", "pex")
 #: where `run_calibre` puts its run directories on the server when no remote root is named
-#: (the platform's own `DEFAULT_REMOTE_ROOT` wins when the engine module is loaded)
+#: (the platform's own `DEFAULT_REMOTE_ROOT` wins when the signoff package is installed)
 REMOTE_ROOT = "~/signoff_runs"
 DRY_RUN_JSON = "signoff.dry-run.json"
 
@@ -495,8 +495,10 @@ def checks_dry_run(
             stale.unlink()
     for name, text in bundle.files.items():
         (scripts / name).write_text(text)
-    engine = sys.modules.get("spicexplorer_signoff.calibre.remote")
-    root = getattr(engine, "DEFAULT_REMOTE_ROOT", REMOTE_ROOT)
+    try:
+        from spicexplorer_signoff.calibre.remote import DEFAULT_REMOTE_ROOT as root
+    except ImportError:
+        root = REMOTE_ROOT
     remote = f"{root}/{CELL}-{bundle.sha256()[:8]}"
     server = [f"create the run directory {remote}"]
     server += [f"upload {name}" for name in bundle.files]
@@ -567,6 +569,8 @@ def main_bridge(a: argparse.Namespace, out: Path, stages: tuple[str, ...], *, ru
         print(f"  Jmax: skipped ({reason})")
         rec["current_density"] = {"skipped": True, "passed": False, "reason": reason}
     if "benches" in stages and dry:
+        if "pex" not in stages:  # the real run's refusal; a pex in this run would write the DSPF
+            _dspf(rec, out)
         n = len(REFERENCE.benches())
         step = (
             f"run {n} bench deck(s) on the schematic and {n} on the extracted DSPF (simulator lane)"
@@ -574,16 +578,25 @@ def main_bridge(a: argparse.Namespace, out: Path, stages: tuple[str, ...], *, ru
         print(f"benches:\n  [server] {step}")
         rec["benches"] = {"server_steps": [step]}
     elif "benches" in stages:
-        pex = rec.get("pex") or _previous(out).get("pex") or {}
-        dspf, ports = pex.get("netlist_path"), list(pex.get("port_order") or [])
-        if not dspf or not Path(dspf).is_file() or not ports:
-            raise SystemExit(
-                f"no DSPF with a port order under {out}: run the pex stage first (this run or "
-                "an earlier one into the same --out)"
-            )
+        dspf, ports = _dspf(rec, out)
         print("benches:")
-        rec["benches"] = benches_bridge(Path(dspf), ports, out)
+        rec["benches"] = benches_bridge(dspf, ports, out)
     return rec
+
+
+def _dspf(rec: dict, out: Path) -> tuple[Path, list[str]]:
+    """The DSPF and its port order the bench stage reads: this run's pex, else an earlier run's.
+
+    Raises SystemExit when neither left a DSPF file with a port order, dry run or not.
+    """
+    pex = rec.get("pex") or _previous(out).get("pex") or {}
+    dspf, ports = pex.get("netlist_path"), list(pex.get("port_order") or [])
+    if not dspf or not Path(dspf).is_file() or not ports:
+        raise SystemExit(
+            f"no DSPF with a port order under {out}: run the pex stage first (this run or "
+            "an earlier one into the same --out)"
+        )
+    return Path(dspf), ports
 
 
 def _previous(out: Path) -> dict:

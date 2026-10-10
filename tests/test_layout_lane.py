@@ -658,6 +658,21 @@ def test_dry_run_keeps_the_build_plus_checks_without_load_refusal(
 
 
 @NEEDS_SIGNOFF_DRY_RUN
+def test_dry_run_keeps_the_benches_without_a_dspf_refusal(fake_kit_lane, monkeypatch, tmp_path):
+    """`--stages benches` with no DSPF under --out is refused dry as it is for real; with `pex` in
+    the same run the dry run lists the bench step, since that pex would write the DSPF."""
+    so = _signoff(monkeypatch, tmp_path)
+    monkeypatch.setenv("SX_KIT_FILE", "/k/kit.yaml")
+    out = tmp_path / "o"
+    with pytest.raises(SystemExit, match="no DSPF"):
+        so.main(["--stages", "benches", "--dry-run", "--out", str(out), "--lib", "amp_lib"])
+    argv = ["--stages", "pex,benches", "--dry-run", "--out", str(out), "--lib", "amp_lib"]
+    assert so.main(argv) == 0
+    assert json.loads((out / "signoff.dry-run.json").read_text())["benches"]["server_steps"]
+    assert "run_decks" not in fake_kit_lane
+
+
+@NEEDS_SIGNOFF_DRY_RUN
 def test_dry_run_on_the_open_lane_is_refused(fake_kit_lane, monkeypatch, tmp_path):
     so = _signoff(monkeypatch, tmp_path)
     monkeypatch.setattr(so, "LANE", "")

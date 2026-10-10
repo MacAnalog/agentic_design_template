@@ -27,16 +27,17 @@ platform's `spicexplorer_signoff.calibre.build_scripts`, the call `run_calibre` 
 uploads) under `--out/calibre/dry-run/scripts/`, prints each step the server would run with a
 `[server]` prefix, and writes `signoff.dry-run.json`. It loads nothing, starts no check run and no
 bench, and leaves `signoff.json` as it was, so a later `--stages benches` still reads the DSPF of
-the last real `pex` run. A build plus checks without `--load` is refused as in a real run. On the
-open lane `--dry-run` is refused: that lane contacts no server.
+the last real `pex` run. A build plus checks without `--load` is refused as in a real run, and so is
+`--stages benches` with no DSPF under `--out` and no `pex` stage in the same run. On the open lane
+`--dry-run` is refused: that lane contacts no server.
 
 | change | files | carried by `make template-update` |
 |---|---|---|
 | `--dry-run`: `checks_dry_run` (scripts written, server steps listed), no load, no bench run, `signoff.dry-run.json`; refused on the open lane | `layout/signoff.py` | no (`layout/` is the design's own; copy the file by hand) |
-| tests: `--all --load --dry-run` writes the SKILL and the scripts, calls neither the editor load, the check run nor `run_decks`, and keeps `signoff.json`; the no-`--load` refusal holds; the open lane refuses | `tests/test_layout_lane.py` | yes (the cases skip until `layout/signoff.py` has `--dry-run`) |
+| tests: `--all --load --dry-run` writes the SKILL and the scripts, calls neither the editor load, the check run nor `run_decks`, and keeps `signoff.json`; the no-`--load` refusal and the no-DSPF bench refusal hold; the open lane refuses | `tests/test_layout_lane.py` | yes (the cases skip until `layout/signoff.py` has `--dry-run`) |
 
 **Taking it.** `make template-update`, then copy `layout/signoff.py` from the template by hand if
-the design has not edited it (else port `checks_dry_run` and the `dry` branches of `main_bridge`).
+the design has not edited it (else port `checks_dry_run` and the `dry` branches of `main_bridge` and `_dspf`).
 
 ## Unreleased — `layout/signoff.py` on `lane: bridge` exits 2 with a FIX line when the account has no bridge profile
 
