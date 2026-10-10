@@ -51,6 +51,7 @@ The five lessons baked into the stage functions:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import importlib
 import importlib.util
 import json
@@ -418,16 +419,29 @@ def benches_bridge(dspf: Path, port_order: list[str], out: Path, tag: str = "pos
     `splice_dspf` rewires every instance of CELL into the DSPF's port order and inserts the
     `dspf_include` line; the DSPF itself is staged beside each deck (the lane uploads by
     basename). Same benches, same `metrics.run_decks`, so the two columns compare.
+
+    The staged copy is named for its content (`<cell>.<sha256[:12]>.dspf`). The lane keys a run
+    directory on the deck text alone and re-attaches to a run of the same deck, so a DSPF staged
+    under one fixed name would let a re-extracted layout reuse the previous extraction's run.
     """
     from spicexplorer_spectre.postlayout import splice_dspf
 
+    text = dspf.read_text(errors="replace")
+    staged_name = f"{CELL}.{hashlib.sha256(text.encode()).hexdigest()[:12]}.dspf"
     pre_decks = {b: REFERENCE.deck(b) for b in REFERENCE.benches()}
     post_decks: dict[str, str] = {}
     rewired: dict[str, int] = {}
     for b, deck in pre_decks.items():
-        sp = splice_dspf(deck, dspf, port_order, cell=CELL, drop_includes=DROP_INCLUDES)
+        sp = splice_dspf(
+            deck,
+            dspf,
+            port_order,
+            cell=CELL,
+            drop_includes=DROP_INCLUDES,
+            include_as=staged_name,
+        )
         post_decks[b], rewired[b] = sp.deck, len(sp.instances)
-    staged = {"extra_files": {dspf.name: dspf.read_text(errors="replace")}}
+    staged = {"extra_files": {staged_name: text}}
     pre, _ = M.run_decks(pre_decks, f"{tag}_pre")
     post, post_rec = M.run_decks(post_decks, f"{tag}_post", run_kwargs=staged)
     from spicexplorer_harness import violations as _viol
@@ -439,7 +453,7 @@ def benches_bridge(dspf: Path, port_order: list[str], out: Path, tag: str = "pos
         "post_violations": _viol(H.spec, post),
         "bench_status": {b: r["status"] for b, r in sorted(post_rec.items())},
         "rewired_instances": rewired,
-        "dspf": dspf.name,
+        "dspf": staged_name,
     }
     table = M.table({"pre-layout (schematic)": pre, "post-layout (extracted)": post})
     (out / "scorecard.md").write_text(table + "\n")

@@ -301,11 +301,11 @@ def fake_kit_lane(fake_backend, monkeypatch, tmp_path):
     cal = types.ModuleType("spicexplorer_signoff.calibre")
     cal.CalibreJob, cal.run_calibre = CalibreJob, run_calibre
 
-    def splice_dspf(deck, path, port_order, *, cell, drop_includes=()):
+    def splice_dspf(deck, path, port_order, *, cell, drop_includes=(), include_as=None):
         seen.setdefault("splice", []).append(
-            {"cell": cell, "ports": list(port_order), "drop": list(drop_includes)}
+            {"cell": cell, "ports": list(port_order), "drop": list(drop_includes), "as": include_as}
         )
-        return types.SimpleNamespace(deck=deck + "dspf_include\n", instances=(1,))
+        return types.SimpleNamespace(deck=deck + f"dspf_include {include_as}\n", instances=(1,))
 
     sp = types.ModuleType("spicexplorer_spectre")
     post = types.ModuleType("spicexplorer_spectre.postlayout")
@@ -387,10 +387,32 @@ def test_main_on_the_bridge_lane_runs_every_stage_through_one_check_run(
     assert [r["tag"] for r in runs] == ["postlayout_pre", "postlayout_post"]
     assert runs[0]["run_kwargs"] is None
     staged = runs[1]["run_kwargs"]["extra_files"]
-    assert list(staged) == [fake_kit_lane["dspf"].name]
+    (name,) = staged
+    assert staged[name] == fake_kit_lane["dspf"].read_text()
     assert all(s["ports"] == ["OUT", "INP"] and s["cell"] == "amp" for s in fake_kit_lane["splice"])
-    assert all(d.endswith("dspf_include\n") for d in runs[1]["decks"].values())
+    assert all(s["as"] == name for s in fake_kit_lane["splice"])
+    assert all(d.endswith(f"dspf_include {name}\n") for d in runs[1]["decks"].values())
+
     assert (out / "scorecard.md").read_text() == "| table |\n"
+
+
+def test_the_staged_dspf_is_named_for_its_content(fake_kit_lane, monkeypatch, tmp_path):
+    """The lane keys a run on the deck text: a re-extracted DSPF must change the deck."""
+    so = _signoff(monkeypatch, tmp_path)
+    names: list[str] = []
+
+    def run_decks(decks, tag, *, record=True, run_kwargs=None):
+        if run_kwargs:
+            names.extend(run_kwargs["extra_files"])
+        return {}, {b: {"status": "ok"} for b in decks}
+
+    monkeypatch.setattr(so.M, "run_decks", run_decks)
+    monkeypatch.setattr(so.M, "table", lambda cols: "")
+    dspf = fake_kit_lane["dspf"]
+    so.benches_bridge(dspf, ["OUT"], tmp_path)
+    dspf.write_text("* re-extracted\n")
+    so.benches_bridge(dspf, ["OUT"], tmp_path)
+    assert len(set(names)) == 2 and all(n.startswith("amp.") for n in names)
 
 
 def test_benches_reuse_the_dspf_of_an_earlier_run(fake_kit_lane, monkeypatch, tmp_path):
@@ -519,3 +541,23 @@ def test_the_template_denylist_lifts_the_simulator_and_editor_names_on_the_bridg
     rx = re.compile(src, re.IGNORECASE)
     assert rx.search(f"the {editor} session")
     assert not rx.search("from spicexplorer_layout.backends." + editor + " import LayoutPlan")
+
+
+def test_make_lint_applies_the_exemption_through_main(tmp_path, capsys, monkeypatch):
+    """`scripts/lint.py main` is what `make lint` runs: the filtered list must reach the harness's
+    own `denylist` check, on the bridge lane only. Made-up words; the fixture fails other checks,
+    so only the denylist report is compared."""
+    monkeypatch.setattr(lint, "EXTRA", ())
+    root = tmp_path / "fixture"
+    (root / "doc").mkdir(parents=True)
+    (root / "doc" / "notes.md").write_text("the zorblat lane and the quuxite tool\n")
+    base = "name: fixture\npackage: design\nexp_env: EXP\njobs_env: JOBS\n"
+    reports = {}
+    for lane in ("", "bridge"):
+        text = base + (f"lane: {lane}\n" if lane else "") + "denylist:\n" + _ENTRIES
+        (root / "harness.yaml").write_text(text)
+        lint.main(root)
+        out = capsys.readouterr().out
+        reports[lane] = {w for w in ("zorblat", "quuxite") if f"'{w}'" in out}
+    assert reports[""] == {"zorblat", "quuxite"}
+    assert reports["bridge"] == {"quuxite"}

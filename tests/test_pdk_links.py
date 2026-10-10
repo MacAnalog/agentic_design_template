@@ -253,6 +253,17 @@ def test_sx_kit_skills_links_the_private_pdk_set_and_keeps_it_out_of_commits(tmp
     pdk_links.main(repo, env={pdk_links.KIT_SKILLS_ENV: str(lib)})
     again = (repo / ".git" / "info" / "exclude").read_text().splitlines()
     assert again.count("/.claude/skills/pdk-kitx") == 1
+    # the link itself (the stub sx-link makes none): git must not offer it for a commit
+    link = repo / ".claude" / "skills" / "pdk-kitx"
+    link.parent.mkdir(parents=True, exist_ok=True)
+    link.symlink_to(lib / "skills" / "pdk-kitx")
+    r = subprocess.run(
+        ["git", "-C", str(repo), "status", "--porcelain", "--", ".claude"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert r.stdout == ""
 
 
 def test_a_private_library_without_a_pdk_set_is_an_error(tmp_path, capsys):
