@@ -90,10 +90,10 @@ size:  ## gm/ID sizing -> optimizer project (workflows.sizing): PLAN=<plan.json>
 	@test -n "$(PLAN)" -a -n "$(OUT)" || { echo "make size needs PLAN=<SizingPlan JSON> and OUT=<dir for sizing.json + project_setup.yaml>, e.g. OUT=experiments/NNN-<slug>/out/sizing"; exit 2; }
 	@$(ORCH_PY) -m spicexplorer_orchestration.workflows.sizing . "$(PLAN)" --out "$(OUT)" $(if $(BUDGET),--optimize-budget $(BUDGET)) $(ARGS)
 
-layout-flow:  ## layout build, DRC, current density, LVS, PEX (workflows.layout), lane from harness.yaml: RUN=<run dir> [GEN=...] [OA_LIB=<lib> WORKAREA=<dir> on lane: bridge, else $<PREFIX>_OA_LIB / _WORKAREA] ARGS="--netlist ... --cell ..."
+layout-flow:  ## layout build, DRC, current density, LVS, PEX (workflows.layout), lane from harness.yaml: RUN=<run dir> [GEN=...] [OA_LIB=<lib> WORKAREA=<dir> on lane: bridge, else $<PREFIX>_OA_LIB / _WORKAREA] [LOAD=1: bridge lane, load the SKILL and check it; else the build runs alone] ARGS="--netlist ... --cell ..."
 	@$(ORCH_OK)
 	@test -n "$(RUN)" || { echo "make layout-flow needs RUN=<run dir>, e.g. RUN=\$$SX_SCRATCH/<design>-layout (GDS and reports are scratch until signed off into signoff/layout/)"; exit 2; }
-	@lane=$$($(PY) scripts/layout_lane.py --gen "$(GEN)" --lib "$(OA_LIB)" --workarea '$(WORKAREA)') || { echo "$$lane"; exit 2; }; \
+	@lane=$$($(PY) scripts/layout_lane.py --gen "$(GEN)" --lib "$(OA_LIB)" --workarea '$(WORKAREA)' --load "$(if $(filter command line,$(origin LOAD)),$(LOAD))" $(if $(findstring --load,$(ARGS))$(findstring --skip,$(ARGS)),--caller-chose)) || { echo "$$lane"; exit 2; }; \
 	 $(ORCH_PY) -m spicexplorer_orchestration.workflows.layout . $$lane --run-dir "$(RUN)" $(ARGS)
 
 # The scratch report runs WHATEVER the probe said, and the PROBE's exit code is what `make doctor`

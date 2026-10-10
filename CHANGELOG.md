@@ -17,6 +17,26 @@ Versions are `MAJOR.MINOR`, written `#.##`:
 `make template-status` prints the recorded version and the latest release. Releases are git
 tags, `v<version>`.
 
+## Unreleased — `make layout-flow` on `lane: bridge` runs without `ARGS`: `LOAD=1`, or the build alone
+
+Minor; `Makefile` and `scripts/layout_lane.py`. On `lane: bridge`, `make layout-flow RUN=d OA_LIB=L`
+was refused before any stage ran: `workflows.layout` refuses a build together with DRC/LVS/PEX
+unless the SKILL is loaded (`load=False`), because the checks read the layout view already in the
+OA library. The recipe never passed `--load` and skipped no stage, so the documented command could
+not run. Reproduced against the workflow's own preflight: the refusal for the arguments the recipe
+passed before, none for either set it passes now.
+
+| change | files | carried by `make template-update` |
+|---|---|---|
+| `LOAD=1` (make command line only) passes `--load`: build, load, then check the loaded view | `Makefile`, `scripts/layout_lane.py` | yes |
+| without it the recipe adds `--skip drc,lvs,pex,benches` and prints one line on stderr saying the checks were skipped; a `--load` or `--skip` in `ARGS` replaces that default | `scripts/layout_lane.py` | yes |
+| `LOAD=1` on the open lane exits 2 before the workflow starts | `scripts/layout_lane.py` | yes |
+| the two-step use (build and load, then `ARGS="--skip build --cell <cell>"`) | `doc/environment.md`, `README.md` | no (a design owns `doc/` and `README.md`; copy the `OA library` row by hand) |
+| tests for each case above | `tests/test_layout_lane.py` | yes |
+
+**Taking it.** `make template-update`. A design that passed `ARGS=--load` keeps working; that
+`--load` suppresses the default skip.
+
 ## Unreleased — `template-update` merges from the commit a design was cut from
 
 Minor; `scripts/template_update.py` only. A design copied from an untagged commit between two
