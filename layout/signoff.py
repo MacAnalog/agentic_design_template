@@ -19,6 +19,9 @@ sequences them and writes the verdicts a reviewer reads. Imports are lazy so the
   render (the layer colours are kit data) and no `jmax` (the kit file has no electromigration
   table, so the stage is recorded as skipped). Every kit fact comes from the kit file
   `$SX_KIT_FILE` names; `signoff.json` and `scorecard.md` have the same shape on both lanes.
+  `--dry-run` contacts nothing: it writes the SKILL and the batch check scripts
+  (`spicexplorer_signoff.calibre.build_scripts`) under `--out`, lists each step the EDA server
+  would run, and writes `signoff.dry-run.json`, never `signoff.json`.
 
 **Two interpreters, deliberately.** The generator needs gdsfactory + the PDK cells; DRC/LVS/PEX
 are KLayout runsets and kpex driven from this venv:
@@ -465,6 +468,47 @@ def benches_bridge(dspf: Path, port_order: list[str], out: Path, tag: str = "pos
 
 STAGES_BRIDGE = ("build", "drc", "jmax", "lvs", "pex", "benches")
 CHECK_STAGES = ("drc", "lvs", "pex")
+#: where `run_calibre` puts its run directories on the server when no remote root is named
+#: (the platform's own `DEFAULT_REMOTE_ROOT` wins when the engine module is loaded)
+REMOTE_ROOT = "~/signoff_runs"
+DRY_RUN_JSON = "signoff.dry-run.json"
+
+
+def checks_dry_run(
+    out: Path, lib: str, checks: tuple[str, ...], *, workarea: str | None = None
+) -> dict:
+    """The batch check run `checks_bridge` would start, built here and sent nowhere.
+
+    The step scripts and control files come from the platform's `build_scripts`, the same call
+    `run_calibre` makes before it uploads them, and are written under
+    `out/calibre/dry-run/scripts/`: a directory `run_calibre` never claims, so a dry run leaves
+    every real run directory as it was. Returns the files and the server steps, in order.
+    """
+    from spicexplorer_signoff.calibre import CalibreJob, build_scripts
+
+    job = CalibreJob(cell=CELL, lib=lib, checks=checks, workarea=workarea)
+    bundle = build_scripts(kit(), job)
+    scripts = out / "calibre" / "dry-run" / "scripts"
+    scripts.mkdir(parents=True, exist_ok=True)
+    for name, text in bundle.files.items():
+        (scripts / name).write_text(text)
+    engine = sys.modules.get("spicexplorer_signoff.calibre.remote")
+    root = getattr(engine, "DEFAULT_REMOTE_ROOT", REMOTE_ROOT)
+    remote = f"{root}/{CELL}-{bundle.sha256()[:8]}"
+    server = [f"create the run directory {remote}"]
+    server += [f"upload {name}" for name in bundle.files]
+    server += [f"upload {name} (from {path})" for name, path in bundle.uploads.items()]
+    for step in bundle.steps:
+        fetched = ", ".join((step.log, *step.reports))
+        server.append(f"{step.name}: run `{bundle.shell} {step.script}`, download {fetched}")
+    for line in server:
+        print(f"  [server] {line}")
+    return {
+        "scripts_dir": str(scripts),
+        "files": sorted(bundle.files),
+        "steps": [s.name for s in bundle.steps],
+        "server_steps": server,
+    }
 
 
 def main_bridge(a: argparse.Namespace, out: Path, stages: tuple[str, ...], *, runner=None) -> dict:
@@ -487,12 +531,23 @@ def main_bridge(a: argparse.Namespace, out: Path, stages: tuple[str, ...], *, ru
     params = json.loads(a.params) if a.params else {}
     if a.sizing:
         params.setdefault("sizing", a.sizing)
+    dry = bool(getattr(a, "dry_run", False))
     rec: dict = {"lane": "bridge"}
+    if dry:
+        print("dry run: files are written under --out; [server] lines are NOT run")
+        rec["dry_run"] = True
     if "build" in stages:
         print("build:")
-        rec["build"] = build_bridge(out, lib, params, load=a.load)
+        rec["build"] = build_bridge(out, lib, params, load=a.load and not dry)
+        if dry and a.load:
+            step = f"load {Path(rec['build']['skill']).name} into the editor ({lib}/{CELL}/layout)"
+            print(f"  [server] {step}")
+            rec["build"]["server_steps"] = [step]
     checks = tuple(c for c in CHECK_STAGES if c in stages)
-    if checks:
+    if checks and dry:
+        print(f"checks {','.join(checks)}:")
+        rec["checks"] = checks_dry_run(out, lib, checks, workarea=workarea)
+    elif checks:
         run = checks_bridge(out, lib, checks, workarea=workarea, runner=runner)
         rec["calibre_run"] = {"dir": str(run.dir), "status": run.status, "reason": run.reason}
         if "drc" in checks:
@@ -508,7 +563,14 @@ def main_bridge(a: argparse.Namespace, out: Path, stages: tuple[str, ...], *, ru
         reason = "the kit file carries no electromigration table, so no budget can be scored"
         print(f"  Jmax: skipped ({reason})")
         rec["current_density"] = {"skipped": True, "passed": False, "reason": reason}
-    if "benches" in stages:
+    if "benches" in stages and dry:
+        n = len(REFERENCE.benches())
+        step = (
+            f"run {n} bench deck(s) on the schematic and {n} on the extracted DSPF (simulator lane)"
+        )
+        print(f"benches:\n  [server] {step}")
+        rec["benches"] = {"server_steps": [step]}
+    elif "benches" in stages:
         pex = rec.get("pex") or _previous(out).get("pex") or {}
         dspf, ports = pex.get("netlist_path"), list(pex.get("port_order") or [])
         if not dspf or not Path(dspf).is_file() or not ports:
@@ -574,6 +636,12 @@ def main(argv=None) -> int:
         help="bridge lane: load the SKILL into the running editor (creates the layout view); "
         "required when build runs with drc/lvs/pex",
     )
+    ap.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="bridge lane: write the SKILL and the batch check scripts under --out and list the "
+        f"EDA-server steps; contact nothing, write {DRY_RUN_JSON} instead of signoff.json",
+    )
     a = ap.parse_args(argv)
     out = Path(a.out).resolve()
     out.mkdir(parents=True, exist_ok=True)
@@ -582,6 +650,11 @@ def main(argv=None) -> int:
     unknown = sorted(set(stages) - set(lane_stages))
     if unknown:
         raise SystemExit(f"unknown stage(s) {unknown} on lane {LANE or 'open'}: {lane_stages}")
+    if a.dry_run and LANE != "bridge":
+        raise SystemExit(
+            "--dry-run is a lane: bridge option: the open lane contacts no server, every stage "
+            "runs on this machine.\n    FIX: drop --dry-run, or pick the stages with --stages"
+        )
     if LANE == "bridge":
         try:
             rec = main_bridge(a, out, stages)
@@ -590,8 +663,10 @@ def main(argv=None) -> int:
                 raise
             print(f"layout/signoff.py: {exc}\n    {NOT_CONFIGURED_FIX}", file=sys.stderr)
             return 2
-        (out / "signoff.json").write_text(json.dumps(rec, indent=1, default=str) + "\n")
-        print("\nwrote", out / "signoff.json")
+        # a dry run never replaces signoff.json: `benches` reads the DSPF of a real pex run there
+        target = out / (DRY_RUN_JSON if a.dry_run else "signoff.json")
+        target.write_text(json.dumps(rec, indent=1, default=str) + "\n")
+        print("\nwrote", target)
         return 0
     gds, netlist = out / f"{CELL}.gds", out / f"{CELL}_lvs.spice"
     rec: dict = {}
