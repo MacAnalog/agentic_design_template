@@ -17,6 +17,23 @@ Versions are `MAJOR.MINOR`, written `#.##`:
 `make template-status` prints the recorded version and the latest release. Releases are git
 tags, `v<version>`.
 
+## Unreleased — the bridge lane's checkpoint skill is linked; skills at fe08567
+
+Minor; links and docs only. On `lane: bridge` a design's schematics, benches, review setup and
+layout go up to its own OA library at five checkpoints, so the designer reviews while the agents
+work. The library now writes that procedure in one skill (analog-skill-directory #120); the
+agents that reach a checkpoint carry a one-line pointer to it. This release links it and points
+`CLAUDE.md` at it without restating it.
+
+| change | files | carried by `make template-update` |
+|---|---|---|
+| `.sx/skills` ff1f7f9 -> fe08567 (analog-skill-directory #110, #111, #112, #113, #115, #117, #120): the checkpoint skill joins the `design` link set (#120); `schematic-builder`, `schematic-reviewer`, `layout-designer`, `signoff-verifier` and the schematic skills change in the library (#117, #120); `schematic-of-record` drops `--port` from the workstation and `read_cellview` reads a testbench at the top level (#110); `read_cellview` reads analogLib vcvs/vccs back as E/G cards (#111) and takes per-master `--params` sections (#112); `check_netlist` parses analysis ports and transmission lines (#113); `pdk-distiller`'s family sweep covers every transistor family the kit offers (#115) | `.sx/skills` | no (`make skills-update`) |
+| the checkpoint skill's link (the `*-checkpoints` entry) | `.claude/skills/` | yes |
+| `CLAUDE.md` lanes section: one bullet pointing at the checkpoint skill; the linked-skills sentence names it. `README.md`: 26 skills | `CLAUDE.md`, `README.md` | yes (merged three-way) |
+| tests: one committed `*-checkpoints` link, resolving to its skill; the lanes section points at it; every skill of the pinned `design` link set has a committed link (a subset check, so a design's committed `pdk-<id>` link or its own skill links pass) | `tests/test_skill_links.py` | yes |
+
+**Taking it.** `make template-update`, then `make skills-update` so the new link resolves.
+
 ## Unreleased — `layout/signoff.py --dry-run` on `lane: bridge` writes the scripts and contacts nothing
 
 Minor; `layout/signoff.py` only. On `lane: bridge`, `layout/signoff.py --all --load --lib L` with a
