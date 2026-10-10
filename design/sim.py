@@ -86,11 +86,16 @@ def import_lane(lane: str) -> ModuleType:
         if not top.startswith("spicexplorer_"):
             raise
         dist = top.replace("_", "-")
+        signoff = (
+            "layout/signoff.py on this lane also needs `spicexplorer-layout` and "
+            "`spicexplorer-signoff[remote]`. "
+            if module_name(lane) == "sim_bridge"
+            else ""
+        )
         raise ModuleNotFoundError(
             f"harness.yaml says `lane: {lane}`, which needs the platform package `{dist}` in "
             f"pyproject.toml (dependencies + [tool.uv.sources], see the commented block there); "
-            f"layout/signoff.py on this lane also needs `spicexplorer-layout` and "
-            f"`spicexplorer-signoff[remote]`. Add them, then `uv sync`.",
+            f"{signoff}Add them, then `uv sync`.",
             name=e.name,
         ) from e
 
