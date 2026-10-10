@@ -343,6 +343,18 @@ class _D:
         return {"corner": self.corner}
 
 
+def test_design_load_round_trips_the_frozen_design_json(tmp_path):
+    """`metrics.L` loads a frozen dir's `design.json` through `Design.load` (template#57): a second
+    `make certify` of the same dir raised AttributeError while the class had only `from_dict`."""
+    from design.dut import REFERENCE, Design
+
+    dj = tmp_path / "design.json"
+    dj.write_text(json.dumps(REFERENCE.as_dict()))
+    loaded = Design.load(dj)
+    assert loaded == REFERENCE and loaded.as_dict() == REFERENCE.as_dict()
+    assert Design.load(str(dj)) == REFERENCE, "a str path loads too"
+
+
 def test_promote_scales_mapped_keys_and_namespaces_the_rest(monkeypatch):
     from design import metrics
 

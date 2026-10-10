@@ -10,6 +10,8 @@ what proves the frozen bytes are still reproducible from this code.
 from __future__ import annotations
 
 import dataclasses
+import json
+from pathlib import Path
 
 BENCHES: tuple[str, ...] = ("<bench>",)  # the analyses this design is scored on, in report order
 
@@ -39,6 +41,11 @@ class Design:
     def from_dict(cls, d: dict) -> Design:
         fields = {f.name for f in dataclasses.fields(cls)}
         return cls(**{k: v for k, v in d.items() if k in fields})
+
+    @classmethod
+    def load(cls, path: str | Path) -> Design:
+        """Read a frozen dir's `design.json` (what `design.metrics` hands the lifecycle)."""
+        return cls.from_dict(json.loads(Path(path).read_text()))
 
 
 REFERENCE = Design()  # the point `make certify` freezes and `make check` re-measures
