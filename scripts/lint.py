@@ -54,9 +54,10 @@ QUOTE_FORMATS = ("{:.4g}", "{:.3g}", "{:g}")
 QUOTE_FIXED = ("{:.3f}", "{:.2f}")
 NUMBER = re.compile(r"-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?")
 # An include/library line naming an ABSOLUTE path: what `deck_portable` refuses in a frozen deck.
-# `$VAR` and repo-relative spellings are the portable forms and never match.
+# `$VAR` and repo-relative spellings are the portable forms and never match. The separator before
+# the path is a space or tab, never `\s`: a newline would carry the match onto the next line (#56).
 _ABS_INCLUDE = re.compile(
-    r'^\s*\.?(?:include|lib)\b[^\n]*?["\'\s](/[^"\'\s]+)', re.IGNORECASE | re.MULTILINE
+    r'^\s*\.?(?:include|lib)\b[^\n]*?["\' \t](/[^"\'\s]+)', re.IGNORECASE | re.MULTILINE
 )
 
 
