@@ -184,8 +184,10 @@ four changes and a filled `PRODUCES`: 3 failed + 1 collection error before, 258 
    `git fetch --tags template && git checkout v2.17 -- scripts/template_update.py`, then
    `make template-update`. The design's v2.16 copy has neither the `dut.py` exclusion
    (template#66), the `.sx/template-commit` base (template#70) nor the handoff (template#71), so
-   without this step the update merges the template's `dut.py` stub into the design's own and, on a
-   design cut from an untagged commit, re-applies the changes since the tag. A design cut from an
+   without this step the update merges the template's `dut.py` change into the design's own `dut.py`
+   (a conflict wherever the design rewrote the stub) and, on a design cut from an untagged commit,
+   re-applies the changes since the tag (both reproduced on a copy of v2.16 updated to this
+   release, with and without this step). A design cut from an
    untagged commit also writes the full sha of that commit into `.sx/template-commit` before the
    update. The update carries `scripts/`, `tests/`, `.gitignore`, the `Makefile`, `CLAUDE.md`,
    `CHANGELOG.md` and `<package>/sim.py`; `<package>/metrics.py` does not change, so no
