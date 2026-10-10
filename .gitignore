@@ -10,3 +10,5 @@ decks/*/out/
 # agent/session worktrees are real git checkouts INSIDE the repo; `git add -A` would sweep them in
 # as embedded-repo gitlinks that mean nothing to a cloner (template#33)
 .claude/worktrees/
+# a killed `make template-update` can leave the handed-over script behind
+scripts/.template_update-*.py

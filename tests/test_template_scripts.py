@@ -250,6 +250,54 @@ def test_the_update_runs_the_target_releases_own_script(tmp_path):
     assert untracked == "", f"the handed-over copy was left behind: {untracked}"
 
 
+@pytest.mark.parametrize("base", ["tag", "recorded-commit"])
+def test_a_design_copy_that_differs_from_its_base_script_runs_the_update_itself(tmp_path, base):
+    """The handoff ran whenever the target's script differed from the design's copy, also when the
+    design's copy is NEWER than the target's (taken on purpose, as a *Taking it* step says): a
+    target release that predates `.sx/template-commit` then merged from the tag again and
+    conflicted. The run is handed over only when the design's copy is its base commit's script."""
+    current = (SCRIPTS / "template_update.py").read_text()
+    older = current.replace("keep a design in step", "keep a design in step (release 1.00)")
+    target = older.replace('"NOW: read every merged file', '"NOW (release 1.01): read every')
+    assert current != older != target
+    tmpl = make_template(
+        tmp_path,
+        first={"scripts/template_update.py": older},
+        later={"scripts/template_update.py": target},
+    )
+    ref = "v1.00"
+    if base == "recorded-commit":
+        # an untagged commit after v1.00 the design was cut from, script unchanged
+        git("tag", "-d", "v1.01", cwd=tmpl)
+        git("reset", "-q", "--hard", "v1.00", cwd=tmpl)
+        (tmpl / "Makefile").write_text("test:\n\techo cut\n")
+        git("commit", "-qam", "cut", cwd=tmpl)
+        ref = git("rev-parse", "HEAD", cwd=tmpl).strip()
+        (tmpl / "scripts" / "template_update.py").write_text(target)
+        git("commit", "-qam", "1.01", cwd=tmpl)
+        git("tag", "v1.01", cwd=tmpl)
+    makefile = "test:\n\techo cut\n" if base == "recorded-commit" else "test:\n\techo one\n"
+    design = make_design(tmp_path, {"Makefile": makefile})
+    if base == "recorded-commit":
+        (design / ".sx" / "template-commit").write_text(ref + "\n")
+        git("add", "-A", cwd=design)
+        git("commit", "-qm", "record the cut", cwd=design)
+    git("remote", "add", "template", str(tmpl), cwd=design)
+
+    r = subprocess.run(
+        [sys.executable, "scripts/template_update.py", "update"],
+        cwd=design,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "running v1.01's" not in r.stdout, "the run was handed to the target's script"
+    assert "NOW (release 1.01)" not in r.stdout
+    assert f"base: {ref}" in r.stdout, r.stdout
+    assert (design / ".sx" / "template-version").read_text().strip() == "1.01"
+
+
 # ------------------------------------------------- a design cut between two tags --------------
 
 

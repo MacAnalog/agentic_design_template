@@ -27,14 +27,18 @@ update to v2.16 merged `<package>/metrics.py` and printed no `WARNING`, and `mak
 
 | change | files | carried by `make template-update` |
 |---|---|---|
-| `update` runs `v<target>:scripts/template_update.py` when it differs from the design's copy, and returns its exit code | `scripts/template_update.py`, `tests/test_template_scripts.py` | yes |
+| `update` runs `v<target>:scripts/template_update.py` when the design's copy is its base commit's script, unmodified, and the target's differs; it returns that script's exit code | `scripts/template_update.py`, `tests/test_template_scripts.py` | yes |
 | v2.16 *Taking it* step 1: a design below v2.16 takes v2.16's script before updating | `CHANGELOG.md` | yes |
 
 - The target's script is written to a temporary file in the design's `scripts/` (so it resolves
   the design as its repository), run with `SX_TEMPLATE_UPDATE_HANDOFF=1` so it does not hand over
   again, and removed when it exits. The run prints `running v<target>'s
-  scripts/template_update.py` first. A design that edited its own copy of the script gets the
-  release's behaviour for the update; the three-way merge still carries its edits into the file.
+  scripts/template_update.py` first.
+- The base commit is the one `.sx/template-commit` names, else `v<recorded>`. A copy that differs
+  from that commit's script — edited by the design, or taken from a later commit as a *Taking it*
+  step says — runs the update itself: the target's script may be older than it, and a release that
+  predates `.sx/template-commit` would merge from the tag again (a design at an untagged commit
+  after v2.14 then got 5 conflicts on `update 2.16` instead of none).
 
 **Taking it.** The handoff is in the design's copy only after this release lands, so the update
 that brings it still runs the older copy. A design below v2.16 that carries a signed scorecard
