@@ -16,7 +16,10 @@ Two halves, and the second one is the reason this file exists rather than living
 
 from __future__ import annotations
 
+import importlib.util
 import os
+import shutil
+import subprocess
 import sys
 import types
 from pathlib import Path
@@ -350,6 +353,56 @@ def test_the_dispatcher_really_selects_the_bridge_module_when_the_key_says_so(br
     spec.loader.exec_module(mod)
     assert sys.modules["design._lane_probe"] is bridge.sim, "the swap hands over the lane module"
     assert bridge.sim.LANE == "bridge"
+
+
+def test_bridge_lane_without_its_platform_package_names_the_package_to_add(monkeypatch):
+    """`lane: bridge` on the template's own venv: a remediation, not a bare traceback."""
+    monkeypatch.setitem(sys.modules, "spicexplorer_spectre", None)  # import -> ModuleNotFoundError
+    monkeypatch.delitem(sys.modules, "design.sim_bridge", raising=False)
+    with pytest.raises(ModuleNotFoundError) as e:
+        sim.import_lane("bridge")
+    msg = str(e.value)
+    for part in ("lane: bridge", "pyproject.toml", "spicexplorer-signoff[remote]", "uv sync"):
+        assert part in msg, part
+    assert e.value.name == "spicexplorer_spectre"
+
+
+def test_the_layout_signoff_clause_is_only_on_the_bridge_lane(monkeypatch):
+    """A broken venv on the open lane is told to add the package, not about the bridge lane."""
+    monkeypatch.setitem(sys.modules, "spicexplorer_core.spice_engine", None)  # a broken venv
+    monkeypatch.delitem(sys.modules, "design.sim_ngspice", raising=False)
+    with pytest.raises(ModuleNotFoundError) as e:
+        sim.import_lane("ngspice")
+    msg = str(e.value)
+    assert "spicexplorer-core" in msg and "uv sync" in msg
+    assert "layout/signoff.py" not in msg
+
+
+@pytest.mark.skipif(
+    importlib.util.find_spec("spicexplorer_spectre") is not None,
+    reason="the bridge-lane package is installed here, so `lane: bridge` loads",
+)
+def test_make_doctor_on_a_bridge_lane_without_its_package_fails_in_one_line(tmp_path):
+    """`python -m design.sim` (`make doctor`): one `FAIL:` line and exit 2, no traceback."""
+    root = Path(__file__).resolve().parents[1]
+    shutil.copytree(
+        root / "design", tmp_path / "design", ignore=shutil.ignore_patterns("__pycache__")
+    )
+    lines = (root / "harness.yaml").read_text().splitlines()
+    kept = [ln for ln in lines if not ln.startswith("lane:")]  # a design already on a lane
+    (tmp_path / "harness.yaml").write_text("\n".join([*kept, "lane: bridge", ""]))
+    out = subprocess.run(
+        [sys.executable, "-m", "design.sim"],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+    )
+    assert out.returncode == 2, out.stderr
+    assert out.stderr.startswith("FAIL:"), out.stderr
+    assert "pyproject.toml" in out.stderr and "uv sync" in out.stderr
+    assert "Traceback" not in out.stderr
 
 
 def test_the_bridge_module_carries_no_private_driver():
