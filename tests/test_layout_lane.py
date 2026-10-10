@@ -66,7 +66,7 @@ def test_the_bridge_lane_passes_the_kit_file_by_name_and_the_oa_library():
     [
         ("bridge", {"lib": "amp_lib"}, {}, "SX_KIT_FILE"),
         ("bridge", {"lib": "amp_lib"}, {"SX_KIT_FILE": "  "}, "SX_KIT_FILE"),
-        ("bridge", {}, {"SX_KIT_FILE": "k.yaml"}, "LIB="),
+        ("bridge", {}, {"SX_KIT_FILE": "k.yaml"}, "OA_LIB="),
         ("magic", {}, {}, "lane: magic"),
         ("", {"generator": "layout/my gen.py"}, {}, "white space"),
     ],
@@ -148,11 +148,20 @@ def test_make_layout_flow_on_the_bridge_lane_runs_the_kit_lane(tmp_path):
     ]
 
 
+def test_make_layout_flow_passes_a_remote_home_workarea_unexpanded(tmp_path):
+    root = _bridge_copy(tmp_path)
+    ws, log = _orch_stub(tmp_path)
+    r = _make(root, ws, "RUN=r", "OA_LIB=amp_lib", "WORKAREA=$$HOME/wa", kit="/k/kit.yaml")
+    assert r.returncode == 0, r.stdout + r.stderr
+    argv = log.read_text().splitlines()
+    assert argv[argv.index("--workarea") + 1] == "$HOME/wa"
+
+
 @pytest.mark.parametrize(
     ("args", "kit", "says"),
     [
         (("RUN=r", "OA_LIB=amp_lib"), None, "SX_KIT_FILE"),
-        (("RUN=r",), "/k/kit.yaml", "LIB="),
+        (("RUN=r",), "/k/kit.yaml", "OA_LIB="),
     ],
 )
 def test_make_layout_flow_refuses_a_bridge_lane_it_cannot_run(tmp_path, args, kit, says):

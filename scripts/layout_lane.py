@@ -77,7 +77,7 @@ def lane_args(
         )
     if not lib:
         raise LaneError(
-            "lane: bridge builds the cell in an OA library on the EDA server: pass LIB=<library> "
+            "lane: bridge builds the cell in an OA library on the EDA server: pass OA_LIB=<library> "
             "(doc/environment.md, row `OA library`)"
         )
     args += ["--tech", KIT_TECH, "--lib", lib]
