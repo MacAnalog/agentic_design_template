@@ -490,6 +490,9 @@ def checks_dry_run(
     bundle = build_scripts(kit(), job)
     scripts = out / "calibre" / "dry-run" / "scripts"
     scripts.mkdir(parents=True, exist_ok=True)
+    for stale in scripts.iterdir():  # an earlier dry run with other checks wrote other steps
+        if stale.is_file():
+            stale.unlink()
     for name, text in bundle.files.items():
         (scripts / name).write_text(text)
     engine = sys.modules.get("spicexplorer_signoff.calibre.remote")

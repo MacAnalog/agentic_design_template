@@ -639,6 +639,10 @@ def test_dry_run_writes_the_skill_and_the_check_scripts_and_contacts_nothing(
     assert "2 bench deck(s)" in rec["benches"]["server_steps"][0]
     # the real record a later `--stages benches` reads is left as it was
     assert json.loads((out / "signoff.json").read_text()) == {"pex": {"netlist_path": "kept"}}
+    # a second dry run with fewer checks leaves only its own scripts
+    assert so.main(["--stages", "drc", "--dry-run", "--out", str(out), "--lib", "amp_lib"]) == 0
+    files = json.loads((out / "signoff.dry-run.json").read_text())["checks"]["files"]
+    assert sorted(f.name for f in scripts.iterdir()) == files and "s4_lvs.csh" not in files
 
 
 @NEEDS_SIGNOFF_DRY_RUN
