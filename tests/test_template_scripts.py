@@ -141,6 +141,31 @@ def test_a_new_file_that_would_not_apply_is_not_reported_as_skipped(tmp_path):
     assert (design / ".sx" / "template-version").read_text().strip() == "1.00"
 
 
+def test_a_template_dut_change_offers_no_hunk_to_the_design_dut(tmp_path):
+    """#63: `PKG_EXCLUDE` held `:!dut.py`, a pathspec git resolves against the repo root, not the
+    `--relative=design/` prefix, so the template's `design/dut.py` hunk still reached the design's
+    own `<package>/dut.py`. The rest of the package must still arrive."""
+    first = {"design/dut.py": "STUB = 1\n", "design/sim.py": "LANE = 1\n"}
+    later = {"design/dut.py": "STUB = 2\n", "design/sim.py": "LANE = 2\n"}
+    tmpl = make_template(tmp_path, later=later, first=first)
+    design = make_design(
+        tmp_path,
+        {
+            "harness.yaml": "package: cell\n",
+            "cell/dut.py": "STUB = 1\n",
+            "cell/sim.py": "LANE = 1\n",
+        },
+    )
+    tu = load_from(design, "template_update")
+    tu.URL = str(tmpl)
+
+    assert tu.update(None) == 0
+    assert (design / "cell" / "dut.py").read_text() == "STUB = 1\n", (
+        "the template's dut.py hunk landed"
+    )
+    assert (design / "cell" / "sim.py").read_text() == "LANE = 2\n"
+
+
 def test_an_update_that_changes_a_signed_scorer_says_to_re_certify(tmp_path, capsys):
     """A release that edits the scorer a committed scorecard hashes (`provenance.script`) leaves
     that card's script_sha stale: the update says so, and names the card and the way to defer."""
