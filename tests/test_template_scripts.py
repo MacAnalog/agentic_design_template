@@ -217,6 +217,96 @@ def test_an_update_that_touches_no_signed_scorer_prints_no_warning(tmp_path, cap
     assert "WARNING" not in capsys.readouterr().out
 
 
+# ------------------------------------------------- a design cut between two tags --------------
+
+
+def make_template_with_untagged_cut(root: Path) -> tuple[Path, str]:
+    """v1.00, then an UNTAGGED commit that edits the Makefile's line, then v1.01 editing the same
+    line again. Returns the template and the untagged commit's sha."""
+    tmpl = make_template(root, later={"Makefile": "test:\n\techo two\n"})
+    git("tag", "-d", "v1.01", cwd=tmpl)
+    cut = git("rev-parse", "HEAD", cwd=tmpl).strip()
+    (tmpl / "Makefile").write_text("test:\n\techo three (template 1.01)\n")
+    git("commit", "-qam", "1.01", cwd=tmpl)
+    git("tag", "v1.01", cwd=tmpl)
+    return tmpl, cut
+
+
+def test_a_design_cut_from_an_untagged_commit_merges_from_that_commit(tmp_path):
+    """The base was always the tag `.sx/template-version` names. A design cut from a commit after
+    that tag already carries the changes up to the commit, so a diff from the tag re-applied them
+    and conflicted on every file they touched although the design had edited none of them."""
+    tmpl, cut = make_template_with_untagged_cut(tmp_path)
+    design = make_design(tmp_path, {"Makefile": "test:\n\techo two\n"}, version="1.00")
+    (design / ".sx" / "template-commit").write_text(cut + "\n")
+    tu = load_from(design, "template_update")
+    tu.URL = str(tmpl)
+
+    assert tu.update(None) == 0
+    assert (design / "Makefile").read_text() == "test:\n\techo three (template 1.01)\n"
+    assert (design / ".sx" / "template-version").read_text().strip() == "1.01"
+    v101 = git("rev-parse", "v1.01^{commit}", cwd=tmpl).strip()
+    assert (design / ".sx" / "template-commit").read_text().strip() == v101
+
+
+def test_without_a_recorded_commit_the_tag_stays_the_base(tmp_path):
+    """The fallback: no `.sx/template-commit`, the base is `v<recorded>` as before, so the same cut
+    conflicts — the failure the recorded commit removes."""
+    tmpl, _ = make_template_with_untagged_cut(tmp_path)
+    design = make_design(tmp_path, {"Makefile": "test:\n\techo two\n"}, version="1.00")
+    tu = load_from(design, "template_update")
+    tu.URL = str(tmpl)
+
+    assert tu.update(None) == 1
+    assert (design / ".sx" / "template-version").read_text().strip() == "1.00"
+    assert not (design / ".sx" / "template-commit").exists()
+
+
+def test_a_clean_update_records_the_release_commit(tmp_path):
+    """After any landed release the base is exact, whether or not the cut recorded a commit."""
+    tmpl = make_template(tmp_path)
+    design = make_design(tmp_path, {"Makefile": "test:\n\techo one\n"})
+    tu = load_from(design, "template_update")
+    tu.URL = str(tmpl)
+
+    assert tu.update(None) == 0
+    v101 = git("rev-parse", "v1.01^{commit}", cwd=tmpl).strip()
+    assert (design / ".sx" / "template-commit").read_text().strip() == v101
+
+
+@pytest.mark.parametrize("which", ["unrelated", "after-target", "garbage"])
+def test_a_recorded_commit_outside_the_release_range_stops_the_update(tmp_path, which):
+    """A wrong base is the defect, so a recorded commit that is not between `v<recorded>` and the
+    target release stops the update with the file named; it never falls back to the tag silently."""
+    tmpl, _ = make_template_with_untagged_cut(tmp_path)
+    if which == "after-target":
+        (tmpl / "Makefile").write_text("test:\n\techo four\n")
+        git("commit", "-qam", "after 1.01", cwd=tmpl)
+        sha = git("rev-parse", "HEAD", cwd=tmpl).strip()
+    elif which == "unrelated":
+        other = tmp_path / "other"
+        other.mkdir()
+        git("init", "-q", "-b", "main", cwd=other)
+        (other / "x").write_text("x\n")
+        git("add", "-A", cwd=other)
+        git("commit", "-qm", "x", cwd=other)
+        sha = git("rev-parse", "HEAD", cwd=other).strip()
+    else:
+        sha = "not-a-sha"
+    design = make_design(tmp_path, {"Makefile": "test:\n\techo two\n"}, version="1.00")
+    (design / ".sx" / "template-commit").write_text(sha + "\n")
+    tu = load_from(design, "template_update")
+    tu.URL = str(tmpl)
+    if which == "after-target":  # make the commit reachable in the design, as a fetch of main would
+        tu.fetch()
+        git("fetch", "-q", "template", "main", cwd=design)
+
+    with pytest.raises(SystemExit, match="template-commit"):
+        tu.update(None)
+    assert (design / "Makefile").read_text() == "test:\n\techo two\n"
+    assert (design / ".sx" / "template-version").read_text().strip() == "1.00"
+
+
 # ------------------------------------------------------------------ AT-03 --------------
 
 

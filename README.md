@@ -11,7 +11,9 @@ definitions and method notes under `.claude/`.
 1. `export SX_ROOT=<your spicexplorer-workspace checkout>` (the lab's `~/.sx_env` does this), then
    get the tree. Prefer `make new` in `macanalog-design-directory`: it names the repo by the lab
    convention, creates it from the template on GitHub, clones it and runs the `make init` of step 2
-   for you. Otherwise copy the tree by hand.
+   for you. Otherwise copy the tree by hand. A tree copied from a commit that is not a release
+   tag also records that commit — `git -C <template checkout> rev-parse HEAD > .sx/template-commit`
+   — so `make template-update` merges from it and not from the tag `.sx/template-version` names.
 2. `make init`: it links `.sx/platform -> $SX_ROOT/spicexplorer-platform`, initialises the
    `.sx/skills` library (analog-skill-directory) with its agent/skill links, and runs `uv sync`.
    Repeat in every new checkout or worktree.
