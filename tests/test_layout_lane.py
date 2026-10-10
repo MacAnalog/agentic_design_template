@@ -34,19 +34,28 @@ def _mod(rel: str, name: str | None = None):
     return mod
 
 
-def _needs(rel: str, marker: str = ""):
+def _needs(rel: str, marker: str = "", why: str = ""):
     """Skip a test whose `layout/` file is not in this repo yet. `make template-update` never
-    carries `layout/`, so a design taking v2.15 copies these files by hand before its tests run."""
+    carries `layout/`, so a design taking v2.15 copies these files by hand before its tests run.
+    `why` replaces the reason when the file is there but no longer carries `marker`."""
     path = REPO / rel
     present = path.is_file() and marker in path.read_text()
     what = f"has no {marker!r}" if path.is_file() else "is absent"
-    return pytest.mark.skipif(
-        not present,
-        reason=f"{rel} {what}: bring it across by hand (CHANGELOG.md, v2.15, Taking it, step 2)",
-    )
+    reason = f"{rel} {what}: bring it across by hand (CHANGELOG.md, v2.15, Taking it, step 2)"
+    if why and path.is_file():
+        reason = f"{rel} {what}: {why}"
+    return pytest.mark.skipif(not present, reason=reason)
 
+
+# The skeleton's own `plan()` raises with this text; a design that has drawn its cell has not.
+GEN_SKELETON_MARKER = "draw {CELL} into the LayoutPlan"
 
 NEEDS_GEN_BRIDGE = _needs("layout/gen_cell_bridge.py")
+NEEDS_GEN_SKELETON = _needs(
+    "layout/gen_cell_bridge.py",
+    GEN_SKELETON_MARKER,
+    why="plan() is drawn, so the skeleton's NotImplementedError check no longer applies",
+)
 NEEDS_SIGNOFF_BRIDGE = _needs("layout/signoff.py", "def main_bridge")
 NEEDS_PLAN_TEMPLATE = _needs("layout/PLAN.template.md")
 
@@ -375,7 +384,7 @@ def fake_backend(monkeypatch):
     return seen
 
 
-@NEEDS_GEN_BRIDGE
+@NEEDS_GEN_SKELETON
 def test_the_skeleton_resolves_its_roles_then_asks_to_be_drawn(fake_backend, tmp_path):
     sizing = tmp_path / "sizing.json"
     sizing.write_text(json.dumps({"m1": {"w": 1}}))
@@ -383,6 +392,42 @@ def test_the_skeleton_resolves_its_roles_then_asks_to_be_drawn(fake_backend, tmp
         gen.plan({"sizing": str(sizing)}, _FakeKit({"nmos", "pmos"}))
     with pytest.raises(KeyError, match="pmos"):
         gen.plan({}, _FakeKit({"nmos"}))
+
+
+@NEEDS_GEN_SKELETON
+def test_a_drawn_plan_skips_the_skeleton_case_instead_of_failing_it(tmp_path):
+    """A design fills `plan()` in its copy of the default GEN; `make test` must stay green."""
+    for rel in ("tests", "layout", "scripts"):
+        shutil.copytree(REPO / rel, tmp_path / rel, ignore=shutil.ignore_patterns("__pycache__"))
+    for rel in ("pyproject.toml", "harness.yaml"):
+        shutil.copy(REPO / rel, tmp_path / rel)
+    gen_py = tmp_path / "layout/gen_cell_bridge.py"
+    text = gen_py.read_text()
+    start = text.index('    raise NotImplementedError(\n        f"draw {CELL}')
+    end = text.index("\n    )\n", start) + len("\n    )\n")
+    gen_py.write_text(text[:start] + "    return lp\n" + text[end:])
+    assert GEN_SKELETON_MARKER not in gen_py.read_text()
+    r = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "-q",
+            "-rs",
+            "-p",
+            "no:cacheprovider",
+            "tests/test_layout_lane.py",
+            "-k",
+            "skeleton_resolves",
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+    )
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "1 skipped" in r.stdout and "plan() is drawn" in r.stdout, r.stdout
 
 
 # --- layout/signoff.py on the bridge lane -------------------------------------------------------
