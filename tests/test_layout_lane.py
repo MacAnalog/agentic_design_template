@@ -11,6 +11,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -141,14 +142,18 @@ def test_declared_lane_reads_the_top_level_key(tmp_path):
 # --- make layout-flow on a bridge-lane copy of the template -------------------------------------
 
 
-def _bridge_copy(tmp_path: Path) -> Path:
-    """The Makefile, the two scripts it runs and a harness.yaml that declares `lane: bridge`."""
+def _bridge_copy(tmp_path: Path, exp_env: str | None = None) -> Path:
+    """The Makefile, the two scripts it runs and a harness.yaml that declares `lane: bridge`;
+    `exp_env` replaces the copied `exp_env:` line, so a test can pin the env-name prefix."""
     root = tmp_path / "design"
     (root / "scripts").mkdir(parents=True)
     shutil.copy(REPO / "Makefile", root / "Makefile")
     for name in ("layout_lane.py", "pdk_links.py"):
         shutil.copy(REPO / "scripts" / name, root / "scripts" / name)
-    text = (REPO / "harness.yaml").read_text() + "\nlane: bridge\n"
+    text = (REPO / "harness.yaml").read_text()
+    if exp_env is not None:
+        text = re.sub(r"(?m)^exp_env:.*$", "", text) + f"\nexp_env: {exp_env}\n"
+    text += "\nlane: bridge\n"
     (root / "harness.yaml").write_text(text)
     return root
 
@@ -272,10 +277,15 @@ def test_make_layout_flow_passes_a_remote_home_workarea_unexpanded(tmp_path):
     assert argv[argv.index("--workarea") + 1] == "$HOME/wa"
 
 
-def test_make_layout_flow_takes_the_oa_library_from_the_prefixed_variable(tmp_path):
-    root = _bridge_copy(tmp_path)  # exp_env: EXP, so the prefix is SIM
+@pytest.mark.parametrize("exp_env", [None, "EXP", "OTA_EXP"])
+def test_make_layout_flow_takes_the_oa_library_from_the_prefixed_variable(tmp_path, exp_env):
+    """The variable is `<prefix>_OA_LIB` for the copied harness.yaml's own `exp_env` (a design
+    cut from the template may declare `OTA_EXP`), never a hard-coded `SIM_OA_LIB`."""
+    root = _bridge_copy(tmp_path, exp_env)
     ws, log = _orch_stub(tmp_path)
-    r = _make(root, ws, "RUN=r", kit="/k/kit.yaml", extra={"SIM_OA_LIB": "amp_lib"})
+    var = f"{layout_lane.env_prefix(root)}_OA_LIB"
+    assert var == {"EXP": "SIM_OA_LIB", "OTA_EXP": "OTA_OA_LIB"}.get(exp_env, var)
+    r = _make(root, ws, "RUN=r", kit="/k/kit.yaml", extra={var: "amp_lib"})
     assert r.returncode == 0, r.stdout + r.stderr
     argv = log.read_text().splitlines()
     assert argv[argv.index("--lib") + 1] == "amp_lib"
