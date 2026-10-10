@@ -24,11 +24,11 @@ SKILLS = REPO / ".claude" / "skills"
 LIBRARY = REPO / ".sx" / "skills"
 
 
-def _committed_skill_links() -> set[str]:
+def _committed_skill_links(repo: Path = REPO) -> set[str]:
     """Names of the symlinks committed under `.claude/skills/` (git mode 120000)."""
     r = subprocess.run(
         ["git", "ls-files", "-s", "--", ".claude/skills"],
-        cwd=REPO,
+        cwd=repo,
         capture_output=True,
         text=True,
         check=False,
@@ -75,13 +75,42 @@ def test_claude_md_points_at_the_checkpoint_skill_in_the_lanes_section():
     assert "`*-checkpoints`" in section, "the lanes section does not point at the checkpoint skill"
 
 
-def test_committed_skill_links_equal_the_pinned_design_link_set():
-    if not _library_initialised():
-        pytest.skip(".sx/skills is not initialised (make init)")
+def _design_link_set() -> set[str]:
     lines = (LIBRARY / "linksets" / "design.txt").read_text().splitlines()
-    wanted = {
+    return {
         s.split("/", 1)[1]
         for s in (x.split("#", 1)[0].strip() for x in lines)
         if s.startswith("skills/")
     }
-    assert _committed_skill_links() == wanted
+
+
+def _missing_design_links(repo: Path = REPO) -> set[str]:
+    """Skills of the pinned `design` link set with no committed link in `repo`.
+
+    A subset check, not equality: a design that declares `pdk:` commits the library's `pdk-<id>`
+    link (`make skills-update` stages `.claude`), and a design may commit its own skill links.
+    """
+    return _design_link_set() - _committed_skill_links(repo)
+
+
+def test_every_pinned_design_skill_has_a_committed_link():
+    if not _library_initialised():
+        pytest.skip(".sx/skills is not initialised (make init)")
+    assert not _missing_design_links()
+
+
+def test_a_committed_pdk_link_in_a_design_passes_the_link_check(tmp_path: Path):
+    """A design that declares `pdk:` commits the `pdk-<id>` link beside the design set."""
+    if not _library_initialised():
+        pytest.skip(".sx/skills is not initialised (make init)")
+    pdk_sets = sorted((LIBRARY / "linksets").glob("pdk-*.txt"))
+    if not pdk_sets:
+        pytest.skip("the pinned library has no pdk-<id> link set")
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    skills = tmp_path / ".claude" / "skills"
+    skills.mkdir(parents=True)
+    for name in sorted(_design_link_set() | {pdk_sets[0].stem}):
+        (skills / name).symlink_to(f"../../.sx/skills/skills/{name}")
+    subprocess.run(["git", "add", ".claude"], cwd=tmp_path, check=True)
+    assert pdk_sets[0].stem in _committed_skill_links(tmp_path)
+    assert not _missing_design_links(tmp_path)
