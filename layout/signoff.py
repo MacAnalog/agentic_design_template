@@ -529,6 +529,30 @@ def _previous(out: Path) -> dict:
         return {}
 
 
+#: the platform's "this account cannot reach the EDA server" errors: (module, class)
+NOT_CONFIGURED = (
+    ("spicexplorer_signoff.calibre", "CalibreNotConfigured"),
+    ("spicexplorer_spectre.lane", "LaneNotConfigured"),
+)
+NOT_CONFIGURED_FIX = (
+    "FIX: give this account a bridge profile: run the bridge's own `init` command from the bridge"
+    " venv, or ask the admin for one (doc/environment.md, row `bridge profile`)"
+)
+
+
+def _not_configured() -> tuple[type[BaseException], ...]:
+    """The classes of `NOT_CONFIGURED` this venv has; an absent package contributes none."""
+    found: list[type[BaseException]] = []
+    for module, name in NOT_CONFIGURED:
+        try:
+            cls = getattr(importlib.import_module(module), name, None)
+        except ImportError:
+            continue
+        if isinstance(cls, type) and issubclass(cls, BaseException):
+            found.append(cls)
+    return tuple(found)
+
+
 # ------------------------------------------------------------------ driver ------------
 
 STAGES = ("build", "render", "drc", "jmax", "lvs", "pex", "benches")
@@ -559,7 +583,13 @@ def main(argv=None) -> int:
     if unknown:
         raise SystemExit(f"unknown stage(s) {unknown} on lane {LANE or 'open'}: {lane_stages}")
     if LANE == "bridge":
-        rec = main_bridge(a, out, stages)
+        try:
+            rec = main_bridge(a, out, stages)
+        except Exception as exc:  # re-raised below unless it is a not-configured class
+            if not isinstance(exc, _not_configured()):
+                raise
+            print(f"layout/signoff.py: {exc}\n    {NOT_CONFIGURED_FIX}", file=sys.stderr)
+            return 2
         (out / "signoff.json").write_text(json.dumps(rec, indent=1, default=str) + "\n")
         print("\nwrote", out / "signoff.json")
         return 0

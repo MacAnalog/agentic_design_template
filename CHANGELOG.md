@@ -17,6 +17,22 @@ Versions are `MAJOR.MINOR`, written `#.##`:
 `make template-status` prints the recorded version and the latest release. Releases are git
 tags, `v<version>`.
 
+## Unreleased — `layout/signoff.py` on `lane: bridge` exits 2 with a FIX line when the account has no bridge profile
+
+Minor; `layout/signoff.py` only. On an account with no bridge profile,
+`layout/signoff.py --stages drc,lvs,pex --lib L` ended in a `CalibreNotConfigured` traceback from
+the platform's batch check runner. It now prints the platform's reason and a `FIX:` line (create
+the profile, or ask the admin), writes no `signoff.json` and exits 2, the code the bridge-lane
+simulator CLI and `make doctor` use for the same condition. The platform's `LaneNotConfigured`
+gets the same handling. Every other exception still propagates unchanged.
+
+| change | files | carried by `make template-update` |
+|---|---|---|
+| `main()` on `lane: bridge` catches `CalibreNotConfigured` and `LaneNotConfigured` (imported only after a stage raises, so a venv without those packages still loads the file), prints the reason and its FIX line, exits 2 | `layout/signoff.py` | yes |
+| tests: both classes give exit 2 with the reason and the FIX line and no `signoff.json`; another failure of the check run still raises | `tests/test_layout_lane.py` | yes |
+
+**Taking it.** `make template-update`. Nothing to change in a design.
+
 ## Unreleased — `template-update` runs the target release's own script
 
 Minor; `scripts/template_update.py` only. `make template-update` ran the design's own copy of the

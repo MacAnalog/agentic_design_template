@@ -570,6 +570,56 @@ def test_build_alone_or_checks_alone_run_without_load(fake_kit_lane, monkeypatch
     assert so.main(["--stages", stages, "--out", str(tmp_path / "o"), "--lib", "amp_lib"]) == 0
 
 
+class _NotConfigured(RuntimeError):
+    """Stands in for the platform's `CalibreNotConfigured` / `LaneNotConfigured`."""
+
+
+@NEEDS_SIGNOFF_BRIDGE
+@pytest.mark.parametrize(
+    ("module", "name"),
+    [
+        ("spicexplorer_signoff.calibre", "CalibreNotConfigured"),
+        ("spicexplorer_spectre.lane", "LaneNotConfigured"),
+    ],
+)
+def test_an_account_without_a_bridge_profile_gets_the_reason_and_its_fix(
+    fake_kit_lane, monkeypatch, tmp_path, capsys, module, name
+):
+    """No bridge profile: the reason and a FIX line on stderr, exit 2, no traceback."""
+    so = _signoff(monkeypatch, tmp_path)
+    monkeypatch.setenv("SX_KIT_FILE", "/k/kit.yaml")
+    exc_type = type(name, (_NotConfigured,), {})
+    mod = sys.modules.get(module) or types.ModuleType(module)
+    monkeypatch.setitem(sys.modules, module, mod)
+    monkeypatch.setattr(mod, name, exc_type, raising=False)
+
+    def run_calibre(kit, job, *, work_root, runner=None):
+        raise exc_type("no bridge profile (the per-account .env)")
+
+    monkeypatch.setattr(sys.modules["spicexplorer_signoff.calibre"], "run_calibre", run_calibre)
+    argv = ["--stages", "drc,lvs,pex", "--out", str(tmp_path / "o"), "--lib", "amp_lib"]
+    assert so.main([*argv, "--workarea", "$HOME/w"]) == 2
+    err = capsys.readouterr().err
+    assert "no bridge profile (the per-account .env)" in err
+    assert "FIX: give this account a bridge profile" in err and "Traceback" not in err
+    assert not (tmp_path / "o" / "signoff.json").exists()
+
+
+@NEEDS_SIGNOFF_BRIDGE
+def test_another_failure_of_the_check_run_is_not_reported_as_a_missing_profile(
+    fake_kit_lane, monkeypatch, tmp_path
+):
+    so = _signoff(monkeypatch, tmp_path)
+    monkeypatch.setenv("SX_KIT_FILE", "/k/kit.yaml")
+
+    def run_calibre(kit, job, *, work_root, runner=None):
+        raise ValueError("cell name is not a plain cell name")
+
+    monkeypatch.setattr(sys.modules["spicexplorer_signoff.calibre"], "run_calibre", run_calibre)
+    with pytest.raises(ValueError, match="plain cell name"):
+        so.main(["--stages", "drc", "--out", str(tmp_path / "o"), "--lib", "amp_lib"])
+
+
 @NEEDS_SIGNOFF_BRIDGE
 def test_the_staged_dspf_is_named_for_its_content(fake_kit_lane, monkeypatch, tmp_path):
     """The lane keys a run on the deck text: a re-extracted DSPF must change the deck."""
