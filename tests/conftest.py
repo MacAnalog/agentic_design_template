@@ -7,6 +7,9 @@ folder name must not share one (template#43).
 No test or fixture sees GIT_DIR, GIT_WORK_TREE or GIT_INDEX_FILE from the caller's environment,
 nor the commercial-kit variables SX_KIT_FILE and SX_KIT_SKILLS: a design on `lane: bridge` exports
 both, and a test that needs one sets it itself.
+
+No test appends to this checkout's own ledger: a row logged against it lands in the test's
+`tmp_path` instead (template#60).
 """
 
 from __future__ import annotations
@@ -25,6 +28,7 @@ _GIT_REPO_VARS = ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE")
 # A bridge-lane account exports these; inherited, they add `--library <clone>` to every
 # `make skills-update` a test runs and make `make layout-flow` take the kit lane's checks.
 _KIT_VARS = ("SX_KIT_FILE", "SX_KIT_SKILLS")
+_CHECKOUT = Path(__file__).resolve().parents[1]
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -37,6 +41,27 @@ def _no_inherited_git_repo_or_kit():
         for name in (*_GIT_REPO_VARS, *_KIT_VARS):
             mp.delenv(name, raising=False)
         yield
+
+
+@pytest.fixture(autouse=True)
+def _ledger_in_tmp(monkeypatch, tmp_path):
+    """Point this checkout's ledger at `tmp_path` for every test.
+
+    The ledger is written from several modules (`metrics.run_decks`, the lifecycle,
+    `certify_dir`), each holding its own `log_run` and its own loaded `Harness`, so patching a
+    writer misses the next one added. Every write resolves its file through `Harness.path`, so the
+    redirect is there. A harness on another root (a test's tmp repo) keeps its own ledger.
+    """
+    from spicexplorer_harness.config import Harness
+
+    real = Harness.path
+
+    def path(self: Harness, rel: str) -> Path:
+        if rel == self.ledger and Path(self.root).resolve() == _CHECKOUT:
+            return tmp_path / "ledger.ndjson"
+        return real(self, rel)
+
+    monkeypatch.setattr(Harness, "path", path)
 
 
 def pytest_configure(config):
