@@ -17,170 +17,190 @@ Versions are `MAJOR.MINOR`, written `#.##`:
 `make template-status` prints the recorded version and the latest release. Releases are git
 tags, `v<version>`.
 
-## Unreleased — the bridge lane's checkpoint skill is linked; skills at fe08567
+## v2.17 — `layout/signoff.py` on `lane: bridge` gains `--dry-run`, two refusals and a FIX line; `template-update` merges from the commit a design was cut from; the checkpoint skill is linked; lint skips ignored files
 
-Minor; links and docs only. On `lane: bridge` a design's schematics, benches, review setup and
-layout go up to its own OA library at five checkpoints, so the designer reviews while the agents
-work. The library now writes that procedure in one skill (analog-skill-directory #120); the
-agents that reach a checkpoint carry a one-line pointer to it. This release links it and points
-`CLAUDE.md` at it without restating it.
+Minor, 2026-10-10. No module is renamed and every lifecycle command keeps its name. The release
+records the sixteen changes merged since the v2.16 tag (template#65 to #75, #77 to #79, #82 and
+#84) and moves `.sx/skills` from ff1f7f9 to fe08567. Same platform floor as v2.15; gated against
+platform main e05bec8. The library's `design` link set gains one skill between the two pins (15
+agents, 25 skills -> 15 agents, 26 skills): the bridge lane's checkpoint skill, whose link under
+`.claude/skills/` is committed (template#82). **No file this release carries is part of a signed computation:**
+`<package>/metrics.py`, the file every `scorecard.json` hashes as `script_sha`, is the same at
+v2.16 and v2.17, so `scorecard-recompute` stays green and no design re-certifies.
 
-| change | files | carried by `make template-update` |
-|---|---|---|
-| `.sx/skills` ff1f7f9 -> fe08567 (analog-skill-directory #110, #111, #112, #113, #115, #117, #120): the checkpoint skill joins the `design` link set (#120); `schematic-builder`, `schematic-reviewer`, `layout-designer`, `signoff-verifier` and the schematic skills change in the library (#117, #120); `schematic-of-record` drops `--port` from the workstation and `read_cellview` reads a testbench at the top level (#110); `read_cellview` reads analogLib vcvs/vccs back as E/G cards (#111) and takes per-master `--params` sections (#112); `check_netlist` parses analysis ports and transmission lines (#113); `pdk-distiller`'s family sweep covers every transistor family the kit offers (#115) | `.sx/skills` | no (`make skills-update`) |
-| the checkpoint skill's link (the `*-checkpoints` entry) | `.claude/skills/` | yes |
-| `CLAUDE.md` lanes section: one bullet pointing at the checkpoint skill; the linked-skills sentence names it. `README.md`: 26 skills | `CLAUDE.md`, `README.md` | yes (merged three-way) |
-| tests: one committed `*-checkpoints` link, resolving to its skill; the lanes section points at it; every skill of the pinned `design` link set has a committed link (a subset check, so a design's committed `pdk-<id>` link or its own skill links pass) | `tests/test_skill_links.py` | yes |
+| change | PR | files | carried by `make template-update` |
+|---|---|---|---|
+| `Design.load` reads a frozen `design.json`, so a second `make certify` of the same dir no longer raises | template#65 | `design/dut.py`, `tests/test_design.py` | the test yes; `design/dut.py` no (`dut.py` is the design's own): add `load` by hand (step 3) |
+| `template-update` never merges `design/dut.py` (the exclusion matched nothing before) | template#66 | `scripts/template_update.py`, `tests/test_template_scripts.py` | yes |
+| `deck_portable`: an include line followed by a `//` comment line no longer reports `//` as an absolute path | template#67 | `scripts/lint.py`, `tests/test_design.py` | yes |
+| a row logged against the checkout goes to the test's tmp ledger, never `runs/ledger.ndjson` | template#68 | `tests/conftest.py`, `tests/test_ledger_isolation.py` | yes |
+| the generic tests read the design's lane, spec and `pdk:` | template#69 | `tests/test_design.py`, `tests/test_lane.py` | yes |
+| `template-update` merges from `.sx/template-commit`, the commit a design was cut from | template#70 | `scripts/template_update.py`, `tests/test_template_scripts.py`, `CLAUDE.md`, `README.md` | yes, except `README.md` |
+| `template-update` runs the target release's own script | template#71 | `scripts/template_update.py`, `tests/test_template_scripts.py`, `.gitignore` | yes |
+| `make layout-flow` on `lane: bridge`: `LOAD=1` loads and checks; without it the build runs alone and says the checks were skipped | template#72 | `Makefile`, `scripts/layout_lane.py`, `tests/test_layout_lane.py`, `layout/signoff.py` (docstring), `doc/environment.md`, `README.md` | yes, except `layout/`, `doc/` and `README.md` |
+| `layout/signoff.py` on `lane: bridge` refuses a build plus checks without `--load` | template#73 | `layout/signoff.py`, `tests/test_layout_lane.py`, `doc/environment.md` | the tests yes; `layout/signoff.py` and `doc/` no (step 2) |
+| the prefixed OA library test of `make layout-flow` reads the copied `harness.yaml`'s `exp_env` prefix | template#74 | `tests/test_layout_lane.py` | yes |
+| `layout/signoff.py` on `lane: bridge` without a bridge profile exits 2 with the reason and a FIX line | template#75 | `layout/signoff.py`, `tests/test_layout_lane.py` | the tests yes; `layout/signoff.py` no (step 2) |
+| `layout/signoff.py --dry-run` on `lane: bridge`: writes the SKILL and the check scripts, lists the server steps, contacts nothing | template#77 | `layout/signoff.py`, `tests/test_layout_lane.py`, `doc/environment.md` | the tests yes (they skip until `layout/signoff.py` has `--dry-run`); `layout/signoff.py` and `doc/` no (step 2) |
+| `lane: bridge` without its platform package names the package to add | template#78 | `design/sim.py`, `tests/test_lane.py` | yes (`design/` is re-rooted onto `<package>/`) |
+| the `gen_cell_bridge` skeleton test skips once `plan()` is drawn | template#79 | `tests/test_layout_lane.py` | yes |
+| `CLAUDE.md` lanes section: on `lane: bridge` cellviews go up to the design's own OA library at five checkpoints; one bullet points at the library skill that owns that procedure; the linked-skills sentence names it. The skill's link (the `*-checkpoints` entry) is committed; `README.md`: 26 skills | template#82 | `CLAUDE.md`, `.claude/skills/`, `README.md`, `tests/test_skill_links.py` | yes, except `README.md`; the link resolves after `make skills-update` (step 5) |
+| `make lint`'s `denylist` check reads only the files git lists (tracked, or untracked and not ignored), so a denied word in an ignored build dir or `experiments/*/out/` log no longer fails it; outside git, or when the lint root is not the top of its own checkout, every file is read as before | template#84 | `scripts/lint.py`, `tests/test_lint_ignored.py`, `tests/test_lint_own_tree.py` | yes |
+| `.sx/skills` ff1f7f9 -> fe08567 (analog-skill-directory#110, #111, #112, #113, #115, #117, #120) | template#82, this release | `.sx/skills` | no: `make skills-update` (step 5) |
+| `.sx/template-version` 2.16 -> 2.17 | this release | `.sx/template-version` | written by the update |
 
-**Taking it.** `make template-update`, then `make skills-update` so the new link resolves.
+- **What the signed computation is.** `script_sha` is the sha256 of `<package>/metrics.py` (its
+  `SCRIPT`), and `computation_hash` covers (metric, `script_sha`, `raw_sha`, definition, value).
+  `design/sim.py` (template#78) and `design/dut.py` (template#65) change behaviour, not a hashed
+  file: template#78 changes only the error a missing platform package raises, and `Design.load`
+  only reads back what `make certify` froze.
+- **Library changes at fe08567:** `schematic-of-record`'s `read_cellview` reads a testbench at the
+  top level and no `--port` runs from the workstation (#110), reads analogLib `vcvs`/`vccs` back as
+  `E`/`G` cards with their gain (#111) and takes per-master `--params` sections (#112);
+  `check_netlist` parses analysis ports and transmission lines (#113); the opt-in `pdk-distiller`
+  agent's family sweep covers every transistor family a kit offers (#115). The `pdk-distiller`
+  agent is in the library's `opt-in` link set, never linked into a design. The checkpoint skill
+  joins the `design` link set, and `schematic-builder`, `schematic-reviewer`, `layout-designer`,
+  `signoff-verifier` and the schematic skills carry a one-line pointer to it (#117, #120).
+- **Tests:** on platform e05bec8, after `make init`, 308 passed and 1 skipped (the bridge-lane
+  `make layout-flow` test, skipped on the open lane); `make lint` holds every invariant. On a
+  design that takes this release's tests but keeps v2.16's `layout/signoff.py`, five cases fail
+  (`test_build_with_checks_but_no_load_is_refused_before_any_stage` x3,
+  `test_an_account_without_a_bridge_profile_gets_the_reason_and_its_fix` x2) until step 2 is done;
+  with v2.16's `design/dut.py`, `test_design_load_round_trips_the_frozen_design_json` fails until
+  step 3 is done. Both were reproduced on this release's tree with the v2.16 file put back.
 
-## Unreleased — `layout/signoff.py --dry-run` on `lane: bridge` writes the scripts and contacts nothing
+### `make lint`'s `denylist` check skips files git ignores (template#84)
 
-Minor; `layout/signoff.py` only. On `lane: bridge`, `layout/signoff.py --all --load --lib L` with a
-bridge profile loads the SKILL into the editor, starts the batch checks and the post-layout benches
-on the EDA server, and the file had no way to show what it would send. `--dry-run` runs the same
-argument checks, writes the SKILL (`build`) and the batch check scripts and control files (the
-platform's `spicexplorer_signoff.calibre.build_scripts`, the call `run_calibre` makes before it
-uploads) under `--out/calibre/dry-run/scripts/`, prints each step the server would run with a
-`[server]` prefix, and writes `signoff.dry-run.json`. It loads nothing, starts no check run and no
-bench, and leaves `signoff.json` as it was, so a later `--stages benches` still reads the DSPF of
-the last real `pex` run. A build plus checks without `--load` is refused as in a real run, and so is
-`--stages benches` with no DSPF under `--out` and no `pex` stage in the same run. On the open lane
-`--dry-run` is refused: that lane contacts no server.
+The harness `denylist` walk read every file under the design, so a denied word in a git-ignored
+build directory or an `experiments/*/out/` log failed `make lint` although no commit could carry
+it. `scripts/lint.py` wraps the check under the same name so its walk keeps only the files
+`git ls-files --cached --others --exclude-standard` lists: tracked (a file force-added under an
+ignored directory is still read), plus untracked and not ignored. Names are decoded with
+`os.fsdecode`, as `os.walk` decodes them, so a name that is not valid UTF-8 neither breaks the
+check nor drops out of it. Outside a git checkout, when git cannot run, or when the lint root is
+not the top of its own checkout (a design without its own `.git` inside an enclosing checkout),
+every file is read as before. `disclosure` and `scorecard_recompute` walk as before. The wrapper
+carries `# GAP: MacAnalog/agentic_design_template#83` until the platform harness skips ignored
+files itself.
 
-| change | files | carried by `make template-update` |
-|---|---|---|
-| `--dry-run`: `checks_dry_run` (scripts written, server steps listed), no load, no bench run, `signoff.dry-run.json`; refused on the open lane | `layout/signoff.py` | no (`layout/` is the design's own; copy the file by hand) |
-| tests: `--all --load --dry-run` writes the SKILL and the scripts, calls neither the editor load, the check run nor `run_decks`, and keeps `signoff.json`; the no-`--load` refusal and the no-DSPF bench refusal hold; the open lane refuses | `tests/test_layout_lane.py` | yes (the cases skip until `layout/signoff.py` has `--dry-run`) |
+### The bridge lane's checkpoint skill is linked (template#82)
 
-**Taking it.** `make template-update`, then copy `layout/signoff.py` from the template by hand if
-the design has not edited it (else port `checks_dry_run`, the `dry` branches of `main_bridge` and `_dspf`, and in `main()` the
-`--dry-run` argument, its refusal on the open lane and the `DRY_RUN_JSON` target).
+On `lane: bridge` a design's schematics, benches, review setup and layout go up to its own OA
+library at five checkpoints, so the designer reviews while the agents work. The library writes
+that procedure in one skill (analog-skill-directory #120); the agents that reach a checkpoint
+carry a one-line pointer to it. This release commits its link (the `*-checkpoints` entry under
+`.claude/skills/`) and points `CLAUDE.md`'s lanes section at it without restating it.
+`tests/test_skill_links.py` checks that exactly one `*-checkpoints` link is committed and resolves
+to its skill, that the lanes section points at it, and that every skill of the pinned `design`
+link set has a committed link (a subset check, so a design's committed `pdk-<id>` link or its own
+skill links pass).
 
-## Unreleased — `lane: bridge` without its platform package names the package to add
+### `layout/signoff.py --dry-run` on `lane: bridge` writes the scripts and contacts nothing (template#77)
 
-Minor; `design/sim.py` only. A design that set `lane: bridge` before adding the bridge-lane
-platform package to `pyproject.toml` got a bare `ModuleNotFoundError` traceback out of
-`design/sim_bridge.py` from `make test` and `make check`. The dispatcher now re-raises it with the
-package to add, the two `layout/signoff.py` also needs (`spicexplorer-layout`,
-`spicexplorer-signoff[remote]`) and `uv sync`; `make doctor` prints the same line and exits 2. A
-missing module that is not a platform package is re-raised unchanged. Takes with
-`make template-update`; nothing to migrate.
+On `lane: bridge`, `layout/signoff.py --all --load --lib L` with a bridge profile loads the SKILL
+into the editor, starts the batch checks and the post-layout benches on the EDA server, and the
+file had no way to show what it would send. `--dry-run` runs the same argument checks, writes the
+SKILL (`build`) and the batch check scripts and control files (the platform's
+`spicexplorer_signoff.calibre.build_scripts`, the call `run_calibre` makes before it uploads) under
+`--out/calibre/dry-run/scripts/`, prints each step the server would run with a `[server]` prefix,
+and writes `signoff.dry-run.json`. It loads nothing, starts no check run and no bench, and leaves
+`signoff.json` as it was, so a later `--stages benches` still reads the DSPF of the last real `pex`
+run. A build plus checks without `--load` is refused as in a real run, and so is `--stages benches`
+with no DSPF under `--out` and no `pex` stage in the same run. On the open lane `--dry-run` is
+refused: that lane contacts no server.
 
-## Unreleased — `layout/signoff.py` on `lane: bridge` exits 2 with a FIX line when the account has no bridge profile
+### `lane: bridge` without its platform package names the package to add (template#78)
 
-Minor; `layout/signoff.py` only. On an account with no bridge profile,
-`layout/signoff.py --stages drc,lvs,pex --lib L` ended in a `CalibreNotConfigured` traceback from
-the platform's batch check runner. It now prints the platform's reason and a `FIX:` line (create
-the profile, or ask the admin), writes no `signoff.json` and exits 2, the code the bridge-lane
-simulator CLI and `make doctor` use for the same condition. The platform's `LaneNotConfigured`
-gets the same handling. Every other exception still propagates unchanged.
+A design that set `lane: bridge` before adding the bridge-lane platform package to
+`pyproject.toml` got a bare `ModuleNotFoundError` traceback out of `design/sim_bridge.py` from
+`make test` and `make check`. The dispatcher now re-raises it with the package to add, the two
+`layout/signoff.py` also needs (`spicexplorer-layout`, `spicexplorer-signoff[remote]`) and
+`uv sync`; `make doctor` prints the same line and exits 2. A missing module that is not a platform
+package is re-raised unchanged.
 
-| change | files | carried by `make template-update` |
-|---|---|---|
-| `main()` on `lane: bridge` catches `CalibreNotConfigured` and `LaneNotConfigured` (imported only after a stage raises, so a venv without those packages still loads the file), prints the reason and its FIX line, exits 2 | `layout/signoff.py` | yes |
-| tests: both classes give exit 2 with the reason and the FIX line and no `signoff.json`; another failure of the check run still raises | `tests/test_layout_lane.py` | yes |
+### `layout/signoff.py` on `lane: bridge` exits 2 with a FIX line when the account has no bridge profile (template#75)
 
-**Taking it.** `make template-update`. Nothing to change in a design.
+On an account with no bridge profile, `layout/signoff.py --stages drc,lvs,pex --lib L` ended in a
+`CalibreNotConfigured` traceback from the platform's batch check runner. `main()` on
+`lane: bridge` now catches `CalibreNotConfigured` and `LaneNotConfigured` (imported only after a
+stage raises, so a venv without those packages still loads the file), prints the platform's reason
+and a `FIX:` line (create the profile, or ask the admin), writes no `signoff.json` and exits 2, the
+code the bridge-lane simulator CLI and `make doctor` use for the same condition. Every other
+exception still propagates unchanged.
 
-## Unreleased — `template-update` runs the target release's own script
+### `template-update` runs the target release's own script (template#71)
 
-Minor; `scripts/template_update.py` only. `make template-update` ran the design's own copy of the
-script, which is the release the design was last updated to, so a check a later release adds to
-`update()` did not run on the update that carries it. Reproduced on a signed design at v2.14: the
-update to v2.16 merged `<package>/metrics.py` and printed no `WARNING`, and `make lint` then failed
-`scorecard-recompute` on 10 entries; with v2.16's script copied in first, the warning printed.
+`make template-update` ran the design's own copy of the script, which is the release the design
+was last updated to, so a check a later release adds to `update()` did not run on the update that
+carries it. Reproduced on a signed design at v2.14: the update to v2.16 merged
+`<package>/metrics.py` and printed no `WARNING`, and `make lint` then failed `scorecard-recompute`
+on 10 entries; with v2.16's script copied in first, the warning printed.
 
-| change | files | carried by `make template-update` |
-|---|---|---|
-| `update` runs `v<target>:scripts/template_update.py` when the design's copy is its base commit's script, unmodified, and the target's differs; it returns that script's exit code | `scripts/template_update.py`, `tests/test_template_scripts.py` | yes |
-| v2.16 *Taking it* step 1: a design below v2.16 takes v2.16's script before updating | `CHANGELOG.md` | yes |
-
-- The target's script is written to a temporary file in the design's `scripts/` (so it resolves
-  the design as its repository), run with `SX_TEMPLATE_UPDATE_HANDOFF=1` so it does not hand over
-  again, and removed when it exits. The run prints `running v<target>'s
-  scripts/template_update.py` first.
+- `update` runs `v<target>:scripts/template_update.py` when the design's copy is its base commit's
+  script, unmodified, and the target's differs; it returns that script's exit code. The target's
+  script is written to a temporary file in the design's `scripts/` (so it resolves the design as
+  its repository), run with `SX_TEMPLATE_UPDATE_HANDOFF=1` so it does not hand over again, and
+  removed when it exits. The run prints `running v<target>'s scripts/template_update.py` first.
 - The base commit is the one `.sx/template-commit` names, else `v<recorded>`. A copy that differs
   from that commit's script — edited by the design, or taken from a later commit as a *Taking it*
-  step says — runs the update itself: the target's script may be older than it, and a release that
-  predates `.sx/template-commit` would merge from the tag again.
+  step says — runs the update itself.
+- v2.16 *Taking it* step 1 now says that a design below v2.16 takes v2.16's script before updating.
+- The handoff is in a design's copy only once v2.17 has landed there, so the update that brings
+  v2.17 still runs the design's v2.16 copy (step 1 below). From the update to the release after
+  v2.17 on, no step is needed.
 
-**Taking it.** The handoff is in the design's copy only after this release lands, so the update
-that brings it still runs the older copy. A design below v2.16 that carries a signed scorecard
-takes the script first, as v2.16 *Taking it* step 1 now says. From the next release on, no step
-is needed.
+### `layout/signoff.py` on `lane: bridge` refuses a build plus checks without `--load` (template#73)
 
-## Unreleased — `layout/signoff.py` on `lane: bridge` refuses a build plus checks without `--load`
+`layout/signoff.py --all --lib L` without `--load` wrote a new SKILL file and then ran DRC, LVS and
+PEX on the layout view already in the library, which the build had not touched, and recorded the
+verdicts as if they were the new build's. `workflows.layout` already refuses that combination; the
+two entry points now apply the same rule: `build` with any of `drc`, `lvs`, `pex` and no `--load`
+exits before any stage runs, naming the two ways out (`--load`, or the build and the checks as
+separate runs). A design that ran `layout/signoff.py --all` without `--load` now adds `--load`, or
+runs `--stages build` and then `--stages drc,lvs,pex,benches`.
 
-Minor; `layout/signoff.py` only. `layout/signoff.py --all --lib L` without `--load` wrote a new SKILL
-file and then ran DRC, LVS and PEX on the layout view already in the library, which the build had
-not touched, and recorded the verdicts as if they were the new build's. `workflows.layout` already
-refuses that combination; the two entry points now apply the same rule.
+### `make layout-flow` on `lane: bridge` runs without `ARGS`: `LOAD=1`, or the build alone (template#72)
 
-| change | files | carried by `make template-update` |
-|---|---|---|
-| `build` with any of `drc`, `lvs`, `pex` and no `--load` exits before any stage runs, naming the two ways out (`--load`, or the build and the checks as separate runs) | `layout/signoff.py` | yes |
-| tests: refused for `--all`, `build,drc` and `build,pex`; the build alone, the checks alone and `--all --load` still run | `tests/test_layout_lane.py` | yes |
-| the `OA library` row says `layout/signoff.py` refuses it too | `doc/environment.md` | no (a design owns `doc/`; copy the sentence by hand) |
+On `lane: bridge`, `make layout-flow RUN=d OA_LIB=L` was refused before any stage ran:
+`workflows.layout` refuses a build together with DRC/LVS/PEX unless the SKILL is loaded
+(`load=False`), because the checks read the layout view already in the OA library. The recipe never
+passed `--load` and skipped no stage, so the documented command could not run. Reproduced against
+the workflow's own preflight: the refusal for the arguments the recipe passed before, none for
+either set it passes now.
 
-**Taking it.** `make template-update`. A design that ran `layout/signoff.py --all` without
-`--load` now adds `--load`, or runs `--stages build` and then `--stages drc,lvs,pex,benches`.
+- `LOAD=1` (make command line only) passes `--load`: build, load, then check the loaded view.
+- Without it the recipe adds `--skip drc,lvs,pex,benches` and prints one line on stderr saying the
+  checks were skipped; a `--load` or `--skip` in `ARGS` replaces that default, so a design that
+  passed `ARGS=--load` keeps working.
+- `LOAD=1` on the open lane exits 2 before the workflow starts.
+- `LOAD=1` (like `--load`) creates the cell's `layout` view; the workflow writes the SKILL with
+  `overwrite=False`, so the build stops with an error when the view already exists. To rebuild,
+  delete the view in the library first, or check the existing view with
+  `ARGS="--skip build --cell <cell>"`. The earlier wording in `layout/signoff.py` and
+  `doc/environment.md` said the load replaces the view; it does not.
 
-## Unreleased — `make layout-flow` on `lane: bridge` runs without `ARGS`: `LOAD=1`, or the build alone
+### `template-update` merges from the commit a design was cut from (template#70)
 
-Minor; `Makefile` and `scripts/layout_lane.py`. On `lane: bridge`, `make layout-flow RUN=d OA_LIB=L`
-was refused before any stage ran: `workflows.layout` refuses a build together with DRC/LVS/PEX
-unless the SKILL is loaded (`load=False`), because the checks read the layout view already in the
-OA library. The recipe never passed `--load` and skipped no stage, so the documented command could
-not run. Reproduced against the workflow's own preflight: the refusal for the arguments the recipe
-passed before, none for either set it passes now.
+A design copied from an untagged commit between two releases records the release before it in
+`.sx/template-version`, and `make template-update` used that tag as the merge base, so it
+re-applied every change between the tag and the copied commit. Reproduced on an unedited copy of a
+commit six commits after v2.14 that records `2.14`: the update to v2.16 left 4 files in CONFLICT,
+two of them printing `has type 100755, expected 100644` (six files changed mode in between); with
+that commit as the base, 0 conflicts and no warning.
 
-| change | files | carried by `make template-update` |
-|---|---|---|
-| `LOAD=1` (make command line only) passes `--load`: build, load, then check the loaded view | `Makefile`, `scripts/layout_lane.py` | yes |
-| without it the recipe adds `--skip drc,lvs,pex,benches` and prints one line on stderr saying the checks were skipped; a `--load` or `--skip` in `ARGS` replaces that default | `scripts/layout_lane.py` | yes |
-| `LOAD=1` on the open lane exits 2 before the workflow starts | `scripts/layout_lane.py` | yes |
-| the two-step use (build and load, then `ARGS="--skip build --cell <cell>"`) | `doc/environment.md`, `README.md` | no (a design owns `doc/` and `README.md`; copy the `OA library` row by hand) |
-| tests for each case above | `tests/test_layout_lane.py` | yes |
+- The merge base is `.sx/template-commit` when the design records one, else
+  `v<template-version>`; a recorded commit not between `v<template-version>` and the target stops
+  the update, naming the file.
+- A landed release writes `.sx/template-commit` beside `.sx/template-version`.
+- A tree copied by hand from an untagged commit records it there (`README.md`, `CLAUDE.md`).
 
-**Taking it.** `make template-update`. A design that passed `ARGS=--load` keeps working; that
-`--load` suppresses the default skip.
+### The generic tests read the design's lane, spec and `pdk:` (template#69)
 
-`LOAD=1` (like `--load`) creates the cell's `layout` view; the workflow writes the SKILL with
-`overwrite=False`, so the build stops with an error when the view already exists. To rebuild,
-delete the view in the library first, or check the existing view with
-`ARGS="--skip build --cell <cell>"`. The earlier wording here and in `layout/signoff.py` said the
-load replaces the view; it does not.
-
-## Unreleased — `template-update` merges from the commit a design was cut from
-
-Minor; `scripts/template_update.py` only. A design copied from an untagged commit between two
-releases records the release before it in `.sx/template-version`, and `make template-update` used
-that tag as the merge base, so it re-applied every change between the tag and the copied commit.
-Reproduced on an unedited copy of a commit six commits after v2.14 that records `2.14`: the update
-to v2.16 left 4 files in CONFLICT, two of them printing `has type 100755, expected 100644` (six
-files changed mode in between); with that commit as the base, 0 conflicts and no warning.
-
-| change | files | carried by `make template-update` |
-|---|---|---|
-| the merge base is `.sx/template-commit` when the design records one, else `v<template-version>` | `scripts/template_update.py` | yes |
-| a recorded commit not between `v<template-version>` and the target stops the update, naming the file | `scripts/template_update.py` | yes |
-| a landed release writes `.sx/template-commit` beside `.sx/template-version` | `scripts/template_update.py`, `tests/test_template_scripts.py` | yes |
-| a tree copied by hand from an untagged commit records it | `README.md`, `CLAUDE.md` | `CLAUDE.md` yes; `README.md` no |
-
-**Taking it.** The update runs the design's own copy of the script, so the update that brings
-this release still merges from the tag. A design cut from an untagged commit takes the script
-first — `git fetch --tags template && git checkout v<this release> -- scripts/template_update.py`
-— writes the full sha of the commit it was cut from into `.sx/template-commit`, then runs
-`make template-update`. After any landed release the file holds that release's commit.
-
-## Unreleased — the generic tests read the design's lane, spec and `pdk:` (#58)
-
-Minor, tests only; no module, recipe or `harness.yaml` key changes. On a design with `lane: bridge`,
-`pdk:` declared, its own `spec:` and the per-machine `<PDK-ID>_PDK_LIB` exported, the template's
-suite failed eight tests that check the template's defaults (`test_design.py` failed at
-collection). Reproduced on a copy of the template with those four changes and a filled
-`PRODUCES`: 3 failed + 1 collection error before, 258 passed after.
+On a design with `lane: bridge`, `pdk:` declared, its own `spec:` and the per-machine
+`<PDK-ID>_PDK_LIB` exported, the template's suite failed eight tests that check the template's
+defaults (`test_design.py` failed at collection). Reproduced on a copy of the template with those
+four changes and a filled `PRODUCES`: 3 failed + 1 collection error before, 258 passed after.
 
 | change | files |
 |---|---|
@@ -190,8 +210,51 @@ collection). Reproduced on a copy of the template with those four changes and a 
 | the lane test checks the module of the lane `harness.yaml` names | `tests/test_lane.py` |
 | the `bridge` fixture clears `pdk.machine_env()` and its `_ALLOW_MISMATCH` | `tests/test_lane.py` |
 
-**Taking it.** A design that adapted these tests locally gets conflicts in the two files from
-`make template-update`; resolve each by taking the template's side.
+### Taking it
+
+1. **Take v2.17's `scripts/template_update.py` first**, then update:
+   `git fetch --tags template && git checkout v2.17 -- scripts/template_update.py`, then
+   `make template-update`. The design's v2.16 copy has neither the `dut.py` exclusion
+   (template#66), the `.sx/template-commit` base (template#70) nor the handoff (template#71), so
+   without this step the update merges the template's `dut.py` change into the design's own `dut.py`
+   (a conflict wherever the design rewrote the stub) and, on a design cut from an untagged commit,
+   re-applies the changes since the tag (both reproduced on a copy of v2.16 updated to this
+   release, with and without this step). A design cut from an
+   untagged commit also writes the full sha of that commit into `.sx/template-commit` before the
+   update. The update carries `scripts/`, `tests/`, `.gitignore`, the `Makefile`, `CLAUDE.md`,
+   `CHANGELOG.md`, the checkpoint skill's link under `.claude/skills/` and `<package>/sim.py`; `<package>/metrics.py` does not change, so no
+   signed-scorer `WARNING` prints and no re-certification follows. A design that adapted
+   `tests/test_design.py` or `tests/test_lane.py` locally (template#69) may see conflicts there:
+   take the template's side, then re-apply the design's own lines.
+2. **`layout/signoff.py` by hand** (`make template-update` never carries `layout/`). A design that
+   has not edited it: `git checkout v2.17 -- layout/signoff.py`; one copy brings template#72,
+   #73, #75 and #77. A design that edited it ports, from `git diff v2.16 v2.17 -- layout/signoff.py`:
+   the no-`--load` refusal in `main()` (template#73); the `CalibreNotConfigured` /
+   `LaneNotConfigured` handling in `main()` (template#75); `checks_dry_run`, the `dry` branches of
+   `main_bridge` and `_dspf`, and in `main()` the `--dry-run` argument, its refusal on the open lane
+   and the `DRY_RUN_JSON` target (template#77); the `build_bridge` docstring (template#72). Until
+   then five cases of `tests/test_layout_lane.py` fail (named under *Tests* above); the
+   `--dry-run` cases skip, naming this step.
+3. **`<package>/dut.py` by hand** (never carried). `<package>/metrics.py` has called
+   `Design.load(p)` since v2.07; a `dut.py` without it raises `AttributeError` on a second
+   `make certify` of the same dir, and `test_design_load_round_trips_the_frozen_design_json` fails.
+   Add, inside `class Design` (with `import json` and `from pathlib import Path` at the top):
+
+   ```python
+   @classmethod
+   def load(cls, path: str | Path) -> Design:
+       """Read a frozen dir's `design.json` (what `design.metrics` hands the lifecycle)."""
+       return cls.from_dict(json.loads(Path(path).read_text()))
+   ```
+4. **`doc/environment.md` and `README.md` by hand** (never carried): take the `OA library (bridge
+   lane)` row from `git show v2.17:doc/environment.md` (template#72, #73, #77); in `README.md`,
+   the `scripts/layout_lane.py` row (template#72) and the `.sx/template-commit` sentence
+   (template#70) from `git show v2.17:README.md`.
+5. `make skills-update` moves `.sx/skills` to fe08567; commit the pin. The update carried the
+   checkpoint skill's link under `.claude/skills/` (template#82); it resolves once the pin moves.
+   In `README.md`, take the `.claude/skills/` row (26 skills) from `git show v2.17:README.md`.
+6. `make lint && make test`. On `lane: bridge`, `make layout-flow RUN=<dir> OA_LIB=<lib>` now runs
+   the build alone and says so; add `LOAD=1` to load and check.
 
 ## v2.16 — template tests hold on a bridge-lane design; `template-update` names a signed scorer it changes
 
