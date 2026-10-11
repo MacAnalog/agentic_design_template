@@ -22,12 +22,17 @@ The two harness checks that read every file below the repo root skip it: `denyli
 
 A check added here that reads every file below the repo root walks with `own_tree_walk(L.h.root)`.
 `os.walk` and `Path.rglob` in this file are not replaced, and they still enter a nested checkout.
+
+`denylist` also skips the files git ignores (template#83): it protects what is committed and
+published, and tool output in an ignored build directory or `out/` log is neither
+(`denylist_skips_ignored`).
 """
 
 from __future__ import annotations
 
 import contextlib
 import dataclasses
+import functools
 import importlib
 import json
 import os
@@ -688,6 +693,49 @@ class _OwnTreeOs:
         return getattr(os, name)
 
 
+def git_visible(root: Path) -> set[str] | None:
+    """The files below `root` git does not ignore, relative to `root`: tracked, plus untracked
+    and not ignored (`git ls-files --cached --others --exclude-standard`, as `artifact_home` reads
+    the tracked list). None when `root` is not in a git checkout or git cannot run."""
+    try:
+        r = subprocess.run(
+            ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+            cwd=root,
+            capture_output=True,
+            check=False,
+            text=True,
+        )
+    except OSError:
+        return None
+    if r.returncode:
+        return None
+    return {rel.rstrip("/") for rel in r.stdout.split("\0") if rel}
+
+
+def visible_walk(top, *args, **kwargs):
+    """`own_tree_walk(top)` without the files and directories git ignores below `top`.
+
+    Outside a git checkout nothing is known to be ignored, and it is `own_tree_walk(top)`.
+    """
+    visible = git_visible(Path(top))
+    if visible is None:
+        yield from own_tree_walk(top, *args, **kwargs)
+        return
+    holds = {parent.as_posix() for rel in visible for parent in Path(rel).parents}
+    for root, dirs, files in own_tree_walk(top, *args, **kwargs):
+        rel = Path(root).relative_to(top).as_posix()
+        prefix = "" if rel == "." else rel + "/"
+        dirs[:] = [d for d in dirs if prefix + d in holds]
+        files[:] = [f for f in files if prefix + f in visible]
+        yield root, dirs, files
+
+
+class _VisibleOs(_OwnTreeOs):
+    """`_OwnTreeOs` with `walk` replaced by `visible_walk`."""
+
+    walk = staticmethod(visible_walk)
+
+
 # GAP: MacAnalog/spicexplorer-platform#289: the harness `_scorecards` search has no nested-checkout
 # skip. Keep this replacement after that fix, for older platforms.
 @contextlib.contextmanager
@@ -737,12 +785,47 @@ def own_tree_only(module=lint):
         module.os = saved
 
 
+# GAP: MacAnalog/agentic_design_template#83: the harness `denylist` walk reads git-ignored files.
+@contextlib.contextmanager
+def denylist_skips_ignored(module=lint):
+    """While active, the harness `denylist` check walks with `visible_walk`; no other check does.
+
+    The check is replaced in `module.GENERIC` by a wrapper of the same name that swaps `module.os`
+    for the run of that one check; both are restored on exit, also after an error. A harness
+    whose GENERIC does not hold `denylist` is left alone.
+    """
+    check = getattr(module, "denylist", None)
+    generic = getattr(module, "GENERIC", None)
+    if check is None or not isinstance(generic, tuple) or check not in generic:
+        yield
+        return
+
+    @functools.wraps(check)
+    def denylist(L: Lint) -> None:
+        saved = getattr(module, "os", None)
+        if saved is not os and not isinstance(saved, _OwnTreeOs):
+            check(L)  # no `os` name to replace (a harness that walks some other way)
+            return
+        module.os = _VisibleOs()
+        try:
+            check(L)
+        finally:
+            module.os = saved
+
+    module.GENERIC = tuple(denylist if c is check else c for c in generic)
+    try:
+        yield
+    finally:
+        module.GENERIC = generic
+
+
 def main(repo: Path = REPO) -> int:
     """`make lint` on the checkout at `repo`: the harness checks under `own_tree_only`, then EXTRA.
 
-    The denylist is the lane's (`lane_denylist`). Returns the exit code.
+    The denylist is the lane's (`lane_denylist`), and it skips git-ignored files
+    (`denylist_skips_ignored`). Returns the exit code.
     """
-    with own_tree_only():
+    with own_tree_only(), denylist_skips_ignored():
         rc = lint.main(lane_denylist(load(repo)), extra=EXTRA)
     print(hook_info(repo))
     return rc

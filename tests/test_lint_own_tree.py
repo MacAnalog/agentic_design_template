@@ -140,7 +140,9 @@ def test_a_nested_worktree_is_skipped_on_a_harness_that_walks_into_it(
 
 def test_a_plain_subdirectory_with_the_same_files_still_fails(mod, repo, capsys):
     """The skip depends on a `.git` entry, not on the directory's name or place: without one, the
-    directory is part of this checkout, and both checks report it."""
+    directory is part of this checkout, and both checks report it. The fixture's ignore line for
+    `.claude/worktrees/` is dropped first: `denylist` skips git-ignored files (template#83)."""
+    (repo / ".gitignore").write_text("")
     _rc, before = _lint(mod, repo, capsys)
     _plant(repo / ".claude" / "worktrees" / "not-a-checkout")
     rc, after = _lint(mod, repo, capsys)
