@@ -696,26 +696,37 @@ class _OwnTreeOs:
 def git_visible(root: Path) -> set[str] | None:
     """The files below `root` git does not ignore, relative to `root`: tracked, plus untracked
     and not ignored (`git ls-files --cached --others --exclude-standard`, as `artifact_home` reads
-    the tracked list). None when `root` is not in a git checkout or git cannot run."""
+    the tracked list).
+
+    None when git cannot run, or when `root` is not the top of its own checkout: outside git, or a
+    directory without its own `.git` inside an enclosing checkout, whose ignore rules (which may
+    ignore all of `root`) say nothing about what this repo commits. Names are decoded with
+    `os.fsdecode`, as `os.walk` decodes them, so a name that is not valid UTF-8 still matches.
+    """
     try:
+        top = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"], cwd=root, capture_output=True, check=False
+        )
+        if top.returncode or Path(os.fsdecode(top.stdout.strip())).resolve() != root.resolve():
+            return None
         r = subprocess.run(
             ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
             cwd=root,
             capture_output=True,
             check=False,
-            text=True,
         )
     except OSError:
         return None
     if r.returncode:
         return None
-    return {rel.rstrip("/") for rel in r.stdout.split("\0") if rel}
+    return {os.fsdecode(rel).rstrip("/") for rel in r.stdout.split(b"\0") if rel}
 
 
 def visible_walk(top, *args, **kwargs):
     """`own_tree_walk(top)` without the files and directories git ignores below `top`.
 
-    Outside a git checkout nothing is known to be ignored, and it is `own_tree_walk(top)`.
+    When `git_visible(top)` is None (outside git, or `top` is not the top of its own checkout)
+    nothing is known to be ignored, and it is `own_tree_walk(top)`.
     """
     visible = git_visible(Path(top))
     if visible is None:

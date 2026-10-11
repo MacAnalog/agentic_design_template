@@ -11,6 +11,7 @@ independent of that baseline and of checks a later platform adds.
 
 from __future__ import annotations
 
+import os
 import subprocess
 from pathlib import Path
 
@@ -123,6 +124,37 @@ def test_a_denied_word_in_an_untracked_file_git_does_not_ignore_still_fails(mod,
 def test_outside_a_git_checkout_every_file_is_read(mod, tmp_path, capsys):
     """No git repository, so nothing is known to be ignored: the walk reads every file, as before."""
     root = _fixture(tmp_path / "copied-by-hand")
+    hits = [_write(root, rel) for rel in IGNORED]
+    rc, out = _lint(mod, root, capsys)
+    assert rc == 1
+    assert all(h in out for h in hits)
+
+
+def test_a_file_name_that_is_not_utf8_does_not_stop_the_check(mod, repo, capsys):
+    """git prints names as raw bytes. A strict UTF-8 decode raised `UnicodeDecodeError`, which the
+    harness reported as `[denylist] the check itself raised ...`, and no file was scanned
+    (PR #84 r1). The odd-named file holds no denied word: printing such a name in a hit is the
+    harness's own concern, as it was before the git filter."""
+    try:
+        (repo / os.fsdecode(b"bad\xff.txt")).write_text("nothing to report\n")
+    except (OSError, UnicodeEncodeError):
+        pytest.skip("this filesystem refuses a name that is not valid UTF-8")
+    hit = _write(repo, "doc/draft.md")
+    rc, out = _lint(mod, repo, capsys)
+    assert rc == 1
+    assert "the check itself raised" not in out
+    assert hit in out
+
+
+def test_a_design_inside_a_checkout_that_ignores_it_reads_every_file(mod, tmp_path, capsys):
+    """No `.git` of its own, inside a checkout whose `.gitignore` lists it: that checkout's rules
+    say nothing about the design, so every file is read (PR #84 r1)."""
+    parent = tmp_path / "parent"
+    parent.mkdir()
+    (parent / ".gitignore").write_text("designs/\n")
+    _git(parent, "init", "-q")
+    (parent / "designs").mkdir()
+    root = _fixture(parent / "designs" / "copied")
     hits = [_write(root, rel) for rel in IGNORED]
     rc, out = _lint(mod, root, capsys)
     assert rc == 1
