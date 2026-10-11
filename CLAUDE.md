@@ -157,6 +157,12 @@ undeclared case: an artefact somewhere nobody wrote down.
   revisions* row with the feedback that drove it and its evidence path, an unchanged one a `geometry only` row.
   Geometry review rounds are at most 4. On the bridge lane these agents read the kit only through the kit file, the `pdk-<id>`
   skill and their run-dir outputs; the kit file is written once per kit, in a session the person attends.
+- **On `lane: bridge` the designer reviews while the agents work.** The schematics, benches, review setup
+  and layout go up to the design's own OA library at five checkpoints, from topology freeze to sign-off,
+  not once at the end. One library skill owns that procedure: the bridge lane's checkpoint skill, the
+  `*-checkpoints` link under `.claude/skills/` (`make init`). It says when each checkpoint is reached,
+  which cellviews it writes and replaces, the checkpoint log and the designer's lab note. An agent that
+  reaches a checkpoint follows that skill; this file does not restate it.
 - **A model library that lives only on some machines is named in a deck by variable, never by path.**
   The deck text writes `$VAR`, `<package>.sim.DECK_VARS` declares it, `sim.run` resolves it against
   this machine as the deck is handed to the simulator, and `doc/environment.md` pins WHICH library by
@@ -246,8 +252,8 @@ boxes on figures), `layout-evidence` (brief → generator → GDS → DRC/Jmax/L
 `layout-*` agents) — say how each is produced and gated. Also linked: `measurement-setup-of-record` (the measurement traps of the lane, the harness and the experiment process), `analog-knowledge-authoring` (the standard a knowledge skill is written to), `gmid-sizing`,
 `current-mirrors`, `layout-annotation`, `neutral-artifact-naming`, `postlayout-analysis` (the post-layout shift of each metric
 attributed to nets, which a *Plan revisions* row cites), the library's `pdk-<id>` skills when `harness.yaml` declares `pdk:`, the bridge's two
-remote-simulator skills, and the bridge layout lane's two skills (the commercial-kit layout lane; the review setup of record in the kit's
-editor) — the `denylist:` keeps their vendor names out of this file.
+remote-simulator skills, the bridge layout lane's two skills (the commercial-kit layout lane; the review setup of record in the kit's
+editor), and the bridge lane's checkpoint skill (the incremental uploads to the design's OA library) — the `denylist:` keeps their vendor names out of this file.
 A request for a schematic means the xschem sheet of record built by `schematic-of-record`
 (never an ad-hoc drawing); only a cell already ported through the bridge's `xvport` lane is shown
 from its ported cellview instead.

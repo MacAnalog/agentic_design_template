@@ -17,13 +17,14 @@ Versions are `MAJOR.MINOR`, written `#.##`:
 `make template-status` prints the recorded version and the latest release. Releases are git
 tags, `v<version>`.
 
-## v2.17 — `layout/signoff.py` on `lane: bridge` gains `--dry-run`, two refusals and a FIX line; `template-update` merges from the commit a design was cut from
+## v2.17 — `layout/signoff.py` on `lane: bridge` gains `--dry-run`, two refusals and a FIX line; `template-update` merges from the commit a design was cut from; the checkpoint skill is linked; lint skips ignored files
 
 Minor, 2026-10-10. No module is renamed and every lifecycle command keeps its name. The release
-records the fourteen changes merged since the v2.16 tag (template#65 to #75 and #77 to #79) and
-moves `.sx/skills` from ff1f7f9 to de86e4b. Same platform floor as v2.15; gated against platform
-main 83cbf9e. The library's `design` link set is the same at both pins (15 agents, 25 skills), so
-no link under `.claude/` changes. **No file this release carries is part of a signed computation:**
+records the sixteen changes merged since the v2.16 tag (template#65 to #75, #77 to #79, #82 and
+#84) and moves `.sx/skills` from ff1f7f9 to fe08567. Same platform floor as v2.15; gated against
+platform main e05bec8. The library's `design` link set gains one skill between the two pins (15
+agents, 25 skills -> 15 agents, 26 skills): the bridge lane's checkpoint skill, whose link under
+`.claude/skills/` is committed (template#82). **No file this release carries is part of a signed computation:**
 `<package>/metrics.py`, the file every `scorecard.json` hashes as `script_sha`, is the same at
 v2.16 and v2.17, so `scorecard-recompute` stays green and no design re-certifies.
 
@@ -43,7 +44,9 @@ v2.16 and v2.17, so `scorecard-recompute` stays green and no design re-certifies
 | `layout/signoff.py --dry-run` on `lane: bridge`: writes the SKILL and the check scripts, lists the server steps, contacts nothing | template#77 | `layout/signoff.py`, `tests/test_layout_lane.py`, `doc/environment.md` | the tests yes (they skip until `layout/signoff.py` has `--dry-run`); `layout/signoff.py` and `doc/` no (step 2) |
 | `lane: bridge` without its platform package names the package to add | template#78 | `design/sim.py`, `tests/test_lane.py` | yes (`design/` is re-rooted onto `<package>/`) |
 | the `gen_cell_bridge` skeleton test skips once `plan()` is drawn | template#79 | `tests/test_layout_lane.py` | yes |
-| `.sx/skills` ff1f7f9 -> de86e4b (analog-skill-directory#110, #111, #112, #115) | this release | `.sx/skills` | no: `make skills-update` (step 5) |
+| `CLAUDE.md` lanes section: on `lane: bridge` cellviews go up to the design's own OA library at five checkpoints; one bullet points at the library skill that owns that procedure; the linked-skills sentence names it. The skill's link (the `*-checkpoints` entry) is committed; `README.md`: 26 skills | template#82 | `CLAUDE.md`, `.claude/skills/`, `README.md`, `tests/test_skill_links.py` | yes, except `README.md`; the link resolves after `make skills-update` (step 5) |
+| `make lint`'s `denylist` check reads only the files git lists (tracked, or untracked and not ignored), so a denied word in an ignored build dir or `experiments/*/out/` log no longer fails it; outside git, or when the lint root is not the top of its own checkout, every file is read as before | template#84 | `scripts/lint.py`, `tests/test_lint_ignored.py`, `tests/test_lint_own_tree.py` | yes |
+| `.sx/skills` ff1f7f9 -> fe08567 (analog-skill-directory#110, #111, #112, #113, #115, #117, #120) | template#82, this release | `.sx/skills` | no: `make skills-update` (step 5) |
 | `.sx/template-version` 2.16 -> 2.17 | this release | `.sx/template-version` | written by the update |
 
 - **What the signed computation is.** `script_sha` is the sha256 of `<package>/metrics.py` (its
@@ -51,18 +54,47 @@ v2.16 and v2.17, so `scorecard-recompute` stays green and no design re-certifies
   `design/sim.py` (template#78) and `design/dut.py` (template#65) change behaviour, not a hashed
   file: template#78 changes only the error a missing platform package raises, and `Design.load`
   only reads back what `make certify` froze.
-- **Library changes at de86e4b:** `schematic-of-record`'s `read_cellview` reads a testbench at the
+- **Library changes at fe08567:** `schematic-of-record`'s `read_cellview` reads a testbench at the
   top level and no `--port` runs from the workstation (#110), reads analogLib `vcvs`/`vccs` back as
-  `E`/`G` cards with their gain (#111) and takes per-master `--params` sections (#112); the opt-in
-  `pdk-distiller` agent's family sweep covers every transistor family a kit offers (#115). The
-  `pdk-distiller` agent is in the library's `opt-in` link set, never linked into a design.
-- **Tests:** on platform 83cbf9e, after `make init`, 297 passed and 1 skipped (the bridge-lane
+  `E`/`G` cards with their gain (#111) and takes per-master `--params` sections (#112);
+  `check_netlist` parses analysis ports and transmission lines (#113); the opt-in `pdk-distiller`
+  agent's family sweep covers every transistor family a kit offers (#115). The `pdk-distiller`
+  agent is in the library's `opt-in` link set, never linked into a design. The checkpoint skill
+  joins the `design` link set, and `schematic-builder`, `schematic-reviewer`, `layout-designer`,
+  `signoff-verifier` and the schematic skills carry a one-line pointer to it (#117, #120).
+- **Tests:** on platform e05bec8, after `make init`, 308 passed and 1 skipped (the bridge-lane
   `make layout-flow` test, skipped on the open lane); `make lint` holds every invariant. On a
   design that takes this release's tests but keeps v2.16's `layout/signoff.py`, five cases fail
   (`test_build_with_checks_but_no_load_is_refused_before_any_stage` x3,
   `test_an_account_without_a_bridge_profile_gets_the_reason_and_its_fix` x2) until step 2 is done;
   with v2.16's `design/dut.py`, `test_design_load_round_trips_the_frozen_design_json` fails until
   step 3 is done. Both were reproduced on this release's tree with the v2.16 file put back.
+
+### `make lint`'s `denylist` check skips files git ignores (template#84)
+
+The harness `denylist` walk read every file under the design, so a denied word in a git-ignored
+build directory or an `experiments/*/out/` log failed `make lint` although no commit could carry
+it. `scripts/lint.py` wraps the check under the same name so its walk keeps only the files
+`git ls-files --cached --others --exclude-standard` lists: tracked (a file force-added under an
+ignored directory is still read), plus untracked and not ignored. Names are decoded with
+`os.fsdecode`, as `os.walk` decodes them, so a name that is not valid UTF-8 neither breaks the
+check nor drops out of it. Outside a git checkout, when git cannot run, or when the lint root is
+not the top of its own checkout (a design without its own `.git` inside an enclosing checkout),
+every file is read as before. `disclosure` and `scorecard_recompute` walk as before. The wrapper
+carries `# GAP: MacAnalog/agentic_design_template#83` until the platform harness skips ignored
+files itself.
+
+### The bridge lane's checkpoint skill is linked (template#82)
+
+On `lane: bridge` a design's schematics, benches, review setup and layout go up to its own OA
+library at five checkpoints, so the designer reviews while the agents work. The library writes
+that procedure in one skill (analog-skill-directory #120); the agents that reach a checkpoint
+carry a one-line pointer to it. This release commits its link (the `*-checkpoints` entry under
+`.claude/skills/`) and points `CLAUDE.md`'s lanes section at it without restating it.
+`tests/test_skill_links.py` checks that exactly one `*-checkpoints` link is committed and resolves
+to its skill, that the lanes section points at it, and that every skill of the pinned `design`
+link set has a committed link (a subset check, so a design's committed `pdk-<id>` link or its own
+skill links pass).
 
 ### `layout/signoff.py --dry-run` on `lane: bridge` writes the scripts and contacts nothing (template#77)
 
@@ -190,7 +222,7 @@ four changes and a filled `PRODUCES`: 3 failed + 1 collection error before, 258 
    release, with and without this step). A design cut from an
    untagged commit also writes the full sha of that commit into `.sx/template-commit` before the
    update. The update carries `scripts/`, `tests/`, `.gitignore`, the `Makefile`, `CLAUDE.md`,
-   `CHANGELOG.md` and `<package>/sim.py`; `<package>/metrics.py` does not change, so no
+   `CHANGELOG.md`, the checkpoint skill's link under `.claude/skills/` and `<package>/sim.py`; `<package>/metrics.py` does not change, so no
    signed-scorer `WARNING` prints and no re-certification follows. A design that adapted
    `tests/test_design.py` or `tests/test_lane.py` locally (template#69) may see conflicts there:
    take the template's side, then re-apply the design's own lines.
@@ -218,8 +250,9 @@ four changes and a filled `PRODUCES`: 3 failed + 1 collection error before, 258 
    lane)` row from `git show v2.17:doc/environment.md` (template#72, #73, #77); in `README.md`,
    the `scripts/layout_lane.py` row (template#72) and the `.sx/template-commit` sentence
    (template#70) from `git show v2.17:README.md`.
-5. `make skills-update` moves `.sx/skills` to de86e4b; commit the pin. No link under `.claude/`
-   changes.
+5. `make skills-update` moves `.sx/skills` to fe08567; commit the pin. The update carried the
+   checkpoint skill's link under `.claude/skills/` (template#82); it resolves once the pin moves.
+   In `README.md`, take the `.claude/skills/` row (26 skills) from `git show v2.17:README.md`.
 6. `make lint && make test`. On `lane: bridge`, `make layout-flow RUN=<dir> OA_LIB=<lib>` now runs
    the build alone and says so; add `LOAD=1` to load and check.
 
