@@ -632,7 +632,7 @@ def test_build_alone_or_checks_alone_run_without_load(fake_kit_lane, monkeypatch
 NEEDS_SIGNOFF_DRY_RUN = _needs(
     "layout/signoff.py",
     "--dry-run",
-    why="bring the --dry-run change across by hand (CHANGELOG.md, entry 'layout/signoff.py --dry-run on lane: bridge', Taking it)",
+    why="bring the --dry-run change across by hand (CHANGELOG.md, v2.17, Taking it, step 2)",
 )
 
 

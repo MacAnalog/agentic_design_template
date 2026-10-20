@@ -336,7 +336,8 @@ def sx_links(L: Lint) -> None:
     The links checked are the library's `design` set, and its `pdk-<id>` set when `pdk:` in
     harness.yaml declares a process the pinned library ships a set for (the one `make init` links).
     For a kit under NDA (`lane: bridge`, no shared `pdk-<id>` set) the skill comes from a private
-    library: with `$SX_KIT_SKILLS` set its `pdk` set is checked like the others; without it, a
+    library: with `$SX_KIT_SKILLS` set, or a design-directory clone `../../pdks/pdk-<id>` found
+    (`pdk_links.kit_library`), its `pdk` set is checked like the others; without either, a
     `.claude/skills/pdk-<id>` link must already resolve, or the check fails. A `pdk:` spelled as a
     registry token rather than the harness's ratified id is a warning (`pdk_links.spellings`).
     """
@@ -363,7 +364,7 @@ def sx_links(L: Lint) -> None:
     pdk_set = pdk_links.linkset(root, pdk)
     if pdk_set:  # after `design`, in the order `make init` links them
         checks.append((pdk_set, ["--set", pdk_set]))
-    lib = pdk_links.private_library()
+    lib = pdk_links.kit_library(root, pdk)
     if pdk and lib is not None:
         if not (lib / "linksets" / f"{pdk_links.PRIVATE_SET}.txt").is_file():
             L.fail(
@@ -382,8 +383,9 @@ def sx_links(L: Lint) -> None:
             "sx-links",
             f"lane: bridge declares pdk: {pdk}; the shared library has no pdk-{pdk} set and no "
             f"pdk-{pdk} skill is linked, so sessions run without the kit's rules and shortcuts",
-            f"export {pdk_links.KIT_SKILLS_ENV}=<a clone of the kit's private skill library> and "
-            "run `make init` (doc/environment.md, row `kit skills`)",
+            f"export {pdk_links.KIT_SKILLS_ENV}=<a clone of the kit's private skill library>, or "
+            f"clone it into the design directory's {pdk_links.DIRECTORY_KITS}/pdk-{pdk} (`make pdks` "
+            "there), and run `make init` (doc/environment.md, row `kit skills`)",
         )
     for name, args in checks:
         r = subprocess.run(

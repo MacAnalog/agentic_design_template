@@ -328,3 +328,65 @@ def test_the_fixture_is_on_the_open_lane_whatever_this_checkout_declares():
     bridge = _with_pdk("pdk: kitx") + "lane: bridge   # a commercial kit\n"
     text = _with_pdk("pdk: other", base=bridge)
     assert pdk_links.declared(text, "lane") == "" and pdk_links.declared_pdk(text) == "other"
+
+
+# --- the design directory's clone (<directory>/pdks/pdk-<id>) ------------------------------------
+
+
+def _kit(lib: Path) -> Path:
+    """A private per-kit library clone at `lib` (its `pdk` set links `skills/pdk-kitx`)."""
+    (lib / "linksets").mkdir(parents=True)
+    (lib / "linksets" / "pdk.txt").write_text("skills/pdk-kitx\n")
+    (lib / "skills" / "pdk-kitx").mkdir(parents=True)
+    return lib
+
+
+def _in_directory(tmp_path: Path, pdk_line: str) -> tuple[Path, list[Path]]:
+    """A design at `<dir>/designs/d` and the directory's clone `<dir>/pdks/pdk-kitx`."""
+    repo = tmp_path / "dir" / "designs" / "d"
+    repo.mkdir(parents=True)
+    (repo / "harness.yaml").write_text(_with_pdk(pdk_line) + "lane: bridge\n")
+    return repo, [_kit(tmp_path / "dir" / "pdks" / "pdk-kitx")]
+
+
+def test_a_design_in_a_directory_links_the_directorys_kit_clone(tmp_path):
+    repo, (lib,) = _in_directory(tmp_path, "pdk: kitx")
+    log = _library(repo)
+    assert pdk_links.main(repo, env={}) == 0
+    assert _calls(log) == [f"{repo} --library {lib.resolve()} --set pdk"]
+
+
+def test_sx_kit_skills_wins_over_the_directory_clone(tmp_path):
+    repo, _ = _in_directory(tmp_path, "pdk: kitx")
+    log = _library(repo)
+    own = _private(tmp_path / "own")
+    assert pdk_links.main(repo, env={pdk_links.KIT_SKILLS_ENV: str(own)}) == 0
+    assert _calls(log) == [f"{repo} --library {own} --set pdk"]
+
+
+def test_the_directory_clone_of_another_kit_is_not_linked(tmp_path, capsys):
+    repo, _ = _in_directory(tmp_path, "pdk: kity")
+    log = _library(repo)
+    assert pdk_links.main(repo, env={}) == 0
+    assert _calls(log) == [] and "pdks/pdk-kity" in capsys.readouterr().out
+
+
+def test_a_kit_the_shared_library_has_a_set_for_never_links_the_directory_clone(tmp_path):
+    repo, _ = _in_directory(tmp_path, "pdk: kitx")
+    log = _library(repo, sets=("design", "pdk-kitx"))
+    assert pdk_links.main(repo, env={}) == 0
+    assert _calls(log) == [f"{repo} --set pdk-kitx"]
+
+
+def test_a_checkout_outside_a_directory_finds_no_clone(tmp_path):
+    _kit(tmp_path / "pdks" / "pdk-kitx")
+    repo = tmp_path / "elsewhere"
+    repo.mkdir()
+    assert pdk_links.directory_library(repo, "kitx") is None
+
+
+def test_lint_checks_the_directory_clone(tmp_path):
+    repo, (lib,) = _in_directory(tmp_path, "pdk: kitx")
+    L, calls = _lint_repo(repo, "pdk: kitx", lane="bridge")
+    assert L.fails == []
+    assert calls[-1] == f"{repo} --library {lib.resolve()} --set pdk --check"

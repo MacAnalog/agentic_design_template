@@ -9,7 +9,9 @@ declares in `harness.yaml`, never for the registry entry or the repo name:
 2. **A private per-kit library**, for a kit under NDA whose skill (rule digest, layout shortcuts,
    journal) may live only in the private repo that owns the kit. `$SX_KIT_SKILLS` names a clone of
    it; that library ships `linksets/pdk.txt`, and this script runs
-   `sx-link . --library $SX_KIT_SKILLS --set pdk`. Each link it makes is a path into a per-machine
+   `sx-link . --library $SX_KIT_SKILLS --set pdk`. Unset, a design cloned into a design directory
+   (`<directory>/designs/<name>`) uses the directory's clone `<directory>/pdks/pdk-<id>` instead,
+   only when the shared library has no `pdk-<id>` set (:func:`kit_library`). Each link it makes is a path into a per-machine
    clone of a private repo, so its `.claude/` path is also written to this clone's
    `info/exclude`: it is never committed (`make skills-update` stages `.claude`).
 
@@ -26,7 +28,8 @@ The cases:
 
 - `pdk:` is absent or empty: nothing is linked and nothing is printed.
 - the shared library has the set: `sx-link . --set pdk-<id>`.
-- the shared library has no set and `$SX_KIT_SKILLS` is unset: one INFO line, exit 0.
+- the shared library has no set and `$SX_KIT_SKILLS` is unset: the design directory's clone
+  `../../pdks/pdk-<id>` is linked when there is one, else one INFO line, exit 0.
 - `$SX_KIT_SKILLS` is set: its `pdk` set is linked as well; a clone that has no
   `linksets/pdk.txt` is an error (exit 2), because a configured library that links nothing would
   pass silently.
@@ -52,6 +55,10 @@ REPO = Path(__file__).resolve().parents[1]
 KIT_SKILLS_ENV = "SX_KIT_SKILLS"
 #: the link set a private per-kit library ships
 PRIVATE_SET = "pdk"
+#: a design directory keeps its design clones in `designs/` and its private per-kit library
+#: clones beside them in `pdks/`, one `pdk-<id>` each
+DIRECTORY_DESIGNS = "designs"
+DIRECTORY_KITS = "pdks"
 _FLEET = Path(".sx/platform/packages/spicexplorer-harness/src/spicexplorer_harness/fleet.py")
 # What an id may be spelled with; anything else is not used to build a file name.
 _ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
@@ -136,6 +143,34 @@ def private_library(env: Mapping[str, str] | None = None) -> Path | None:
     return Path(value).expanduser() if value else None
 
 
+def directory_library(root: Path, pdk: str) -> Path | None:
+    """The design directory's clone of the private per-kit library for `pdk`, or None.
+
+    A design cloned at `<directory>/designs/<name>` finds it at `<directory>/pdks/pdk-<spelling>`,
+    for the first spelling (:func:`spellings`) whose clone ships `linksets/pdk.txt`. A checkout
+    anywhere else (a worktree, a clone outside a directory) finds none."""
+    here = root.resolve()
+    if not pdk or here.parent.name != DIRECTORY_DESIGNS:
+        return None
+    kits = here.parent.parent / DIRECTORY_KITS
+    for p in spellings(pdk, root):
+        lib = kits / f"pdk-{p}"
+        if (lib / "linksets" / f"{PRIVATE_SET}.txt").is_file():
+            return lib
+    return None
+
+
+def kit_library(root: Path, pdk: str, env: Mapping[str, str] | None = None) -> Path | None:
+    """The private per-kit library to link and check: `$SX_KIT_SKILLS` when it is set; else, when
+    the shared library has no `pdk-<id>` set for `pdk`, the design directory's clone
+    (:func:`directory_library`); else None. The clone is looked up by the declared kit, so a design
+    on another process never links it."""
+    lib = private_library(env)
+    if lib is not None or not pdk or linkset(root, pdk) is not None:
+        return lib
+    return directory_library(root, pdk)
+
+
 def private_entries(lib: Path) -> list[str]:
     """The entries of `lib/linksets/pdk.txt` (`skills/<name>`, `agents/<name>`), comments and
     blank lines dropped, as `sx-link` reads them."""
@@ -213,13 +248,14 @@ def main(root: Path = REPO, env: Mapping[str, str] | None = None) -> int:
         return 0
     rc = 0
     name = linkset(root, pdk)
-    lib = private_library(env)
+    lib = kit_library(root, pdk, env)
     if name is not None:
         rc = _sx_link(root, "--set", name)
     elif lib is None:
         print(
             f"INFO: harness.yaml declares pdk: {pdk}; the library at .sx/skills has no "
-            f"linksets/pdk-{pdk}.txt and {KIT_SKILLS_ENV} is unset, so no per-PDK skill is linked"
+            f"linksets/pdk-{pdk}.txt, {KIT_SKILLS_ENV} is unset and no design-directory clone "
+            f"../../{DIRECTORY_KITS}/pdk-{pdk} was found, so no per-PDK skill is linked"
         )
     if lib is not None:
         rc = link_private(root, lib) or rc
