@@ -17,14 +17,14 @@ Versions are `MAJOR.MINOR`, written `#.##`:
 `make template-status` prints the recorded version and the latest release. Releases are git
 tags, `v<version>`.
 
-## v2.17 — `layout/signoff.py` on `lane: bridge` gains `--dry-run`, two refusals and a FIX line; `template-update` merges from the commit a design was cut from; the checkpoint skill is linked; lint skips ignored files
+## v2.17 — `layout/signoff.py` on `lane: bridge` gains `--dry-run`, two refusals and a FIX line; `template-update` merges from the commit a design was cut from; the checkpoint skill is linked; lint skips ignored files; a design in a design directory finds the kit's private skill library there
 
 Minor, 2026-10-10. No module is renamed and every lifecycle command keeps its name. The release
 records the sixteen changes merged since the v2.16 tag (template#65 to #75, #77 to #79, #82 and
-#84) and moves `.sx/skills` from ff1f7f9 to fe08567. Same platform floor as v2.15; gated against
-platform main e05bec8. The library's `design` link set gains one skill between the two pins (15
-agents, 25 skills -> 15 agents, 26 skills): the bridge lane's checkpoint skill, whose link under
-`.claude/skills/` is committed (template#82). **No file this release carries is part of a signed computation:**
+#84), adds the design-directory lookup of the private kit library, and moves `.sx/skills` from ff1f7f9 to 72247da. Same platform floor as v2.15; gated against
+platform main e05bec8. The library's `design` link set gains two skills between the two pins (15
+agents, 25 skills -> 15 agents, 27 skills): the bridge lane's checkpoint skill (template#82) and
+`agent-run-hygiene` (this release), whose links under `.claude/skills/` are committed. **No file this release carries is part of a signed computation:**
 `<package>/metrics.py`, the file every `scorecard.json` hashes as `script_sha`, is the same at
 v2.16 and v2.17, so `scorecard-recompute` stays green and no design re-certifies.
 
@@ -46,7 +46,9 @@ v2.16 and v2.17, so `scorecard-recompute` stays green and no design re-certifies
 | the `gen_cell_bridge` skeleton test skips once `plan()` is drawn | template#79 | `tests/test_layout_lane.py` | yes |
 | `CLAUDE.md` lanes section: on `lane: bridge` cellviews go up to the design's own OA library at five checkpoints; one bullet points at the library skill that owns that procedure; the linked-skills sentence names it. The skill's link (the `*-checkpoints` entry) is committed; `README.md`: 26 skills | template#82 | `CLAUDE.md`, `.claude/skills/`, `README.md`, `tests/test_skill_links.py` | yes, except `README.md`; the link resolves after `make skills-update` (step 5) |
 | `make lint`'s `denylist` check reads only the files git lists (tracked, or untracked and not ignored), so a denied word in an ignored build dir or `experiments/*/out/` log no longer fails it; outside git, or when the lint root is not the top of its own checkout, every file is read as before | template#84 | `scripts/lint.py`, `tests/test_lint_ignored.py`, `tests/test_lint_own_tree.py` | yes |
-| `.sx/skills` ff1f7f9 -> fe08567 (analog-skill-directory#110, #111, #112, #113, #115, #117, #120) | template#82, this release | `.sx/skills` | no: `make skills-update` (step 5) |
+| `make init` / `make skills-update` / `make lint`: with `$SX_KIT_SKILLS` unset, a design cloned at `<directory>/designs/<name>` uses the design directory's clone `<directory>/pdks/pdk-<id>` of the kit's private skill library, only for the declared `pdk:` and only when the shared library has no `pdk-<id>` set (`pdk_links.kit_library`) | this release | `scripts/pdk_links.py`, `scripts/lint.py`, `tests/test_pdk_links.py`, `doc/environment.md` | yes, except `doc/` |
+| the `agent-run-hygiene` link under `.claude/skills/` is committed; `README.md`: 27 skills | this release | `.claude/skills/`, `README.md` | yes, except `README.md`; the link resolves after `make skills-update` (step 5) |
+| `.sx/skills` ff1f7f9 -> 72247da (analog-skill-directory#110, #111, #112, #113, #115, #117, #120, #121, #123, #127, #130) | template#82, this release | `.sx/skills` | no: `make skills-update` (step 5) |
 | `.sx/template-version` 2.16 -> 2.17 | this release | `.sx/template-version` | written by the update |
 
 - **What the signed computation is.** `script_sha` is the sha256 of `<package>/metrics.py` (its
@@ -54,7 +56,7 @@ v2.16 and v2.17, so `scorecard-recompute` stays green and no design re-certifies
   `design/sim.py` (template#78) and `design/dut.py` (template#65) change behaviour, not a hashed
   file: template#78 changes only the error a missing platform package raises, and `Design.load`
   only reads back what `make certify` froze.
-- **Library changes at fe08567:** `schematic-of-record`'s `read_cellview` reads a testbench at the
+- **Library changes at 72247da** (fe08567 plus #121, #123, #127 and #130: port/tline/PWL bench porting, `check_netlist --params` scoping, the layout agents folding in the merged kit-lane work, and `agent-run-hygiene`)**:** `schematic-of-record`'s `read_cellview` reads a testbench at the
   top level and no `--port` runs from the workstation (#110), reads analogLib `vcvs`/`vccs` back as
   `E`/`G` cards with their gain (#111) and takes per-master `--params` sections (#112);
   `check_netlist` parses analysis ports and transmission lines (#113); the opt-in `pdk-distiller`
@@ -247,12 +249,16 @@ four changes and a filled `PRODUCES`: 3 failed + 1 collection error before, 258 
        return cls.from_dict(json.loads(Path(path).read_text()))
    ```
 4. **`doc/environment.md` and `README.md` by hand** (never carried): take the `OA library (bridge
-   lane)` row from `git show v2.17:doc/environment.md` (template#72, #73, #77); in `README.md`,
+   lane)` and `kit skills (bridge lane)` rows from `git show v2.17:doc/environment.md` (template#72, #73,
+   #77, and this release's design-directory lookup); in `README.md`,
    the `scripts/layout_lane.py` row (template#72) and the `.sx/template-commit` sentence
    (template#70) from `git show v2.17:README.md`.
-5. `make skills-update` moves `.sx/skills` to fe08567; commit the pin. The update carried the
-   checkpoint skill's link under `.claude/skills/` (template#82); it resolves once the pin moves.
-   In `README.md`, take the `.claude/skills/` row (26 skills) from `git show v2.17:README.md`.
+5. `make skills-update` moves `.sx/skills` to the library's `main` (72247da or later); commit the
+   pin. The update carried the checkpoint skill's and `agent-run-hygiene`'s links under
+   `.claude/skills/`; they resolve once the pin moves. In `README.md`, take the `.claude/skills/`
+   row (27 skills) from `git show v2.17:README.md`. A design on a kit with a private skill
+   library that sits in a design directory can drop its `$SX_KIT_SKILLS` export once the
+   directory holds `pdks/pdk-<id>` (`make pdks` there); `make init` then links that clone.
 6. `make lint && make test`. On `lane: bridge`, `make layout-flow RUN=<dir> OA_LIB=<lib>` now runs
    the build alone and says so; add `LOAD=1` to load and check.
 
