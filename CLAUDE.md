@@ -189,7 +189,7 @@ undeclared case: an artefact somewhere nobody wrote down.
   literature), and the reusable agents and skills in `.sx/skills` (the lab's `analog-skill-directory`). A missing function is added to the platform or the
   library by PR (gap-as-signal), never reimplemented privately in this repo.
 - **Visual evidence and reports.** Every design cell and every testbench has a **human-readable xschem
-  sheet** (the `schematic-of-record` and `testbench-schematic` skills): produced from the certified netlist as the skill directs, proven equal
+  sheet** (the `schematic-of-record` and `testbench-schematic` skills): produced from the certified netlist as those skills direct, proven equal
   to it, PNG render committed — never a sketch or a block diagram offered as a schematic. When a cell must live in the
   commercial schematic editor it is **ported from that sheet** through the bridge's `xvport` lane and
   re-proven identical with `circuitgraph`. Findings are **tables or plots regenerated from simulated
