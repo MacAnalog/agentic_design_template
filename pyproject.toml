@@ -14,7 +14,7 @@ dependencies = [
     "spicexplorer-netlist2tf",  # netlist -> small-signal transfer function (library: transfer_function, extract_tf)
     "spicexplorer-gmid",        # gm/ID sizing off the committed LUTs (ihp-sg13g2, sky130; commercial PDKs need a LUT first)
     "spicexplorer-circuitgraph",  # topology graph (netlist2tf + netlist2xschem use it)
-    "spicexplorer-netlist2xschem",  # schematic of record (`netlist2xschem`, the schematic-builder agent)
+    "spicexplorer-netlist2xschem",  # schematic of record: render, title block, block symbols and the editor port (the schematic-of-record skill)
     # From outside the platform's uv workspace every transitive spicexplorer-* member must be
     # named here AND in [tool.uv.sources] — uv applies a path source only to a package the root
     # project names DIRECTLY, so a member pulled in transitively (analog-db -> circuitgraph)
