@@ -11,6 +11,6 @@ readable sheet, and the sizing that produced it.
 | `<design>.sch` + `<design>.png` | the xschem sheet and its render, proven equal to the netlist | the `schematic-of-record` skill |
 | `sizing.csv` | every device, its W/L, multiplicity and operating point | `make certify` |
 
-**A hand drawing is not a schematic of record.** The sheet is generated from the certified netlist
-with `spicexplorer-netlist2xschem` and proven equal to it; that proof is what makes the picture
+**A sketch is not a schematic of record.** The sheet is produced from the certified netlist as the
+`schematic-of-record` skill directs and proven equal to it; that proof is what makes the picture
 evidence rather than decoration.
